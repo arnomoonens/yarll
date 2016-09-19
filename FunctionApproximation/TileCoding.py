@@ -30,7 +30,7 @@ class TileCoding(FunctionApproximator):
             self.tile_starts.append((self.x_low + np.random.rand() * self.tile_width, self.y_low + np.random.rand() * self.tile_height))
 
         self.features_shape = (self.n_tilings, self.n_y_tiles, self.n_x_tiles, self.n_actions)
-        self.thetas = np.zeros(self.features_shape)
+        self.thetas = np.random.uniform(size=self.features_shape)
 
     def summed_thetas(self, state, action):
         """Theta values for features present for state and action."""
@@ -39,7 +39,7 @@ class TileCoding(FunctionApproximator):
             shifted = state - self.tile_starts[0]
             x, y = shifted
             if (x > 0 and x <= self.tiling_width) and (y > 0 and y <= self.tiling_height):
-                summed += self.thetas[i][y // self.tile_height][x // self.tile_width][action]
+                summed += self.thetas[i][int(y // self.tile_height)][int(x // self.tile_width)][action]
         return summed
 
     def present_features(self, state, action):
@@ -48,5 +48,5 @@ class TileCoding(FunctionApproximator):
             shifted = state - self.tile_starts[0]
             x, y = shifted
             if (x > 0 and x <= self.tiling_width) and (y > 0 and y <= self.tiling_height):
-                result[i][y // self.tile_height][x // self.tile_width][action] = 1
+                result[i][int(y // self.tile_height)][int(x // self.tile_width)][action] = 1
         return result

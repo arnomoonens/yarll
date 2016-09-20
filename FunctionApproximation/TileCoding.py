@@ -15,8 +15,8 @@ class TileCoding(FunctionApproximator):
         self.n_tilings = n_tilings
         self.n_actions = n_actions
 
-        assert self.n_x_tiles % 1 == 0 and self.n_x_tiles > 0, 'Number of tiles must be the square of a positive natural number'
-        assert self.n_y_tiles % 1 == 0 and self.n_y_tiles > 0, 'Number of tiles must be the square of a positive natural number'
+        assert self.n_x_tiles % 1 == 0 and self.n_x_tiles > 0, 'Number of tiles must be a positive natural number'
+        assert self.n_y_tiles % 1 == 0 and self.n_y_tiles > 0, 'Number of tiles must be a positive natural number'
 
         self.tile_width = (self.x_high - self.x_low) / self.n_x_tiles
         self.tile_height = (self.y_high - self.y_low) / self.n_y_tiles
@@ -43,6 +43,7 @@ class TileCoding(FunctionApproximator):
         return summed
 
     def present_features(self, state, action):
+        """Features that are active for the given state and action"""
         result = np.zeros(self.thetas.shape)
         for i in range(self.n_tilings):
             shifted = state - self.tile_starts[i]

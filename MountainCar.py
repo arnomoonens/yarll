@@ -7,6 +7,8 @@ from Policies.EGreedy import EGreedy
 from Traces.EligibilityTraces import EligibilityTraces
 from FunctionApproximation.TileCoding import TileCoding
 
+import numpy as np
+
 env = gym.make('MountainCar-v0')
 
 m = 10  # Number of tilings
@@ -18,11 +20,20 @@ epsilon = 0  # fully greedy in this case
 alpha = 0.05 * (0.1 / m)
 gamma = 0.99
 
+steps_per_episode = 200
+
 O = env.observation_space
 x_low, y_low = O.low
 x_high, y_high = O.high
 
 A = env.action_space
+
+def draw_3d(tile_starts):
+    states = []
+    for i in range(n_x_tiles):
+        for j in range(n_y_tiles):
+            states.append([i, j])
+    states = np.array(states)
 
 def main(n_episodes, monitor_directory):
     policy = EGreedy(epsilon)
@@ -30,10 +41,10 @@ def main(n_episodes, monitor_directory):
     env.monitor.start(monitor_directory)
     print("Going to run {} episodes".format(n_episodes))
     for i in range(n_episodes):
-        print('Episode {}'.format(i))
+        # print('Episode {}'.format(i))
         traces = EligibilityTraces(function_approximation.features_shape, gamma, Lambda)
         state, action = env.reset(), 0
-        state -= O.low
+        # state -= O.low
         done = False
         iteration = 0
         while not(done):
@@ -42,8 +53,9 @@ def main(n_episodes, monitor_directory):
             traces.adapt_traces(function_approximation.present_features(old_state, old_action))
             # env.render()
             state, reward, done, info = env.step(action)
-            if done:
-                print("Done! Nr of iterations: {}".format(iteration))
+            # state -= O.low
+            if done and iteration < steps_per_episode:
+                print("Episode {}: Less than {} were needed: {}".format(i, steps_per_episode, iteration))
             delta = reward - function_approximation.summed_thetas(old_state, old_action)
             Qs = [function_approximation.summed_thetas(state, action) for action in range(A.n)]
             action, Q = policy.select_action(Qs)

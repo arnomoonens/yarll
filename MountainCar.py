@@ -17,8 +17,8 @@ n_y_tiles = 9
 
 Lambda = 0.9
 epsilon = 0  # fully greedy in this case
-alpha = 0.05 * (0.1 / m)
-gamma = 0.99
+alpha = 0.05 * (0.5 / m)
+gamma = 1
 
 steps_per_episode = 200
 
@@ -44,7 +44,6 @@ def main(n_episodes, monitor_directory):
         # print('Episode {}'.format(i))
         traces = EligibilityTraces(function_approximation.features_shape, gamma, Lambda)
         state, action = env.reset(), 0
-        # state -= O.low
         done = False
         iteration = 0
         while not(done):
@@ -53,9 +52,8 @@ def main(n_episodes, monitor_directory):
             traces.adapt_traces(function_approximation.present_features(old_state, old_action))
             # env.render()
             state, reward, done, info = env.step(action)
-            # state -= O.low
             if done and iteration < steps_per_episode:
-                print("Episode {}: Less than {} were needed: {}".format(i, steps_per_episode, iteration))
+                print("Episode {}: Less than {} steps were needed: {}".format(i, steps_per_episode, iteration))
             delta = reward - function_approximation.summed_thetas(old_state, old_action)
             Qs = [function_approximation.summed_thetas(state, action) for action in range(A.n)]
             action, Q = policy.select_action(Qs)

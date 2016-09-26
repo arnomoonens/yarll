@@ -9,7 +9,7 @@ class Sarsa(object):
         self.traces = traces
         self.function_approximation = function_approximation
 
-    def learn(self, reward, thetas):
+    def step(self, reward, thetas):
         delta = reward - thetas
         # get Qa
         Qa = self.policy.select_action()

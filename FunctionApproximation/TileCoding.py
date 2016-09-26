@@ -30,7 +30,7 @@ class TileCoding(FunctionApproximator):
             self.tile_starts.append((self.x_low + np.random.rand() * self.tile_width, self.y_low + np.random.rand() * self.tile_height))
 
         self.features_shape = (self.n_tilings, self.n_y_tiles, self.n_x_tiles, self.n_actions)
-        self.thetas = np.random.uniform(size=self.features_shape)
+        self.thetas = np.random.uniform(size=self.features_shape)  # Initialise randomly with values between 0 and 1
 
     def summed_thetas(self, state, action):
         """Theta values for features present for state and action."""

@@ -1,18 +1,33 @@
 class Sarsa(object):
-    """Sarsa learner"""
-    def __init__(self, gamma, alpha, lambda_value, policy, traces, function_approximation):
+    """Sarsa learner for function approximation"""
+    def __init__(self, gamma, alpha, policy, traces, function_approximation, actions, start_state, start_action):
         super(Sarsa, self).__init__()
         self.gamma = gamma
         self.alpha = alpha
-        self.lambda_value = lambda_value
         self.policy = policy
         self.traces = traces
         self.function_approximation = function_approximation
+        self.actions = actions
+        self.old_state = start_state
+        self.old_action = start_action
 
-    def step(self, reward, thetas):
-        delta = reward - thetas
-        # get Qa
-        Qa = self.policy.select_action()
-        delta += self.gamma * Qa
-        thetas = thetas + self.alpha * delta * self.traces
-        self.traces.update(self.gamma, self.lambda_value)
+    def step(self, state, reward):
+        """Do one step of updating traces and function approximation and selecting an acting using a policy"""
+        self.traces.adapt_traces(self.function_approximation.present_features(self.old_state, self.old_action))
+        delta = reward - self.function_approximation.summed_thetas(self.old_state, self.old_action)
+        Qs = [self.function_approximation.summed_thetas(state, action) for action in self.actions]
+        action, Q = self.policy.select_action(Qs)
+        delta += self.gamma * Q
+        self.function_approximation.set_thetas(self.alpha * delta * self.traces.traces)
+        self.traces.decay()
+        self.old_state = state
+        self.old_action = action
+        return action
+
+    def reset(self, policy, traces, function_approximation, start_state, start_action):
+        """Reset the policy, traces, function approximation, start action and/or start state"""
+        self.policy = policy
+        self.traces = traces
+        self.function_approximation = function_approximation
+        self.old_state = start_state
+        self.old_action = start_action

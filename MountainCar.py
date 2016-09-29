@@ -3,11 +3,9 @@
 import gym
 import sys
 from Policies.EGreedy import EGreedy
-# from Learners.Sarsa import Sarsa
+from Learners.Sarsa import Sarsa
 from Traces.EligibilityTraces import EligibilityTraces
 from FunctionApproximation.TileCoding import TileCoding
-
-import numpy as np
 
 env = gym.make('MountainCar-v0')
 
@@ -28,12 +26,12 @@ x_high, y_high = O.high
 
 A = env.action_space
 
-def draw_3d(tile_starts):
-    states = []
-    for i in range(n_x_tiles):
-        for j in range(n_y_tiles):
-            states.append([i, j])
-    states = np.array(states)
+# def draw_3d(tile_starts):
+#     states = []
+#     for i in range(n_x_tiles):
+#         for j in range(n_y_tiles):
+#             states.append([i, j])
+#     states = np.array(states)
 
 def main(n_episodes, monitor_directory):
     policy = EGreedy(epsilon)
@@ -44,23 +42,16 @@ def main(n_episodes, monitor_directory):
         # print('Episode {}'.format(i))
         traces = EligibilityTraces(function_approximation.features_shape, gamma, Lambda)
         state, action = env.reset(), 0
+        sarsa = Sarsa(gamma, alpha, policy, traces, function_approximation, range(A.n), state, action)
         done = False
         iteration = 0
         while not(done):
             iteration += 1
-            old_state, old_action = state, action
-            traces.adapt_traces(function_approximation.present_features(old_state, old_action))
             # env.render()
             state, reward, done, info = env.step(action)
             if done and iteration < steps_per_episode:
                 print("Episode {}: Less than {} steps were needed: {}".format(i, steps_per_episode, iteration))
-            delta = reward - function_approximation.summed_thetas(old_state, old_action)
-            Qs = [function_approximation.summed_thetas(state, action) for action in range(A.n)]
-            action, Q = policy.select_action(Qs)
-            delta += gamma * Q
-            function_approximation.set_thetas(alpha * delta * traces.traces)
-            traces.decay()
-
+            action = sarsa.step(state, reward)
     env.monitor.close()
 
 if __name__ == '__main__':

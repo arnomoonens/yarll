@@ -18,7 +18,7 @@ epsilon = 0  # fully greedy in this case
 alpha = 0.05 * (0.5 / m)
 gamma = 1
 
-steps_per_episode = 200
+steps_per_episode = 200  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
 
 O = env.observation_space
 x_low, y_low = O.low
@@ -43,7 +43,7 @@ def main(n_episodes, monitor_directory):
         traces = EligibilityTraces(function_approximation.features_shape, gamma, Lambda)
         state, action = env.reset(), 0
         sarsa = Sarsa(gamma, alpha, policy, traces, function_approximation, range(A.n), state, action)
-        done = False
+        done = False  # Done says if the goal is reached or the maximum number of allowed steps for the episode is reached (determined by the gym library itself)
         iteration = 0
         while not(done):
             iteration += 1

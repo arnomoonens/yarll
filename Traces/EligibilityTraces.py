@@ -10,7 +10,7 @@ class EligibilityTraces(object):
         self.Lambda = Lambda
 
     def adapt_traces(self, present_features):
-        self.traces = present_features
+        self.traces = present_features  # replacing traces: set them to 1
 
     def decay(self):
         self.traces *= self.gamma * self.Lambda

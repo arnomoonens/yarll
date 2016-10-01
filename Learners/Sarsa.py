@@ -12,7 +12,7 @@ class Sarsa(object):
         self.old_action = start_action
 
     def step(self, state, reward):
-        """Do one step of updating traces and function approximation and selecting an acting using a policy"""
+        """Do one step of updating traces, function approximation and selecting an action using a policy"""
         self.traces.adapt_traces(self.function_approximation.present_features(self.old_state, self.old_action))
         delta = reward - self.function_approximation.summed_thetas(self.old_state, self.old_action)
         Qs = [self.function_approximation.summed_thetas(state, action) for action in self.actions]

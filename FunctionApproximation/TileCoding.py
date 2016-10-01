@@ -26,7 +26,7 @@ class TileCoding(FunctionApproximator):
 
         self.tile_starts = []
 
-        for _ in range(self.n_tilings):
+        for _ in range(self.n_tilings):  # Each tiling starts at a random offset that is a fraction of the tile width and height
             self.tile_starts.append((self.x_low + np.random.rand() * self.tile_width, self.y_low + np.random.rand() * self.tile_height))
 
         self.features_shape = (self.n_tilings, self.n_y_tiles, self.n_x_tiles, self.n_actions)
@@ -36,18 +36,18 @@ class TileCoding(FunctionApproximator):
         """Theta values for features present for state and action."""
         summed = 0
         for i in range(self.n_tilings):
-            shifted = state - self.tile_starts[i]
+            shifted = state - self.tile_starts[i]  # Subtract the randomly chosen offsets
             x, y = shifted
             if (x >= 0 and x <= self.tiling_width) and (y >= 0 and y <= self.tiling_height):
                 summed += self.thetas[i][int(y // self.tile_height)][int(x // self.tile_width)][action]
         return summed
 
     def present_features(self, state, action):
-        """Features that are active for the given state and action"""
-        result = np.zeros(self.thetas.shape)
+        """Features that are active for the given state and action.."""
+        result = np.zeros(self.thetas.shape)  # By default, all of them are inactve
         for i in range(self.n_tilings):
             shifted = state - self.tile_starts[i]
             x, y = shifted
             if (x >= 0 and x <= self.tiling_width) and (y >= 0 and y <= self.tiling_height):
-                result[i][int(y // self.tile_height)][int(x // self.tile_width)][action] = 1
+                result[i][int(y // self.tile_height)][int(x // self.tile_width)][action] = 1  # Set the feature to active
         return result

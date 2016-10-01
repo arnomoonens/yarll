@@ -10,8 +10,8 @@ class EGreedy(Policy):
 
     def select_action(self, values):
         idx = None
-        if (np.random.rand() < self.epsilon):
-            idx = np.random.randint(len(values))
+        if (np.random.rand() < self.epsilon):  # With a probability of epsilon...
+            idx = np.random.randint(len(values))  # Choose a random action...
         else:
-            idx = np.argmax(values)
-        return idx, values[idx]
+            idx = np.argmax(values)  # Else return the action with the highest value
+        return idx, values[idx]  # Return the action and the associated value

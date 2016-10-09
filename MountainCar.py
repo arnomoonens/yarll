@@ -35,7 +35,7 @@ A = env.action_space
 
 def main(n_episodes, monitor_directory):
     policy = EGreedy(epsilon)
-    function_approximation = TileCoding(x_low, x_high, y_low, y_high, m, n_x_tiles, n_y_tiles, env.action_space.n)
+    function_approximation = TileCoding(x_low, x_high, y_low, y_high, m, n_x_tiles, n_y_tiles, A.n)
     env.monitor.start(monitor_directory)
     print("Going to run {} episodes".format(n_episodes))
     for i in range(n_episodes):

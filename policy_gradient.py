@@ -21,18 +21,19 @@ def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
 def forward_step(state, w1, w2):
-        x1 = np.dot(state, w1)
-        x1[x1 < 0] = 0
-        output = sigmoid(np.dot(x1, w2))
-        return x1, output
+    # print(state)
+    x1 = np.dot(state, w1)
+    x1[x1 < 0] = 0
+    output = sigmoid(np.dot(x1, w2))
+    return x1, output
 
 
 def choose_action(output, temperature=1.0):
-        # total = sum([np.exp(float(o) / temperature) for o in output])
-        # probs = [np.exp(float(o) / temperature) / total for o in output]
-        probs = output / np.sum(output)
-        action = np.random.choice(A.n, p=probs)
-        return action, probs
+    # total = sum([np.exp(float(o) / temperature) for o in output])
+    # probs = [np.exp(float(o) / temperature) / total for o in output]
+    probs = output / np.sum(output)
+    action = np.random.choice(A.n, p=probs)
+    return action, probs
 
 def backward_step(x0, x1, feedback):
     """Computes how much to change the weights from input->hidden layer and hidden->final layer"""
@@ -51,8 +52,8 @@ def discount_rewards(rewards):
         discounted_r[i] = summed
     return discounted_r
 
-w1 = 2 * np.random.randn(O.shape[0], n_hidden_units) - 1  # n_actions * n_state_features
-w2 = 2 * np.random.randn(n_hidden_units, A.n) - 1
+w1 = np.random.randn(O.shape[0], n_hidden_units) / np.sqrt(n_hidden_units)
+w2 = np.random.randn(n_hidden_units, A.n) / np.sqrt(A.n)
 
 n_episodes = 6000
 env.monitor.start(sys.argv[1])
@@ -77,6 +78,7 @@ while True:  # Keep executing episodes
         encountered_states.append(state)
         x1, nn_outputs = forward_step(state, w1, w2)
         action, probabilities = choose_action(nn_outputs)
+        # print(probabilities)
         state, reward, done, info = env.step(action)
         state = scale_state(state)
         reward_sum += reward
@@ -94,6 +96,7 @@ while True:  # Keep executing episodes
             episode_states = np.vstack(encountered_states)
 
             discounted_episode_rewards = discount_rewards(episode_rewards)
+            # print(discounted_episode_rewards)
             # standardize
             discounted_episode_rewards -= np.mean(discounted_episode_rewards)
             discounted_episode_rewards /= np.std(discounted_episode_rewards)

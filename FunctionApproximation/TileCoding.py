@@ -43,7 +43,7 @@ class TileCoding(FunctionApproximator):
         return summed
 
     def present_features(self, state, action):
-        """Features that are active for the given state and action.."""
+        """Features that are active for the given state and action."""
         result = np.zeros(self.thetas.shape)  # By default, all of them are inactve
         for i in range(self.n_tilings):
             shifted = state - self.tile_starts[i]

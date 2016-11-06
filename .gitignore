@@ -89,3 +89,7 @@ ENV/
 .ropeproject
 
 .DS_Store
+
+/DeepRL.sublime-project
+
+/DeepRL.sublime-workspace

@@ -5,8 +5,11 @@
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html
 
 import numpy as np
+import sys
 import tensorflow as tf
 import gym
+from gym.spaces import Discrete, Box
+from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
 
 def discount(x, gamma):
     """
@@ -22,15 +25,6 @@ def discount(x, gamma):
     # scipy.signal.lfilter([1],[1,-gamma],x[::-1], axis=0)[::-1]
     return out
 
-def categorical_sample_probabilistic(prob_n):
-    """Sample from categorical distribution, specified by a vector of class probabilities"""
-    prob_n = np.asarray(prob_n)
-    csprob_n = np.cumsum(prob_n)
-    return (csprob_n > np.random.rand()).argmax()
-
-def categorical_sample_max(prob_n):
-    """Choose the action with the highest probability."""
-    return np.argmax(prob_n)
 
 def get_trajectory(agent, env, episode_max_length, render=False):
     """
@@ -59,13 +53,13 @@ def get_trajectory(agent, env, episode_max_length, render=False):
 class REINFORCEAgent(object):
     """
     REINFORCE with baselines
-    Currently just works for discrete action space
     """
 
-    def __init__(self, ob_space, action_space, **usercfg):
-        nO = ob_space.shape[0]
-        nA = action_space.n
-        # Here are all the algorithm parameters. You can modify them by passing in keyword args
+    def __init__(self, ob_space, action_space, action_selection, **usercfg):
+        self.nO = ob_space.shape[0]
+        self.nA = action_space.n
+        self.action_selection = action_selection
+        # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
             episode_max_length=100,
             timesteps_per_batch=10000,
@@ -75,46 +69,9 @@ class REINFORCEAgent(object):
             nhid=20)
         self.config.update(usercfg)
 
-        # Symbolic variables for observation, action, and advantage
-        # These variables stack the results from many timesteps--the first dimension is the timestep
-        self.ob_no = tf.placeholder(tf.float32, name='ob_no')  # Observation
-        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
-
-        W0 = tf.Variable(tf.random_normal([nO, self.config['nhid']]) / np.sqrt(nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config['nhid']]), name='b0')
-        W1 = tf.Variable(1e-4 * tf.random_normal([self.config['nhid'], nA]), name='W1')
-        b1 = tf.Variable(tf.zeros([nA]), name='b1')
-        # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.ob_no, W0) + b0[None, :])
-        self.prob_na = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='prob_na')
-        # N = self.ob_no.get_shape()[0].value
-        self.N = tf.placeholder(tf.int32, name='N')
-        # Loss function that we'll differentiate to get the policy gradient
-        # Note that we've divided by the total number of timesteps
-        # loss = T.log(prob_na[T.arange(N), self.a_n]).dot(self.adv_n) / N
-        good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, tf.one_hot(tf.cast(self.a_n, tf.int32), nA)), reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.adv_n
-        loss = -tf.reduce_sum(eligibility)
-        # stepsize = tf.placeholder(tf.float32)
-        # grads = T.grad(loss, params)
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['stepsize'], decay=0.9, epsilon=1e-9)
-        self.train = optimizer.minimize(loss)
-
-        init = tf.initialize_all_variables()
-
-        # Launch the graph.
-        self.sess = tf.Session()
-        self.sess.run(init)
-
     def act(self, ob):
         """Choose an action."""
-        ob = ob.reshape(1, -1)
-        N = ob.shape[0]
-        prob = self.sess.run([self.prob_na], feed_dict={self.ob_no: ob, self.N: N})
-        # action = categorical_sample_probabilistic(prob)
-        action = categorical_sample_max(prob)
-        return action
+        pass
 
     def learn(self, env):
         """Run learning algorithm"""
@@ -139,7 +96,6 @@ class REINFORCEAgent(object):
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_adv = np.concatenate(advs)
             # Do policy gradient update step
-            # self.pg_update(all_ob, all_action, all_adv, config["stepsize"])
             self.sess.run([self.train], feed_dict={self.ob_no: all_ob, self.a_n: all_action, self.adv_n: all_adv, self.N: len(all_ob)})
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
@@ -154,12 +110,66 @@ class REINFORCEAgent(object):
             print("-----------------")
             get_trajectory(self, env, config["episode_max_length"], render=True)
 
+
+class REINFORCEAgentDiscrete(REINFORCEAgent):
+
+    def __init__(self, ob_space, action_space, action_selection, **usercfg):
+        super(REINFORCEAgentDiscrete, self).__init__(ob_space, action_space, action_selection, **usercfg)
+
+        # Symbolic variables for observation, action, and advantage
+        # These variables stack the results from many timesteps--the first dimension is the timestep
+        self.ob_no = tf.placeholder(tf.float32, name='ob_no')  # Observation
+        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
+        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+
+        W0 = tf.Variable(tf.random_normal([self.nO, self.config['nhid']]) / np.sqrt(self.nO), name='W0')
+        b0 = tf.Variable(tf.zeros([self.config['nhid']]), name='b0')
+        W1 = tf.Variable(1e-4 * tf.random_normal([self.config['nhid'], self.nA]), name='W1')
+        b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
+        # Action probabilities
+        L1 = tf.tanh(tf.matmul(self.ob_no, W0) + b0[None, :])
+        self.prob_na = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='prob_na')
+        # N = self.ob_no.get_shape()[0].value
+        self.N = tf.placeholder(tf.int32, name='N')
+        # Loss function that we'll differentiate to get the policy gradient
+        # Note that we've divided by the total number of timesteps
+        # loss = T.log(prob_na[T.arange(N), self.a_n]).dot(self.adv_n) / N
+        good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        eligibility = tf.log(good_probabilities) * self.adv_n
+        loss = -tf.reduce_sum(eligibility)
+        # stepsize = tf.placeholder(tf.float32)
+        # grads = T.grad(loss, params)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['stepsize'], decay=0.9, epsilon=1e-9)
+        self.train = optimizer.minimize(loss)
+
+        init = tf.initialize_all_variables()
+
+        # Launch the graph.
+        self.sess = tf.Session()
+        self.sess.run(init)
+
+    def act(self, ob):
+        """Choose an action."""
+        ob = ob.reshape(1, -1)
+        prob = self.sess.run([self.prob_na], feed_dict={self.ob_no: ob})[0][0]
+        action = self.action_selection.select_action(prob)
+        # action = categorical_sample_max(prob)
+        return action
+
 def main():
-    env = gym.make("CartPole-v0")
-    agent = REINFORCEAgent(
-        env.observation_space, env.action_space,
-        episode_max_length=env.spec.timestep_limit)
-    agent.learn(env)
+    if(len(sys.argv) < 2):
+        print("Please provide the name of an environment")
+        return
+    env = gym.make(sys.argv[1])
+    if isinstance(env.action_space, Discrete):
+        action_selection = ProbabilisticCategoricalActionSelection()
+        agent = REINFORCEAgentDiscrete(env.observation_space, env.action_space, action_selection, episode_max_length=env.spec.timestep_limit)
+    else:
+        raise NotImplementedError
+    try:
+        agent.learn(env)
+    except KeyboardInterrupt:
+        pass
 
 if __name__ == "__main__":
     main()

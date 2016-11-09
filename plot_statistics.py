@@ -9,11 +9,11 @@ def moving_average(a, n=50):
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
 
-def main(stats_path):
+def main(stats_path, n):
     f = open(stats_path)
     contents = json.load(f)
 
-    averaged_episode_rewards = moving_average(contents['episode_rewards'], 500)
+    averaged_episode_rewards = moving_average(contents['episode_rewards'], n)
     fig = plt.figure()
     plt.plot(range(len(averaged_episode_rewards)), averaged_episode_rewards)
     plt.xlabel("Episode")
@@ -22,7 +22,7 @@ def main(stats_path):
     fig.canvas.set_window_title("Total reward per episode")
 
     fig = plt.figure()
-    averaged_episode_lengths = moving_average(contents['episode_lengths'], 500)
+    averaged_episode_lengths = moving_average(contents['episode_lengths'], n)
     plt.plot(range(len(averaged_episode_lengths)), averaged_episode_lengths)
     plt.xlabel("Episode")
     plt.ylabel("Length")
@@ -31,7 +31,7 @@ def main(stats_path):
     plt.show()
 
 if __name__ == '__main__':
-    if(len(sys.argv) < 2):
-        print("Please provide the path of the stats JSON file")
+    if(len(sys.argv) < 3):
+        print("Please provide the path of the stats JSON file and a running mean length")
     else:
-        main(sys.argv[1])
+        main(sys.argv[1], int(sys.argv[2]))

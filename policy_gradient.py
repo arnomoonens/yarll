@@ -11,7 +11,7 @@ A = env.action_space
 O = env.observation_space
 
 gamma = 0.99
-learning_rate = 1e-4
+learning_rate = 0.05
 batch_size = 10
 decay_rate = 0.99
 

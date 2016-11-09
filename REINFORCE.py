@@ -25,7 +25,6 @@ def discount(x, gamma):
     # scipy.signal.lfilter([1],[1,-gamma],x[::-1], axis=0)[::-1]
     return out
 
-
 def get_trajectory(agent, env, episode_max_length, render=False):
     """
     Run agent-environment loop for one whole episode (trajectory)
@@ -108,8 +107,7 @@ class REINFORCEAgent(object):
             print("MeanRew: \t %s +- %s" % (episode_rewards.mean(), episode_rewards.std() / np.sqrt(len(episode_rewards))))
             print("MeanLen: \t %s +- %s" % (episode_lengths.mean(), episode_lengths.std() / np.sqrt(len(episode_lengths))))
             print("-----------------")
-            get_trajectory(self, env, config["episode_max_length"], render=True)
-
+            # get_trajectory(self, env, config["episode_max_length"], render=True)
 
 class REINFORCEAgentDiscrete(REINFORCEAgent):
 
@@ -136,6 +134,7 @@ class REINFORCEAgentDiscrete(REINFORCEAgent):
         # loss = T.log(prob_na[T.arange(N), self.a_n]).dot(self.adv_n) / N
         good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
+        eligibility = tf.Print(eligibility, [eligibility], first_n=5)
         loss = -tf.reduce_sum(eligibility)
         # stepsize = tf.placeholder(tf.float32)
         # grads = T.grad(loss, params)
@@ -157,8 +156,8 @@ class REINFORCEAgentDiscrete(REINFORCEAgent):
         return action
 
 def main():
-    if(len(sys.argv) < 2):
-        print("Please provide the name of an environment")
+    if(len(sys.argv) < 3):
+        print("Please provide the name of an environment and a path to save monitor files")
         return
     env = gym.make(sys.argv[1])
     if isinstance(env.action_space, Discrete):
@@ -167,6 +166,7 @@ def main():
     else:
         raise NotImplementedError
     try:
+        env.monitor.start(sys.argv[2], force=True)
         agent.learn(env)
     except KeyboardInterrupt:
         pass

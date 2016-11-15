@@ -39,8 +39,8 @@ def get_trajectory(agent, env, episode_max_length, render=False):
     rewards = []
     for _ in range(episode_max_length):
         action = agent.act(ob)
-        (ob, rew, done, _) = env.step(action)
         obs.append(ob)
+        (ob, rew, done, _) = env.step(action)
         actions.append(action)
         rewards.append(rew)
         if done:
@@ -62,12 +62,12 @@ class QACLearner(object):
 
         self.config = dict(
             episode_max_length=100,
-            timesteps_per_batch=10000,
+            timesteps_per_batch=1000,
             n_iter=100,
             gamma=0.99,
             actor_learning_rate=1e-4,
             critic_learning_rate=1e-4,
-            actor_n_hidden_units=4)
+            actor_n_hidden_units=20)
         self.config.update(usercfg)
 
         self.actor_input = tf.placeholder(tf.float32, name='actor_input')
@@ -88,7 +88,7 @@ class QACLearner(object):
 
         # actor_parameters = [W0, b0, W1, b1]
 
-        good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, tf.one_hot(tf.cast(self.actions_taken, tf.int32), A.n)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, self.actions_taken), reduction_indices=[1])
         eligibility = -tf.log(good_probabilities + [1e-8]) * (self.critic_rewards - self.critic_feedback)  # critic_feedback should be returns - value
         # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
         loss = tf.reduce_mean(eligibility)
@@ -111,23 +111,26 @@ class QACLearner(object):
         N_HIDDEN_1 = 4
         N_HIDDEN_2 = 3
         self.critic_state_in = tf.placeholder("float", [None, self.nO], name='critic_state_in')
-        self.critic_action_in = tf.placeholder("float", [None, A.n], name='critic_action_in')
+        self.critic_action_in = tf.placeholder("float", [None, self.nA], name='critic_action_in')
+        # self.critic_action_in = tf.Print(self.critic_action_in, [self.critic_action_in])
 
+        # onehot_action_in = tf.one_hot(tf.cast(self.critic_action_in, tf.int32), self.nA, name='onehot_action_in')
+        # onehot_action_in = tf.Print(onehot_action_in, [onehot_action_in], message='onehot_action=')
         critic_W1 = tf.Variable(
-            tf.random_uniform([self.nO, N_HIDDEN_1], -1 / math.sqrt(self.nO), 1 / math.sqrt(self.nO)))
-        critic_B1 = tf.Variable(tf.random_uniform([N_HIDDEN_1], -1 / math.sqrt(self.nO), 1 / math.sqrt(self.nO)))
+            tf.random_uniform([self.nO, N_HIDDEN_1], -1 / math.sqrt(self.nO), 1 / math.sqrt(self.nO)), name='critic_W1')
+        critic_B1 = tf.Variable(tf.random_uniform([N_HIDDEN_1], -1 / math.sqrt(self.nO), 1 / math.sqrt(self.nO)), name='critic_B1')
         critic_W2 = tf.Variable(tf.random_uniform([N_HIDDEN_1, N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + A.n),
-                                1 / math.sqrt(N_HIDDEN_1 + A.n)))
+                                1 / math.sqrt(N_HIDDEN_1 + A.n)), name='critic_W2')
         W2_acticritic_on = tf.Variable(
             tf.random_uniform([A.n, N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + A.n),
-                              1 / math.sqrt(N_HIDDEN_1 + A.n)))
+                              1 / math.sqrt(N_HIDDEN_1 + A.n)), name='W2_acticritic_on')
         critic_B2 = tf.Variable(tf.random_uniform([N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + A.n),
-                                1 / math.sqrt(N_HIDDEN_1 + A.n)))
-        critic_W3 = tf.Variable(tf.random_uniform([N_HIDDEN_2, 1], -0.003, 0.003))
-        critic_B3 = tf.Variable(tf.random_uniform([1], -0.003, 0.003))
+                                1 / math.sqrt(N_HIDDEN_1 + A.n)), name='critic_B2')
+        critic_W3 = tf.Variable(tf.random_uniform([N_HIDDEN_2, 1], -0.003, 0.003), name='critic_W3')
+        critic_B3 = tf.Variable(tf.random_uniform([1], -0.003, 0.003), name='critic_B3')
 
-        critic_H1 = tf.nn.softplus(tf.matmul(self.critic_state_in, critic_W1) + critic_B1)
-        critic_H2 = tf.nn.tanh(tf.matmul(critic_H1, critic_W2) + tf.matmul(self.critic_action_in, W2_acticritic_on) + critic_B2)
+        critic_H1 = tf.nn.softplus(tf.matmul(self.critic_state_in, critic_W1) + critic_B1, name='critic_H1')
+        critic_H2 = tf.nn.tanh(tf.matmul(critic_H1, critic_W2) + tf.matmul(self.critic_action_in, W2_acticritic_on) + critic_B2, name='critic_H2')
 
         self.critic_q_model = tf.matmul(critic_H2, critic_W3) + critic_B3
 
@@ -150,8 +153,8 @@ class QACLearner(object):
         return action
 
     def get_critic_value(self, ob, ac):
-        ob = ob.reshape(1, -1)
-        return self.sess.run([self.critic_q_model], feed_dict={self.critic_state_in: ob, self.critic_action_in: ac})[0][0]
+        # ob = ob.reshape(1, -1)
+        return self.sess.run([self.critic_q_model], feed_dict={self.critic_state_in: ob, self.critic_action_in: ac})[0].flatten()
 
     def learn(self, save_path):
         env.monitor.start(save_path, force=True)
@@ -182,9 +185,10 @@ class QACLearner(object):
                 state = new_state
                 action = new_action
 
-    def learn2(self, env):
+    def learn2(self, save_path):
         """Run learning algorithm"""
         config = self.config
+        env.monitor.start(save_path, force=True)
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectories = []
@@ -193,19 +197,26 @@ class QACLearner(object):
                 trajectory = get_trajectory(self, env, config["episode_max_length"])
                 trajectories.append(trajectory)
                 timesteps_total += len(trajectory["reward"])
+            all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
+            all_action = ([0, 1] == all_action[:, None]).astype(np.float32)
             all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
             # Compute discounted sums of rewards
-            rets = [discount(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
-            maxlen = max(len(ret) for ret in rets)
-            padded_rets = [np.concatenate([ret, np.zeros(maxlen - len(ret))]) for ret in rets]
+            returns = np.concatenate([discount(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
+            qw_new = self.get_critic_value(all_ob, all_action)
+
+            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_ob, self.critic_target: returns.reshape(-1, 1), self.critic_action_in: all_action})
+            # maxlen = max(len(ret) for ret in returns)
+            # padded_rets = [np.concatenate([ret, np.zeros(maxlen - len(ret))]) for ret in returns]
             # Compute time-dependent baseline
-            baseline = np.mean(padded_rets, axis=0)
+            # baseline = np.mean(padded_rets, axis=0)
             # Compute advantage function
-            advs = [ret - baseline[:len(ret)] for ret in rets]
-            all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
-            all_adv = np.concatenate(advs)
+            # advs = [ret - baseline[:len(ret)] for ret in returns]
+            # all_adv = np.concatenate(advs)
             # Do policy gradient update step
-            self.sess.run([self.train], feed_dict={self.ob_no: all_ob, self.a_n: all_action, self.adv_n: all_adv, self.N: len(all_ob)})
+            all_rewards = np.concatenate([trajectory["reward"] for trajectory in trajectories])
+            td_targets = all_rewards + config['gamma'] * qw_new
+            td_errors = td_targets - qw_new
+            self.sess.run([self.actor_train], feed_dict={self.actor_input: all_ob, self.actions_taken: all_action, self.critic_feedback: td_errors, self.critic_rewards: returns})
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
             # Print stats
@@ -231,7 +242,7 @@ def main():
     else:
         raise NotImplementedError
     try:
-        agent.learn(sys.argv[2])
+        agent.learn2(sys.argv[2])
     except KeyboardInterrupt:
         pass
 

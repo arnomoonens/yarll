@@ -3,6 +3,7 @@ import gym
 import sys
 import matplotlib.pyplot as plt
 
+from utils import discount_rewards
 
 # Adaption of Karpathy's Pong from Pixels article to apply it using a simple neural network on the MountainCar environment
 
@@ -46,15 +47,6 @@ def backward_step(x0, x1, feedback):
     dh[x1 <= 0] = 0
     change_w1 = x0.T.dot(dh)  # 2x200 * 200x8 = 2x8
     return change_w1, change_w2
-
-# J(theta)
-def discount_rewards(rewards):
-    discounted_r = np.zeros_like(rewards)
-    summed = 0
-    for i in reversed(range(len(rewards))):
-        summed = summed * gamma + rewards[i]
-        discounted_r[i] = summed
-    return discounted_r
 
 w1 = np.random.randn(O.shape[0], n_hidden_units) / np.sqrt(n_hidden_units)
 w2 = np.random.randn(n_hidden_units, A.n) / np.sqrt(A.n)
@@ -108,7 +100,7 @@ while True:  # Keep executing episodes
 
             episode_states = np.vstack(encountered_states)
 
-            discounted_episode_rewards = discount_rewards(trajectory_rewards)
+            discounted_episode_rewards = discount_rewards(np.array(trajectory_rewards), gamma)
             # print(discounted_episode_rewards)
             # standardize
             discounted_episode_rewards -= np.mean(discounted_episode_rewards)

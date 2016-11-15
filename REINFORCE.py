@@ -10,20 +10,7 @@ import tensorflow as tf
 import gym
 from gym.spaces import Discrete, Box
 from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
-
-def discount(x, gamma):
-    """
-    Given vector x, computes a vector y such that
-    y[i] = x[i] + gamma * x[i+1] + gamma^2 x[i+2] + ...
-    """
-    out = np.zeros(len(x), 'float64')
-    out[-1] = x[-1]
-    for i in reversed(range(len(x) - 1)):
-        out[i] = x[i] + gamma * out[i + 1]
-    assert x.ndim >= 1
-    # More efficient version:
-    # scipy.signal.lfilter([1],[1,-gamma],x[::-1], axis=0)[::-1]
-    return out
+from utils import discount_rewards
 
 def get_trajectory(agent, env, episode_max_length, render=False):
     """
@@ -36,8 +23,8 @@ def get_trajectory(agent, env, episode_max_length, render=False):
     rewards = []
     for _ in range(episode_max_length):
         action = agent.act(ob)
-        (ob, rew, done, _) = env.step(action)
         obs.append(ob)
+        (ob, rew, done, _) = env.step(action)
         actions.append(action)
         rewards.append(rew)
         if done:
@@ -49,7 +36,7 @@ def get_trajectory(agent, env, episode_max_length, render=False):
             "action": np.array(actions)
             }
 
-class REINFORCEAgent(object):
+class REINFORCELearner(object):
     """
     REINFORCE with baselines
     """
@@ -85,7 +72,7 @@ class REINFORCEAgent(object):
                 timesteps_total += len(trajectory["reward"])
             all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
             # Compute discounted sums of rewards
-            rets = [discount(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
+            rets = [discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
             maxlen = max(len(ret) for ret in rets)
             padded_rets = [np.concatenate([ret, np.zeros(maxlen - len(ret))]) for ret in rets]
             # Compute time-dependent baseline
@@ -109,10 +96,10 @@ class REINFORCEAgent(object):
             print("-----------------")
             # get_trajectory(self, env, config["episode_max_length"], render=True)
 
-class REINFORCEAgentDiscrete(REINFORCEAgent):
+class REINFORCELearnerDiscrete(REINFORCELearner):
 
     def __init__(self, ob_space, action_space, action_selection, **usercfg):
-        super(REINFORCEAgentDiscrete, self).__init__(ob_space, action_space, action_selection, **usercfg)
+        super(REINFORCELearnerDiscrete, self).__init__(ob_space, action_space, action_selection, **usercfg)
 
         # Symbolic variables for observation, action, and advantage
         # These variables stack the results from many timesteps--the first dimension is the timestep
@@ -162,7 +149,9 @@ def main():
     env = gym.make(sys.argv[1])
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = REINFORCEAgentDiscrete(env.observation_space, env.action_space, action_selection, episode_max_length=env.spec.timestep_limit)
+        agent = REINFORCELearnerDiscrete(env.observation_space, env.action_space, action_selection, episode_max_length=env.spec.timestep_limit)
+    if isinstance(env.action_space, Box):
+        raise NotImplementedError
     else:
         raise NotImplementedError
     try:

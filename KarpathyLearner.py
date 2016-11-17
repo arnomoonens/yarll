@@ -1,16 +1,20 @@
+#!/usr/bin/env python
+# -*- coding: utf8 -*-
+
 import numpy as np
 import gym
 import sys
 import matplotlib.pyplot as plt
+import logging
 
-from utils import discount_rewards
+from Learner import Learner
+from utils import discount_rewards, print_iteration_stats
 from gym.spaces import Discrete, Box
 
-# Adaption of Karpathy's Pong from Pixels article to apply it using a simple neural network on the MountainCar environment
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
-env = gym.make('CartPole-v0')
-A = env.action_space
-O = env.observation_space
+# Adaption of Karpathy's Pong from Pixels article to apply it using a simple neural network on the MountainCar environment
 
 gamma = 0.99
 learning_rate = 0.05
@@ -21,55 +25,23 @@ n_hidden_units = 20
 
 draw_frequency = 50  # Draw a plot every 50 episodes
 
-def scale_state(state):
+def scale_state(state, O):
     return state - O.low
 
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
-def choose_action(output, temperature=1.0):
+def choose_action(output, n_actions, temperature=1.0):
     # total = sum([np.exp(float(o) / temperature) for o in output])
     # probs = [np.exp(float(o) / temperature) / total for o in output]
     probs = output / np.sum(output)
-    action = np.random.choice(A.n, p=probs)
+    action = np.random.choice(n_actions, p=probs)
     return action, probs
 
-def get_trajectory(agent, env, episode_max_length, render=False):
-    """
-    Run agent-environment loop for one whole episode (trajectory)
-    Return dictionary of results
-    """
-    ob = env.reset()
-    obs = []
-    actions = []
-    rewards = []
-    episode_probabilities = []
-    x1s = []
-    for _ in range(episode_max_length):
-        action, probabilities, x1 = agent.act(ob)
-        x1s.append(x1)
-        obs.append(ob)
-        (ob, rew, done, _) = env.step(action)
-        actions.append(action)
-        rewards.append(rew)
-        episode_probabilities.append(probabilities)
-        if done:
-            break
-        if render:
-            env.render()
-    return {"reward": np.array(rewards),
-            "ob": np.array(obs),
-            "action": np.array(actions),
-            "prob": np.array(episode_probabilities),
-            "x1": np.array(x1s)
-            }
-
-class KPLearner(object):
+class KPLearner(Learner):
     """Karpathy policy gradient learner"""
     def __init__(self, ob_space, action_space, **usercfg):
-        super(KPLearner, self).__init__()
-        self.nO = ob_space.shape[0]
-        self.nA = action_space.n
+        super(KPLearner, self).__init__(ob_space, action_space, **usercfg)
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
             # episode_max_length=100,
@@ -80,14 +52,14 @@ class KPLearner(object):
             n_hidden_units=20)
         self.config.update(usercfg)
 
-        self.w1 = np.random.randn(O.shape[0], n_hidden_units) / np.sqrt(n_hidden_units)
-        self.w2 = np.random.randn(n_hidden_units, A.n) / np.sqrt(A.n)
+        self.w1 = np.random.randn(self.nO, n_hidden_units) / np.sqrt(n_hidden_units)
+        self.w2 = np.random.randn(n_hidden_units, self.nA) / np.sqrt(self.nA)
 
         self.n_episodes = 6000
 
     def act(self, ob):
         x1, nn_outputs = self.forward_step(ob)
-        action, probabilities = choose_action(nn_outputs)
+        action, probabilities = choose_action(nn_outputs, self.nA)
         return action, probabilities, x1
 
     def forward_step(self, state):
@@ -104,6 +76,37 @@ class KPLearner(object):
         change_w1 = x0.T.dot(dh)  # 2x200 * 200x8 = 2x8
         return change_w1, change_w2
 
+    def get_trajectory(self, env, episode_max_length, render=False):
+        """
+        Run agent-environment loop for one whole episode (trajectory)
+        Return dictionary of results
+        Note that this function returns more than the get_trajectory in the Learner class.
+        """
+        ob = env.reset()
+        obs = []
+        actions = []
+        rewards = []
+        episode_probabilities = []
+        x1s = []
+        for _ in range(episode_max_length):
+            action, probabilities, x1 = self.act(ob)
+            x1s.append(x1)
+            obs.append(ob)
+            (ob, rew, done, _) = env.step(action)
+            actions.append(action)
+            rewards.append(rew)
+            episode_probabilities.append(probabilities)
+            if done:
+                break
+            if render:
+                env.render()
+        return {"reward": np.array(rewards),
+                "ob": np.array(obs),
+                "action": np.array(actions),
+                "prob": np.array(episode_probabilities),
+                "x1": np.array(x1s)
+                }
+
     def learn(self, env):
         # env.monitor.start(sys.argv[1], force=True)
 
@@ -116,31 +119,18 @@ class KPLearner(object):
         fig = plt.figure()
         ax1 = fig.add_subplot(1, 1, 1)
 
+        iteration = 0  # amount of batches processed
         episode_nr = 0
         episode_lengths = np.zeros(batch_size)
         episode_rewards = np.zeros(batch_size)
         mean_rewards = []
         while True:  # Keep executing episodes
-            # state = scale_state(state)
-            # while not done:  # Keep executing steps until done
-            #     encountered_states.append(state)
-            #     # x1, nn_outputs = forward_step(state, w1, w2)
-            #     # action, probabilities = choose_action(nn_outputs)
-            #     state, reward, done, info = env.step(action)
-            #     # state = scale_state(state)
-            #     reward_sum += reward
-            #     trajectory_rewards.append(reward)
-            #     x1s.append(x1)
-
-            #     y = np.zeros(A.n)
-            #     y[action] = 1
-            #     action_taken.append(y - probabilities)
-            trajectory = get_trajectory(self, env, self.config["episode_max_length"])
+            trajectory = self.get_trajectory(env, self.config["episode_max_length"])
 
             episode_rewards[episode_nr % batch_size] = sum(trajectory['reward'])
             episode_lengths[episode_nr % batch_size] = len(trajectory['reward'])
             episode_nr += 1
-            action_taken = (np.arange(A.n) == trajectory['action'][:, None]).astype(np.float32)
+            action_taken = (np.arange(self.nA) == trajectory['action'][:, None]).astype(np.float32)  # one-hot encoding
             epdlogp = action_taken - trajectory['prob']
 
             # episode_states = np.vstack(encountered_states)
@@ -150,9 +140,7 @@ class KPLearner(object):
             # standardize
             discounted_episode_rewards -= np.mean(discounted_episode_rewards)
             discounted_episode_rewards /= np.std(discounted_episode_rewards)
-            epdlogp *= np.reshape(np.repeat(discounted_episode_rewards, A.n), (len(discounted_episode_rewards), A.n))
-            # episode_gradient1 = np.zeros_like(self.w1)
-            # episode_gradient2 = np.zeros_like(self.w2)
+            epdlogp *= np.reshape(np.repeat(discounted_episode_rewards, self.nA), (len(discounted_episode_rewards), self.nA))
 
             change_w1, change_w2 = self.backward_step(trajectory['ob'], trajectory['x1'], epdlogp)
 
@@ -163,17 +151,15 @@ class KPLearner(object):
             #     print("Episode shorter than 200 episodes!")
 
             if episode_nr % batch_size == 0:  # batch is done
+                iteration += 1
                 rmsprop1 = decay_rate * rmsprop1 + (1 - decay_rate) * gradient1**2
                 rmsprop2 = decay_rate * rmsprop2 + (1 - decay_rate) * gradient2**2
                 self.w1 += learning_rate * gradient1 / (np.sqrt(rmsprop1) + 1e-5)
                 self.w2 += learning_rate * gradient2 / (np.sqrt(rmsprop2) + 1e-5)
                 gradient1 = np.zeros_like(self.w1)
                 gradient2 = np.zeros_like(self.w2)
-                print("Mean episode lengths: \t %s +- %s" % (episode_lengths.mean(), episode_lengths.std() / np.sqrt(len(episode_lengths))))
-                print("Max reward: \t %s" % episode_rewards.max())
-                mean_episodes_reward = episode_rewards.mean()
-                mean_rewards.append(mean_episodes_reward)
-                print("Mean reward: \t %s +- %s" % (mean_episodes_reward, episode_rewards.std() / np.sqrt(len(episode_rewards))))
+                print_iteration_stats(iteration, episode_rewards, episode_lengths)
+                mean_rewards.append(episode_rewards.mean())
                 if episode_nr % draw_frequency == 0:
                     ax1.clear()
                     ax1.plot(range(len(mean_rewards)), mean_rewards)
@@ -183,7 +169,7 @@ class KPLearner(object):
 
 def main():
     if(len(sys.argv) < 3):
-        print("Please provide the name of an environment and a path to save monitor files")
+        logging.error("Please provide the name of an environment and a path to save monitor files")
         return
     env = gym.make(sys.argv[1])
     print(env.action_space)

@@ -1,63 +1,23 @@
+#!/usr/bin/env python
+# -*- coding: utf8 -*-
+
 import numpy as np
 import sys
 import tensorflow as tf
 import gym
 import math
 from gym.spaces import Discrete, Box
+from Learner import Learner
 from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
+from utils import discount_rewards, print_iteration_stats
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
-
-env = gym.make('CartPole-v0')
-A = env.action_space
-O = env.observation_space
-
 # episodes_per_batch = 10
 
-def discount(x, gamma):
-    """
-    Given vector x, computes a vector y such that
-    y[i] = x[i] + gamma * x[i+1] + gamma^2 x[i+2] + ...
-    """
-    out = np.zeros(len(x), 'float64')
-    out[-1] = x[-1]
-    for i in reversed(range(len(x) - 1)):
-        out[i] = x[i] + gamma * out[i + 1]
-    assert x.ndim >= 1
-    # More efficient version:
-    # scipy.signal.lfilter([1],[1,-gamma],x[::-1], axis=0)[::-1]
-    return out
-
-def get_trajectory(agent, env, episode_max_length, render=False):
-    """
-    Run agent-environment loop for one whole episode (trajectory)
-    Return dictionary of results
-    """
-    ob = env.reset()
-    obs = []
-    actions = []
-    rewards = []
-    for _ in range(episode_max_length):
-        action = agent.act(ob)
-        obs.append(ob)
-        (ob, rew, done, _) = env.step(action)
-        actions.append(action)
-        rewards.append(rew)
-        if done:
-            break
-        if render:
-            env.render()
-    return {"reward": np.array(rewards),
-            "ob": np.array(obs),
-            "action": np.array(actions)
-            }
-
-
-class QACLearner(object):
+class QACLearner(Learner):
     """Q-value Actor-Critic"""
     def __init__(self, ob_space, action_space, action_selection, **usercfg):
-        self.nO = ob_space.shape[0]
-        self.nA = action_space.n
+        super(QACLearner, self).__init__(ob_space, action_space, **usercfg)
         self.action_selection = action_selection
 
         self.config = dict(
@@ -65,9 +25,9 @@ class QACLearner(object):
             timesteps_per_batch=1000,
             n_iter=100,
             gamma=0.99,
-            actor_learning_rate=1e-4,
-            critic_learning_rate=1e-4,
-            actor_n_hidden_units=20)
+            actor_learning_rate=1e-3,
+            critic_learning_rate=1e-3,
+            actor_n_hidden_units=40)
         self.config.update(usercfg)
 
         self.actor_input = tf.placeholder(tf.float32, name='actor_input')
@@ -108,8 +68,8 @@ class QACLearner(object):
         # critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=critic_learning_rate, decay=0.9, epsilon=1e-9)
         # critic_train = optimizer.minimize(critic_loss)
 
-        N_HIDDEN_1 = 4
-        N_HIDDEN_2 = 3
+        N_HIDDEN_1 = 10
+        N_HIDDEN_2 = 6
         self.critic_state_in = tf.placeholder("float", [None, self.nO], name='critic_state_in')
         self.critic_action_in = tf.placeholder("float", [None, self.nA], name='critic_action_in')
         # self.critic_action_in = tf.Print(self.critic_action_in, [self.critic_action_in])
@@ -119,13 +79,13 @@ class QACLearner(object):
         critic_W1 = tf.Variable(
             tf.random_uniform([self.nO, N_HIDDEN_1], -1 / math.sqrt(self.nO), 1 / math.sqrt(self.nO)), name='critic_W1')
         critic_B1 = tf.Variable(tf.random_uniform([N_HIDDEN_1], -1 / math.sqrt(self.nO), 1 / math.sqrt(self.nO)), name='critic_B1')
-        critic_W2 = tf.Variable(tf.random_uniform([N_HIDDEN_1, N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + A.n),
-                                1 / math.sqrt(N_HIDDEN_1 + A.n)), name='critic_W2')
+        critic_W2 = tf.Variable(tf.random_uniform([N_HIDDEN_1, N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + self.nA),
+                                1 / math.sqrt(N_HIDDEN_1 + self.nA)), name='critic_W2')
         W2_acticritic_on = tf.Variable(
-            tf.random_uniform([A.n, N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + A.n),
-                              1 / math.sqrt(N_HIDDEN_1 + A.n)), name='W2_acticritic_on')
-        critic_B2 = tf.Variable(tf.random_uniform([N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + A.n),
-                                1 / math.sqrt(N_HIDDEN_1 + A.n)), name='critic_B2')
+            tf.random_uniform([self.nA, N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + self.nA),
+                              1 / math.sqrt(N_HIDDEN_1 + self.nA)), name='W2_acticritic_on')
+        critic_B2 = tf.Variable(tf.random_uniform([N_HIDDEN_2], -1 / math.sqrt(N_HIDDEN_1 + self.nA),
+                                1 / math.sqrt(N_HIDDEN_1 + self.nA)), name='critic_B2')
         critic_W3 = tf.Variable(tf.random_uniform([N_HIDDEN_2, 1], -0.003, 0.003), name='critic_W3')
         critic_B3 = tf.Variable(tf.random_uniform([1], -0.003, 0.003), name='critic_B3')
 
@@ -156,11 +116,10 @@ class QACLearner(object):
         # ob = ob.reshape(1, -1)
         return self.sess.run([self.critic_q_model], feed_dict={self.critic_state_in: ob, self.critic_action_in: ac})[0].flatten()
 
-    def learn(self, save_path):
-        env.monitor.start(save_path, force=True)
+    def learn(self, env):
         while(True):  # for each episode
             state = env.reset()
-            action = A.sample()
+            action = env.action_space.sample()
             # t = 0
             done = False
             while not(done):
@@ -169,14 +128,14 @@ class QACLearner(object):
                 new_action = self.act(new_state)
                 # print(probabilities)
                 # qw_old = qw_predict_fn([state])[0, 0]
-                onehot_action = np.zeros((1, A.n))
+                onehot_action = np.zeros((1, self.nA))
                 onehot_action[0, action] = 1
                 qw_new = self.get_critic_value(state, onehot_action)[0]
                 # theta, z = SARSALambdaLinFApp(state, action, reward, new_state, new_action, theta, z)
                 # phi = actor.differential_log(state, action)
                 # v = np.sum(actor.weights(new_state) * theta.T * psi(state))
                 qw_target = reward + self.config['gamma'] * qw_new
-                onehot_new_action = np.zeros((1, A.n))
+                onehot_new_action = np.zeros((1, self.nA))
                 onehot_new_action[0, new_action] = 1
                 self.sess.run([self.critic_train], feed_dict={self.critic_state_in: new_state.reshape(1, -1), self.critic_target: qw_target, self.critic_action_in: onehot_new_action})
 
@@ -185,23 +144,22 @@ class QACLearner(object):
                 state = new_state
                 action = new_action
 
-    def learn2(self, save_path):
+    def learn2(self, env):
         """Run learning algorithm"""
         config = self.config
-        env.monitor.start(save_path, force=True)
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectories = []
             timesteps_total = 0
             while timesteps_total < config["timesteps_per_batch"]:
-                trajectory = get_trajectory(self, env, config["episode_max_length"])
+                trajectory = self.get_trajectory(env, config["episode_max_length"])
                 trajectories.append(trajectory)
                 timesteps_total += len(trajectory["reward"])
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_action = ([0, 1] == all_action[:, None]).astype(np.float32)
             all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
             # Compute discounted sums of rewards
-            returns = np.concatenate([discount(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
+            returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
             qw_new = self.get_critic_value(all_ob, all_action)
 
             self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_ob, self.critic_target: returns.reshape(-1, 1), self.critic_action_in: all_action})
@@ -219,16 +177,8 @@ class QACLearner(object):
             self.sess.run([self.actor_train], feed_dict={self.actor_input: all_ob, self.actions_taken: all_action, self.critic_feedback: td_errors, self.critic_rewards: returns})
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            # Print stats
-            print("-----------------")
-            print("Iteration: \t %i" % iteration)
-            print("NumTrajs: \t %i" % len(episode_rewards))
-            print("NumTimesteps: \t %i" % np.sum(episode_lengths))
-            print("MaxRew: \t %s" % episode_rewards.max())
-            print("MeanRew: \t %s +- %s" % (episode_rewards.mean(), episode_rewards.std() / np.sqrt(len(episode_rewards))))
-            print("MeanLen: \t %s +- %s" % (episode_lengths.mean(), episode_lengths.std() / np.sqrt(len(episode_lengths))))
-            print("-----------------")
-            get_trajectory(self, env, config["episode_max_length"], render=True)
+            print_iteration_stats(iteration, episode_rewards, episode_lengths)
+            # get_trajectory(self, env, config["episode_max_length"], render=True)
 
 
 def main():
@@ -239,10 +189,13 @@ def main():
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
         agent = QACLearner(env.observation_space, env.action_space, action_selection, episode_max_length=env.spec.timestep_limit)
+    elif isinstance(env.action_space, Box):
+        raise NotImplementedError
     else:
         raise NotImplementedError
     try:
-        agent.learn2(sys.argv[2])
+        env.monitor.start(sys.argv[2], force=True)
+        agent.learn2(env)
     except KeyboardInterrupt:
         pass
 

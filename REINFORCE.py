@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf8 -*-
+
 #  Policy Gradient Implementation
 #  Adapted for Tensorflow
 #  Other differences:
@@ -9,41 +12,17 @@ import sys
 import tensorflow as tf
 import gym
 from gym.spaces import Discrete, Box
+from Learner import Learner
 from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
-from utils import discount_rewards
+from utils import discount_rewards, print_iteration_stats
 
-def get_trajectory(agent, env, episode_max_length, render=False):
-    """
-    Run agent-environment loop for one whole episode (trajectory)
-    Return dictionary of results
-    """
-    ob = env.reset()
-    obs = []
-    actions = []
-    rewards = []
-    for _ in range(episode_max_length):
-        action = agent.act(ob)
-        obs.append(ob)
-        (ob, rew, done, _) = env.step(action)
-        actions.append(action)
-        rewards.append(rew)
-        if done:
-            break
-        if render:
-            env.render()
-    return {"reward": np.array(rewards),
-            "ob": np.array(obs),
-            "action": np.array(actions)
-            }
-
-class REINFORCELearner(object):
+class REINFORCELearner(Learner):
     """
     REINFORCE with baselines
     """
 
     def __init__(self, ob_space, action_space, action_selection, **usercfg):
-        self.nO = ob_space.shape[0]
-        self.nA = action_space.n
+        super(REINFORCELearner, self).__init__(ob_space, action_space, usercfg)
         self.action_selection = action_selection
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
@@ -85,15 +64,7 @@ class REINFORCELearner(object):
             self.sess.run([self.train], feed_dict={self.ob_no: all_ob, self.a_n: all_action, self.adv_n: all_adv, self.N: len(all_ob)})
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            # Print stats
-            print("-----------------")
-            print("Iteration: \t %i" % iteration)
-            print("NumTrajs: \t %i" % len(episode_rewards))
-            print("NumTimesteps: \t %i" % np.sum(episode_lengths))
-            print("MaxRew: \t %s" % episode_rewards.max())
-            print("MeanRew: \t %s +- %s" % (episode_rewards.mean(), episode_rewards.std() / np.sqrt(len(episode_rewards))))
-            print("MeanLen: \t %s +- %s" % (episode_lengths.mean(), episode_lengths.std() / np.sqrt(len(episode_lengths))))
-            print("-----------------")
+            print_iteration_stats(iteration, episode_rewards, episode_lengths)
             # get_trajectory(self, env, config["episode_max_length"], render=True)
 
 class REINFORCELearnerDiscrete(REINFORCELearner):

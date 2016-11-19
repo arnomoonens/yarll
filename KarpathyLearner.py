@@ -16,15 +16,6 @@ logging.basicConfig(level=logging.INFO,
 
 # Adaption of Karpathy's Pong from Pixels article to apply it using a simple neural network on the MountainCar environment
 
-gamma = 0.99
-learning_rate = 0.05
-batch_size = 10
-decay_rate = 0.99
-
-n_hidden_units = 20
-
-draw_frequency = 50  # Draw a plot every 50 episodes
-
 def scale_state(state, O):
     return state - O.low
 
@@ -48,12 +39,16 @@ class KPLearner(Learner):
             # timesteps_per_batch=10000,
             # n_iter=100,
             gamma=0.99,
-            stepsize=0.05,
-            n_hidden_units=20)
+            learning_rate=0.05,
+            batch_size=10,  # Amount of episodes after which to adapt gradients
+            decay_rate=0.99,  # Used for RMSProp
+            n_hidden_units=20,
+            draw_frequency=50  # Draw a plot every 50 episodes
+        )
         self.config.update(usercfg)
 
-        self.w1 = np.random.randn(self.nO, n_hidden_units) / np.sqrt(n_hidden_units)
-        self.w2 = np.random.randn(n_hidden_units, self.nA) / np.sqrt(self.nA)
+        self.w1 = np.random.randn(self.nO, self.config['n_hidden_units']) / np.sqrt(self.config['n_hidden_units'])
+        self.w2 = np.random.randn(self.config['n_hidden_units'], self.nA) / np.sqrt(self.nA)
 
         self.n_episodes = 6000
 
@@ -121,14 +116,14 @@ class KPLearner(Learner):
 
         iteration = 0  # amount of batches processed
         episode_nr = 0
-        episode_lengths = np.zeros(batch_size)
-        episode_rewards = np.zeros(batch_size)
+        episode_lengths = np.zeros(self.config['batch_size'])
+        episode_rewards = np.zeros(self.config['batch_size'])
         mean_rewards = []
         while True:  # Keep executing episodes
             trajectory = self.get_trajectory(env, self.config["episode_max_length"])
 
-            episode_rewards[episode_nr % batch_size] = sum(trajectory['reward'])
-            episode_lengths[episode_nr % batch_size] = len(trajectory['reward'])
+            episode_rewards[episode_nr % self.config['batch_size']] = sum(trajectory['reward'])
+            episode_lengths[episode_nr % self.config['batch_size']] = len(trajectory['reward'])
             episode_nr += 1
             action_taken = (np.arange(self.nA) == trajectory['action'][:, None]).astype(np.float32)  # one-hot encoding
             epdlogp = action_taken - trajectory['prob']
@@ -147,20 +142,17 @@ class KPLearner(Learner):
             gradient1 += change_w1
             gradient2 += change_w2
 
-            # if(len(encountered_states) < 200):
-            #     print("Episode shorter than 200 episodes!")
-
-            if episode_nr % batch_size == 0:  # batch is done
+            if episode_nr % self.config['batch_size'] == 0:  # batch is done
                 iteration += 1
-                rmsprop1 = decay_rate * rmsprop1 + (1 - decay_rate) * gradient1**2
-                rmsprop2 = decay_rate * rmsprop2 + (1 - decay_rate) * gradient2**2
-                self.w1 += learning_rate * gradient1 / (np.sqrt(rmsprop1) + 1e-5)
-                self.w2 += learning_rate * gradient2 / (np.sqrt(rmsprop2) + 1e-5)
+                rmsprop1 = self.config['decay_rate'] * rmsprop1 + (1 - self.config['decay_rate']) * gradient1**2
+                rmsprop2 = self.config['decay_rate'] * rmsprop2 + (1 - self.config['decay_rate']) * gradient2**2
+                self.w1 += self.config['learning_rate'] * gradient1 / (np.sqrt(rmsprop1) + 1e-5)
+                self.w2 += self.config['learning_rate'] * gradient2 / (np.sqrt(rmsprop2) + 1e-5)
                 gradient1 = np.zeros_like(self.w1)
                 gradient2 = np.zeros_like(self.w2)
                 print_iteration_stats(iteration, episode_rewards, episode_lengths)
                 mean_rewards.append(episode_rewards.mean())
-                if episode_nr % draw_frequency == 0:
+                if episode_nr % self.config['draw_frequency'] == 0:
                     ax1.clear()
                     ax1.plot(range(len(mean_rewards)), mean_rewards)
                     fig.canvas.draw()

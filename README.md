@@ -11,7 +11,7 @@ The following parts are combined to learn to act in the [Mountain Car environmen
 - Function approximation using tile coding
 
 Example of a run after training with a total greedy action selection policy for 729 episodes of each 200 steps:
-![Example run](examplerun.gif)
+![Example run](./results/examplerun.gif)
 
 Total reward per episode:
 ![Total reward per episode](./results/totalrewardperepisode.png)
@@ -26,7 +26,14 @@ Total reward per episode when applying this algorithm on the _CartPole-v0_ envir
 Adapted version of the code of [this article](http://karpathy.github.io/2016/05/31/rl/) of Andrej Karpathy.
 Total reward per episode when applying this algorithm on the _CartPole-v0_ environment:
 ![Total reward per episode using REINFORCE](./results/karpathy-cartpole-v0-rewards.png)
+
 How quickly the optimal reward is reached and kept heavily varies however because of randomness. Results of an earlier execution are also posted on the [OpenAI Gym](https://gym.openai.com/evaluations/eval_dyl7JQpTXGXY4lIe0pSA).
+
+### Advantage Actor Critic
+Total reward per episode when applying this algorithm on the _CartPole-v0_ environment:
+![Total reward per episode using A2C](./results/a2c-cartpole-v0-rewards.png)
+
+[OpenAI Gym page](https://gym.openai.com/evaluations/eval_8lGn053RQref7asqoiPPw)
 ## How to run
 First, install the requirements using [pip](https://pypi.python.org/pypi/pip):
 ```

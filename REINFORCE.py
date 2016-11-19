@@ -46,7 +46,7 @@ class REINFORCELearner(Learner):
             trajectories = []
             timesteps_total = 0
             while timesteps_total < config["timesteps_per_batch"]:
-                trajectory = get_trajectory(self, env, config["episode_max_length"])
+                trajectory = self.get_trajectory(env, config["episode_max_length"])
                 trajectories.append(trajectory)
                 timesteps_total += len(trajectory["reward"])
             all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])

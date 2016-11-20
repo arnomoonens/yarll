@@ -52,8 +52,8 @@ class REINFORCELearner(Learner):
             all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
             # Compute discounted sums of rewards
             rets = [discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
-            maxlen = max(len(ret) for ret in rets)
-            padded_rets = [np.concatenate([ret, np.zeros(maxlen - len(ret))]) for ret in rets]
+            max_len = max(len(ret) for ret in rets)
+            padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
             # Compute time-dependent baseline
             baseline = np.mean(padded_rets, axis=0)
             # Compute advantage function

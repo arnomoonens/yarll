@@ -43,11 +43,11 @@ Then you can run the Sarsa + Function approximation using:
 ```
 python MountainCar.py <episodes_to_run> <monitor_target_directory>
 ```
-You can run the REINFORCE algorithm using:
+You can run the `REINFORCE`, `Karpathy` or `A2C` algorithm using:
 ```
 python REINFORCE.py <environment_name> <monitor_target_directory>
 ```
-You can run the Kartpathy policy gradient algorithm (applied to the _CartPole-v0_ environment) using:
+You can plot the episode lengths and total reward per episode graphs using:
 ```
-python KarpathyLearner.py <monitor_target_directory>
+python plot_statistics.py <path_to_stats.json> <moving_average_window>
 ```

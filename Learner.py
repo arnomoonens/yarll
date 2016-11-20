@@ -42,5 +42,14 @@ class Learner(object):
                 "action": np.array(actions)
                 }
 
+    def get_trajectories(self, env):
+        trajectories = []
+        timesteps_total = 0
+        while timesteps_total < self.config["timesteps_per_batch"]:
+            trajectory = self.get_trajectory(env, self.config["episode_max_length"])
+            trajectories.append(trajectory)
+            timesteps_total += len(trajectory["reward"])
+        return trajectories
+
     def learn(self, env):
         pass

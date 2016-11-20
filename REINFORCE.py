@@ -14,7 +14,8 @@ import gym
 from gym.spaces import Discrete, Box
 from Learner import Learner
 from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
-from utils import discount_rewards, print_iteration_stats
+from utils import discount_rewards
+from Reporter import Reporter
 
 class REINFORCELearner(Learner):
     """
@@ -40,15 +41,13 @@ class REINFORCELearner(Learner):
 
     def learn(self, env):
         """Run learning algorithm"""
+        reporter = Reporter()
         config = self.config
+        total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = []
-            timesteps_total = 0
-            while timesteps_total < config["timesteps_per_batch"]:
-                trajectory = self.get_trajectory(env, config["episode_max_length"])
-                trajectories.append(trajectory)
-                timesteps_total += len(trajectory["reward"])
+            trajectories = self.get_trajectories(env)
+            total_n_trajectories += len(trajectories)
             all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
             # Compute discounted sums of rewards
             rets = [discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
@@ -64,7 +63,7 @@ class REINFORCELearner(Learner):
             self.sess.run([self.train], feed_dict={self.ob_no: all_ob, self.a_n: all_action, self.adv_n: all_adv, self.N: len(all_ob)})
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            print_iteration_stats(iteration, episode_rewards, episode_lengths)
+            reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
             # get_trajectory(self, env, config["episode_max_length"], render=True)
 
 class REINFORCELearnerDiscrete(REINFORCELearner):

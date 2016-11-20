@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import logging
 
 from Learner import Learner
-from utils import discount_rewards, print_iteration_stats
+from utils import discount_rewards
+from Reporter import Reporter
 from gym.spaces import Discrete, Box
 
 logging.basicConfig(level=logging.INFO,
@@ -103,16 +104,13 @@ class KPLearner(Learner):
                 }
 
     def learn(self, env):
-        # env.monitor.start(sys.argv[1], force=True)
+        reporter = Reporter()
 
         gradient1 = np.zeros_like(self.w1)
         gradient2 = np.zeros_like(self.w2)
 
         rmsprop1 = np.zeros_like(self.w1)
         rmsprop2 = np.zeros_like(self.w2)
-
-        fig = plt.figure()
-        ax1 = fig.add_subplot(1, 1, 1)
 
         iteration = 0  # amount of batches processed
         episode_nr = 0
@@ -150,14 +148,11 @@ class KPLearner(Learner):
                 self.w2 += self.config['learning_rate'] * gradient2 / (np.sqrt(rmsprop2) + 1e-5)
                 gradient1 = np.zeros_like(self.w1)
                 gradient2 = np.zeros_like(self.w2)
-                print_iteration_stats(iteration, episode_rewards, episode_lengths)
+                reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, episode_nr)
                 mean_rewards.append(episode_rewards.mean())
                 if episode_nr % self.config['draw_frequency'] == 0:
-                    ax1.clear()
-                    ax1.plot(range(len(mean_rewards)), mean_rewards)
-                    fig.canvas.draw()
-                    fig.canvas.flush_events()
-                    plt.show(block=False)
+                    reporter.draw_rewards(mean_rewards)
+
 
 def main():
     if(len(sys.argv) < 3):

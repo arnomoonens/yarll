@@ -98,7 +98,6 @@ else:
 theta_mean = np.zeros(dim_theta)
 theta_std = np.ones(dim_theta)
 
-# Now, for the algorithm
 for iteration in range(n_iter):
     # Sample parameter vectors
     thetas = [np.random.normal(theta_mean, theta_std, dim_theta) for _ in range(batch_size)]

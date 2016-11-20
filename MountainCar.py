@@ -18,7 +18,7 @@ epsilon = 0  # fully greedy in this case
 alpha = 0.05 * (0.5 / m)
 gamma = 1
 
-steps_per_episode = 200  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
+steps_per_episode = env.spec.timestep_limit  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
 
 O = env.observation_space
 x_low, y_low = O.low

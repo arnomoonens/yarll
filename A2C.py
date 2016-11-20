@@ -9,7 +9,8 @@ import logging
 from gym.spaces import Discrete, Box
 from Learner import Learner
 from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
-from utils import discount_rewards, print_iteration_stats
+from utils import discount_rewards
+from Reporter import Reporter
 
 logging.getLogger().setLevel("INFO")
 
@@ -26,7 +27,7 @@ class A2C(Learner):
             timesteps_per_batch=1000,
             n_iter=200,
             gamma=0.99,
-            actor_learning_rate=0.05,
+            actor_learning_rate=0.01,
             critic_learning_rate=0.05,
             actor_n_hidden=20,
             critic_n_hidden=20
@@ -36,8 +37,6 @@ class A2C(Learner):
         self.actor_input = tf.placeholder(tf.float32, name='actor_input')
         self.actions_taken = tf.placeholder(tf.float32, name='actions_taken')
         self.critic_feedback = tf.placeholder(tf.float32, name='critic_feedback')
-        self.critic_input = tf.placeholder(tf.float32, name='critic_input')
-        self.critic_target = tf.placeholder(tf.float32, name='critic_target')
         self.critic_rewards = tf.placeholder(tf.float32, name='critic_rewards')
 
         # Actor network
@@ -79,34 +78,6 @@ class A2C(Learner):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def get_trajectory(self, env, episode_max_length, render=False):
-        """
-        Run agent-environment loop for one whole episode (trajectory)
-        Return dictionary of results
-        """
-        observation = env.reset()
-        obs = []
-        actions = []
-        rewards = []
-        action = env.action_space.sample()
-        for _ in range(episode_max_length):
-            (new_observation, rew, done, _) = env.step(action)
-            new_action = self.act(new_observation)
-            obs.append(observation)
-
-            actions.append(action)
-            rewards.append(rew)
-            if done:
-                break
-            if render:
-                env.render()
-            action = new_action
-            observation = new_observation
-        return {"reward": np.array(rewards),
-                "ob": np.array(obs),
-                "action": np.array(actions)
-                }
-
     def act(self, ob):
         """Choose an action."""
         ob = ob.reshape(1, -1)
@@ -119,16 +90,14 @@ class A2C(Learner):
 
     def learn(self, env):
         """Run learning algorithm"""
+        reporter = Reporter()
         config = self.config
         possible_actions = np.arange(self.nA)
+        total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = []
-            timesteps_total = 0
-            while timesteps_total < config["timesteps_per_batch"]:
-                trajectory = self.get_trajectory(env, config["episode_max_length"])
-                trajectories.append(trajectory)
-                timesteps_total += len(trajectory["reward"])
+            trajectories = self.get_trajectories(env)
+            total_n_trajectories += len(trajectories)
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_action = (possible_actions == all_action[:, None]).astype(np.float32)
             all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
@@ -141,7 +110,7 @@ class A2C(Learner):
 
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            print_iteration_stats(iteration, episode_rewards, episode_lengths)
+            reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
             # get_trajectory(self, env, config["episode_max_length"], render=True)
 
 

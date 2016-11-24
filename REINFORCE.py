@@ -22,8 +22,8 @@ class REINFORCELearner(Learner):
     REINFORCE with baselines
     """
 
-    def __init__(self, ob_space, action_space, action_selection, **usercfg):
-        super(REINFORCELearner, self).__init__(ob_space, action_space, usercfg)
+    def __init__(self, env, action_selection, **usercfg):
+        super(REINFORCELearner, self).__init__(env, usercfg)
         self.action_selection = action_selection
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
@@ -119,7 +119,7 @@ def main():
     env = gym.make(sys.argv[1])
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = REINFORCELearnerDiscrete(env.observation_space, env.action_space, action_selection, episode_max_length=env.spec.timestep_limit)
+        agent = REINFORCELearnerDiscrete(env, action_selection, episode_max_length=env.spec.timestep_limit)
     if isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

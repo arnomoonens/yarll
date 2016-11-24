@@ -4,7 +4,6 @@
 import numpy as np
 import gym
 import sys
-import matplotlib.pyplot as plt
 import logging
 
 from Learner import Learner
@@ -162,7 +161,7 @@ def main():
     print(env.action_space)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
-        agent = KPLearner(env.observation_space, env.action_space, episode_max_length=env.spec.timestep_limit)
+        agent = KPLearner(env, episode_max_length=env.spec.timestep_limit)
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

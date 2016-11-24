@@ -3,12 +3,13 @@ import numpy as np
 
 class Learner(object):
     """Reinforcement Learner"""
-    def __init__(self, ob_space, action_space, **usercfg):
+    def __init__(self, env, **usercfg):
         super(Learner, self).__init__()
-        self.ob_space = ob_space
-        self.action_space = action_space
-        self.nO = ob_space.shape[0]
-        self.nA = action_space.n
+        self.env = env
+        self.ob_space = self.env.observation_space
+        self.action_space = self.env.action_space
+        self.nO = self.ob_space.shape[0]
+        # self.nA = action_space.n
         self.config = dict(
             episode_max_length=100,
             timesteps_per_batch=10000,
@@ -29,7 +30,7 @@ class Learner(object):
         rewards = []
         for _ in range(episode_max_length):
             action = self.act(ob)
-            obs.append(ob)
+            obs.append(ob.flatten())
             (ob, rew, done, _) = env.step(action)
             actions.append(action)
             rewards.append(rew)

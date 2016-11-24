@@ -25,10 +25,12 @@ class A2C(Learner):
         self.config = dict(
             episode_max_length=100,
             timesteps_per_batch=1000,
+            trajectories_per_batch=10,
+            batch_update="timesteps",
             n_iter=200,
             gamma=0.99,
-            actor_learning_rate=1e-4,
-            critic_learning_rate=1e-4,
+            actor_learning_rate=0.01,
+            critic_learning_rate=0.05,
             actor_n_hidden=20,
             critic_n_hidden=20
         )

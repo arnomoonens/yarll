@@ -44,9 +44,12 @@ class Learner(object):
                 }
 
     def get_trajectories(self, env):
+        use_timesteps = self.config["batch_update"] == "timesteps"
         trajectories = []
         timesteps_total = 0
-        while timesteps_total < self.config["timesteps_per_batch"]:
+        i = 0
+        while (use_timesteps and timesteps_total < self.config["timesteps_per_batch"]) or (not(use_timesteps) and i < self.config["trajectories_per_batch"]):
+            i += 1
             trajectory = self.get_trajectory(env, self.config["episode_max_length"])
             trajectories.append(trajectory)
             timesteps_total += len(trajectory["reward"])

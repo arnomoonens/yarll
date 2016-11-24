@@ -1,4 +1,6 @@
 # DeepRL
+
+[![Join the chat at https://gitter.im/DeepReinforcementLearning/Lobby](https://badges.gitter.im/DeepReinforcementLearning/Lobby.svg)](https://gitter.im/DeepReinforcementLearning/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 This code is part of my master thesis at the VUB, Brussels.
 
 ## Status

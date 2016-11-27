@@ -13,7 +13,7 @@ import tensorflow as tf
 import gym
 from gym.spaces import Discrete, Box
 from Learner import Learner
-from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
+from ActionSelection import ProbabilisticCategoricalActionSelection
 from utils import discount_rewards
 from Reporter import Reporter
 
@@ -48,7 +48,7 @@ class REINFORCELearner(Learner):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectories = self.get_trajectories(env)
             total_n_trajectories += len(trajectories)
-            all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
+            all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
             # Compute discounted sums of rewards
             rets = [discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
             max_len = max(len(ret) for ret in rets)
@@ -60,7 +60,7 @@ class REINFORCELearner(Learner):
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_adv = np.concatenate(advs)
             # Do policy gradient update step
-            self.sess.run([self.train], feed_dict={self.ob_no: all_ob, self.a_n: all_action, self.adv_n: all_adv, self.N: len(all_ob)})
+            self.sess.run([self.train], feed_dict={self.ob_no: all_state, self.a_n: all_action, self.adv_n: all_adv, self.N: len(all_state)})
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
@@ -104,10 +104,10 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def act(self, ob):
+    def act(self, state):
         """Choose an action."""
-        ob = ob.reshape(1, -1)
-        prob = self.sess.run([self.prob_na], feed_dict={self.ob_no: ob})[0][0]
+        state = state.reshape(1, -1)
+        prob = self.sess.run([self.prob_na], feed_dict={self.ob_no: state})[0][0]
         action = self.action_selection.select_action(prob)
         # action = categorical_sample_max(prob)
         return action

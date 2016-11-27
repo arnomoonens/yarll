@@ -5,10 +5,10 @@ import numpy as np
 import sys
 import tensorflow as tf
 import gym
-import logging
 from gym.spaces import Discrete, Box
+import logging
 from Learner import Learner
-from ActionSelection.CategoricalActionSelection import ProbabilisticCategoricalActionSelection
+from ActionSelection import ProbabilisticCategoricalActionSelection
 from utils import discount_rewards
 from Reporter import Reporter
 
@@ -63,7 +63,7 @@ class A2C(Learner):
         self.actor_train = optimizer.minimize(loss)
 
         self.critic_state_in = tf.placeholder("float", [None, self.nO], name='critic_state_in')
-        self.critic_returns = tf.placeholder("float", name="critic_returns")
+        self.critic_target = tf.placeholder("float", name="critic_target")
 
         # Critic network
         critic_W0 = tf.Variable(tf.random_normal([self.nO, self.config['critic_n_hidden']]), name='W0')
@@ -73,7 +73,7 @@ class A2C(Learner):
         critic_W1 = tf.Variable(tf.random_normal([self.config['actor_n_hidden'], 1]), name='W1')
         critic_b1 = tf.Variable(tf.zeros([1]), name='b1')
         self.critic_value = tf.matmul(critic_L1, critic_W1) + critic_b1[None, :]
-        critic_loss = tf.reduce_mean(tf.square(self.critic_returns - self.critic_value))
+        critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_value))
         critic_loss = tf.Print(critic_loss, [critic_loss], message='Critic loss=')
         critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['critic_learning_rate'], decay=0.9, epsilon=1e-9)
         self.critic_train = critic_optimizer.minimize(critic_loss)
@@ -84,15 +84,15 @@ class A2C(Learner):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def act(self, ob):
+    def act(self, state):
         """Choose an action."""
-        ob = ob.reshape(1, -1)
-        prob = self.sess.run([self.prob_na], feed_dict={self.actor_input: ob})[0][0]
+        state = state.reshape(1, -1)
+        prob = self.sess.run([self.prob_na], feed_dict={self.actor_input: state})[0][0]
         action = self.action_selection.select_action(prob)
         return action
 
-    def get_critic_value(self, ob):
-        return self.sess.run([self.critic_value], feed_dict={self.critic_state_in: ob})[0].flatten()
+    def get_critic_value(self, state):
+        return self.sess.run([self.critic_value], feed_dict={self.critic_state_in: state})[0].flatten()
 
     def learn(self):
         """Run learning algorithm"""
@@ -106,13 +106,13 @@ class A2C(Learner):
             total_n_trajectories += len(trajectories)
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_action = (possible_actions == all_action[:, None]).astype(np.float32)
-            all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
+            all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
             # Compute discounted sums of rewards
             returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
-            qw_new = self.get_critic_value(all_ob)
+            qw_new = self.get_critic_value(all_state)
 
-            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_ob, self.critic_returns: returns.reshape(-1, 1)})
-            self.sess.run([self.actor_train], feed_dict={self.actor_input: all_ob, self.actions_taken: all_action, self.critic_feedback: qw_new, self.critic_rewards: returns})
+            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns.reshape(-1, 1)})  # Reshape or not?
+            self.sess.run([self.actor_train], feed_dict={self.actor_input: all_state, self.actions_taken: all_action, self.critic_feedback: qw_new, self.critic_rewards: returns})
 
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
@@ -184,10 +184,10 @@ class A2CContinuous(A2C):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def act(self, ob):
+    def act(self, state):
         """Choose an action."""
-        ob = ob.reshape(1, -1)
-        return self.sess.run([self.action], feed_dict={self.input_state: ob})[0][0]
+        state = state.reshape(1, -1)
+        return self.sess.run([self.action], feed_dict={self.input_state: state})[0][0]
 
     def learn(self):
         """Run learning algorithm"""
@@ -199,15 +199,15 @@ class A2CContinuous(A2C):
             trajectories = self.get_trajectories(self.env)
             total_n_trajectories += len(trajectories)
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
-            all_ob = np.concatenate([trajectory["ob"] for trajectory in trajectories])
+            all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
             # Compute discounted sums of rewards
             returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
-            qw_new = self.get_critic_value(all_ob)
+            qw_new = self.get_critic_value(all_state)
 
             print(qw_new)
-            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_ob, self.critic_target: returns.reshape(-1, 1)})
+            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns.reshape(-1, 1)})
             target = np.mean((returns - qw_new) ** 2)
-            self.sess.run([self.actor_train], feed_dict={self.input_state: all_ob, self.actions_taken: all_action, self.target: target})
+            self.sess.run([self.actor_train], feed_dict={self.input_state: all_state, self.actions_taken: all_action, self.target: target})
 
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths

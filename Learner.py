@@ -16,7 +16,7 @@ class Learner(object):
             n_iter=100)
         self.config.update(usercfg)
 
-    def act(self, ob):
+    def act(self, state):
         pass
 
     def get_trajectory(self, env, episode_max_length, render=False):
@@ -24,14 +24,14 @@ class Learner(object):
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
         """
-        ob = env.reset()
-        obs = []
+        state = env.reset()
+        states = []
         actions = []
         rewards = []
         for _ in range(episode_max_length):
-            action = self.act(ob)
-            obs.append(ob.flatten())
-            (ob, rew, done, _) = env.step(action)
+            action = self.act(state)
+            states.append(state.flatten())
+            (state, rew, done, _) = env.step(action)
             actions.append(action)
             rewards.append(rew)
             if done:
@@ -39,8 +39,9 @@ class Learner(object):
             if render:
                 env.render()
         return {"reward": np.array(rewards),
-                "ob": np.array(obs),
-                "action": np.array(actions)
+                "state": np.array(states),
+                "action": np.array(actions),
+                "done": done  # Tajectory ended because a terminal state was reached
                 }
 
     def get_trajectories(self, env):

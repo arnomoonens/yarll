@@ -52,8 +52,8 @@ class KPLearner(Learner):
 
         self.n_episodes = 6000
 
-    def act(self, ob):
-        x1, nn_outputs = self.forward_step(ob)
+    def act(self, state):
+        x1, nn_outputs = self.forward_step(state)
         action, probabilities = choose_action(nn_outputs, self.nA)
         return action, probabilities, x1
 
@@ -77,17 +77,17 @@ class KPLearner(Learner):
         Return dictionary of results
         Note that this function returns more than the get_trajectory in the Learner class.
         """
-        ob = env.reset()
-        obs = []
+        state = env.reset()
+        states = []
         actions = []
         rewards = []
         episode_probabilities = []
         x1s = []
         for _ in range(episode_max_length):
-            action, probabilities, x1 = self.act(ob)
+            action, probabilities, x1 = self.act(state)
             x1s.append(x1)
-            obs.append(ob)
-            (ob, rew, done, _) = env.step(action)
+            states.append(state)
+            (state, rew, done, _) = env.step(action)
             actions.append(action)
             rewards.append(rew)
             episode_probabilities.append(probabilities)
@@ -96,7 +96,7 @@ class KPLearner(Learner):
             if render:
                 env.render()
         return {"reward": np.array(rewards),
-                "ob": np.array(obs),
+                "state": np.array(states),
                 "action": np.array(actions),
                 "prob": np.array(episode_probabilities),
                 "x1": np.array(x1s)
@@ -134,7 +134,7 @@ class KPLearner(Learner):
             discounted_episode_rewards /= np.std(discounted_episode_rewards)
             epdlogp *= np.reshape(np.repeat(discounted_episode_rewards, self.nA), (len(discounted_episode_rewards), self.nA))
 
-            change_w1, change_w2 = self.backward_step(trajectory['ob'], trajectory['x1'], epdlogp)
+            change_w1, change_w2 = self.backward_step(trajectory['state'], trajectory['x1'], epdlogp)
 
             gradient1 += change_w1
             gradient2 += change_w2

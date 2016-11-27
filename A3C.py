@@ -21,7 +21,7 @@ logging.getLogger().setLevel("INFO")
 
 class ActorNetwork(object):
     """Neural network for the Actor of an Actor-Critic algorithm"""
-    def __init__(self, state_shape, n_actions, n_hidden, scope):
+    def __init__(self, state_shape, n_actions, n_hidden, scope, print_loss):
         super(ActorNetwork, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
@@ -45,13 +45,14 @@ class ActorNetwork(object):
             eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
             self.loss = -tf.reduce_mean(eligibility)
-            self.loss = tf.Print(self.loss, [self.loss], message='Actor loss=')
+            if print_loss:
+                self.loss = tf.Print(self.loss, [self.loss], message='Actor loss=')
 
             self.vars = [W0, b0, W1, b1]
 
 class CriticNetwork(object):
     """Neural network for the Critic of an Actor-Critic algorithm"""
-    def __init__(self, state_shape, n_hidden, scope):
+    def __init__(self, state_shape, n_hidden, scope, print_loss):
         super(CriticNetwork, self).__init__()
         self.state_shape = state_shape
         self.n_hidden = n_hidden
@@ -69,7 +70,8 @@ class CriticNetwork(object):
             b1 = tf.Variable(tf.zeros([1]), name='b1')
             self.value = tf.matmul(L1, W1) + b1[None, :]
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
-            self.loss = tf.Print(self.loss, [self.loss], message='Critic loss=')
+            if print_loss:
+                self.loss = tf.Print(self.loss, [self.loss], message='Critic loss=')
             self.vars = [W0, b0, W1, b1]
 
 class A3CThread(Thread):
@@ -79,9 +81,11 @@ class A3CThread(Thread):
         self.thread_id = thread_id
         self.env = gym.make(master.env_name)
         self.master = master
+        if thread_id == 0:
+            self.env.monitor.start(self.master.monitor_dir, force=True, video_callable=False)
 
-        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net")
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net")
+        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net", print_loss=(thread_id == 0))
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net", print_loss=(thread_id == 0))
 
         self.actor_sync_net = self.sync_gradients_op(master.shared_actor_net, self.actor_net.vars)
         self.actor_create_ag = self.create_accumulative_gradients_op(self.actor_net.vars)
@@ -163,7 +167,7 @@ class A3CThread(Thread):
         states = []
         actions = []
         rewards = []
-        for _ in range(episode_max_length):
+        for i in range(episode_max_length):
             action = self.act(state)
             states.append(state.flatten())
             (state, rew, done, _) = self.env.step(action)
@@ -176,7 +180,8 @@ class A3CThread(Thread):
         return {"reward": np.array(rewards),
                 "state": np.array(states),
                 "action": np.array(actions),
-                "done": done  # Tajectory ended because a terminal state was reached
+                "done": done,  # Tajectory ended because a terminal state was reached
+                "steps": i + 1
                 }
 
     def run(self):
@@ -186,6 +191,8 @@ class A3CThread(Thread):
         possible_actions = np.arange(self.env.action_space.n)
         t = 1  # thread step counter
         while self.master.T < self.master.config['T_max']:
+            if self.thread_id == 0:
+                logging.info("Total steps: " + self.master.T)
             # Reset gradients: dθ←0 and dθv←0
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
             sess.run([self.actor_reset_ag, self.critic_reset_ag])
@@ -208,16 +215,18 @@ class A3CThread(Thread):
                      ac_net.critic_rewards: returns,
                      cr_net.target: returns.reshape(-1, 1),
                      })
+            self.master.T += trajectory['steps']
 
 class A3CLearner(Learner):
     """Asynchronous Advantage Actor Critic learner."""
-    def __init__(self, env, action_selection, **usercfg):
+    def __init__(self, env, action_selection, monitor_dir, **usercfg):
         super(A3CLearner, self).__init__(env)
         self.env = env
         self.shared_counter = 0
         self.T = 0
         self.action_selection = action_selection
         self.env_name = env.spec.id
+        self.monitor_dir = monitor_dir
 
         self.config = dict(
             episode_max_length=100,
@@ -231,12 +240,12 @@ class A3CLearner(Learner):
             actor_n_hidden=20,
             critic_n_hidden=20,
             n_threads=8,
-            T_max=1e9
+            T_max=1e5
         )
         self.config.update(usercfg)
 
-        self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net")
-        self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net")
+        self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", print_loss=False)
+        self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", print_loss=False)
 
         self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['actor_learning_rate'], decay=0.9, epsilon=1e-9)
         self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['critic_learning_rate'], decay=0.9, epsilon=1e-9)
@@ -268,7 +277,7 @@ def main():
         return
     env = gym.make(sys.argv[1])
     if isinstance(env.action_space, Discrete):
-        agent = A3CLearner(env, action_selection=ProbabilisticCategoricalActionSelection())
+        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), sys.argv[2])
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

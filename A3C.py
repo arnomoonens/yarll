@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-from threading import Thread
+import sys
+import numpy as np
 import tensorflow as tf
 import logging
-import numpy as np
-import sys
+import argparse
+from threading import Thread
+
 import gym
 from gym.spaces import Discrete, Box
 
@@ -14,6 +16,8 @@ from utils import discount_rewards
 from ActionSelection import ProbabilisticCategoricalActionSelection
 
 logging.getLogger().setLevel("INFO")
+
+np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
 
 # Based on:
 # - Pseudo code from Asynchronous Methods for Deep Reinforcement Learning
@@ -72,6 +76,7 @@ class CriticNetwork(object):
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
             if print_loss:
                 self.loss = tf.Print(self.loss, [self.loss], message='Critic loss=')
+
             self.vars = [W0, b0, W1, b1]
 
 class A3CThread(Thread):
@@ -81,11 +86,12 @@ class A3CThread(Thread):
         self.thread_id = thread_id
         self.env = gym.make(master.env_name)
         self.master = master
-        if thread_id == 0:
+        first_thread = thread_id == 0
+        if first_thread:
             self.env.monitor.start(self.master.monitor_dir, force=True, video_callable=False)
 
-        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net", print_loss=(thread_id == 0))
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net", print_loss=(thread_id == 0))
+        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net", print_loss=first_thread)
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net", print_loss=first_thread)
 
         self.actor_sync_net = self.sync_gradients_op(master.shared_actor_net, self.actor_net.vars)
         self.actor_create_ag = self.create_accumulative_gradients_op(self.actor_net.vars)
@@ -97,10 +103,20 @@ class A3CThread(Thread):
         self.critic_add_ag = self.add_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.critic_net.loss)
         self.critic_reset_ag = self.reset_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag)
 
+        # Clipped gradients
+        gradient_clip_value = self.master.config['gradient_clip_value']
+        clip_actor_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.actor_create_ag]
         self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
-            zip(self.actor_create_ag, master.shared_actor_net.vars), global_step=master.global_step)
+            zip(clip_actor_gradients, master.shared_actor_net.vars), global_step=master.global_step)
+        clip_critic_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.critic_create_ag]
         self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
-            zip(self.critic_create_ag, master.shared_critic_net.vars), global_step=master.global_step)
+            zip(clip_critic_gradients, master.shared_critic_net.vars), global_step=master.global_step)
+
+        # Non-clipped gradients
+        # self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
+        #     zip(self.actor_create_ag, master.shared_actor_net.vars), global_step=master.global_step)
+        # self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
+        #     zip(self.critic_create_ag, master.shared_critic_net.vars), global_step=master.global_step)
 
     def create_accumulative_gradients_op(self, net_vars):
         """Make an operation to create accumulative gradients"""
@@ -170,9 +186,10 @@ class A3CThread(Thread):
         for i in range(episode_max_length):
             action = self.act(state)
             states.append(state.flatten())
-            (state, rew, done, _) = self.env.step(action)
+            state, reward, done, _ = self.env.step(action)
+            reward = np.clip(reward, -1, 1)  # Clip reward
             actions.append(action)
-            rewards.append(rew)
+            rewards.append(reward)
             if done:
                 break
             if render:
@@ -180,7 +197,7 @@ class A3CThread(Thread):
         return {"reward": np.array(rewards),
                 "state": np.array(states),
                 "action": np.array(actions),
-                "done": done,  # Tajectory ended because a terminal state was reached
+                "done": done,  # Say if tajectory ended because a terminal state was reached
                 "steps": i + 1
                 }
 
@@ -192,7 +209,7 @@ class A3CThread(Thread):
         t = 1  # thread step counter
         while self.master.T < self.master.config['T_max']:
             if self.thread_id == 0:
-                logging.info("Total steps: " + self.master.T)
+                logging.info("Total steps: " + str(self.master.T))
             # Reset gradients: dθ←0 and dθv←0
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
             sess.run([self.actor_reset_ag, self.critic_reset_ag])
@@ -207,6 +224,7 @@ class A3CThread(Thread):
             cr_net = self.critic_net
             qw_new = self.master.session.run([cr_net.value], feed_dict={cr_net.state: trajectory['state']})[0].flatten()
             all_action = (possible_actions == trajectory['action'][:, None]).astype(np.float32)
+            # print(returns.reshape(-1, 1))
             sess.run(fetches, feed_dict={
                      ac_net.state: trajectory["state"],
                      cr_net.state: trajectory["state"],
@@ -215,6 +233,7 @@ class A3CThread(Thread):
                      ac_net.critic_rewards: returns,
                      cr_net.target: returns.reshape(-1, 1),
                      })
+            sess.run([self.apply_actor_gradients, self.apply_critic_gradients])
             self.master.T += trajectory['steps']
 
 class A3CLearner(Learner):
@@ -229,7 +248,7 @@ class A3CLearner(Learner):
         self.monitor_dir = monitor_dir
 
         self.config = dict(
-            episode_max_length=100,
+            episode_max_length=200,
             timesteps_per_batch=1000,
             trajectories_per_batch=10,
             batch_update="timesteps",
@@ -239,8 +258,9 @@ class A3CLearner(Learner):
             critic_learning_rate=0.05,
             actor_n_hidden=20,
             critic_n_hidden=20,
+            gradient_clip_value=40,
             n_threads=8,
-            T_max=1e5
+            T_max=2e5
         )
         self.config.update(usercfg)
 
@@ -271,19 +291,23 @@ class A3CLearner(Learner):
         for job in self.jobs:
             job.join()
 
+parser = argparse.ArgumentParser()
+parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
+parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+
 def main():
-    if(len(sys.argv) < 3):
-        logging.error("Please provide the name of an environment and a path to save monitor files")
-        return
-    env = gym.make(sys.argv[1])
+    try:
+        args = parser.parse_args()
+    except:
+        sys.exit()
+    env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), sys.argv[2])
+        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), args.monitor_path, episode_max_length=env.spec.timestep_limit)
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:
         raise NotImplementedError
     try:
-        # env.monitor.start(sys.argv[2], force=True, video_callable=False)
         agent.learn()
     except KeyboardInterrupt:
         pass

@@ -19,7 +19,7 @@ class Learner(object):
     def act(self, state):
         pass
 
-    def get_trajectory(self, env, episode_max_length, render=False):
+    def get_trajectory(self, env, episode_max_length, repeat_n_actions=1, render=False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
@@ -31,7 +31,8 @@ class Learner(object):
         for _ in range(episode_max_length):
             action = self.act(state)
             states.append(state.flatten())
-            (state, rew, done, _) = env.step(action)
+            for _ in range(repeat_n_actions):
+                state, rew, done, _ = env.step(action)
             actions.append(action)
             rewards.append(rew)
             if done:

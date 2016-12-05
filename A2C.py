@@ -1,18 +1,22 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import numpy as np
 import sys
+import numpy as np
 import tensorflow as tf
+import logging
+import argparse
+
 import gym
 from gym.spaces import Discrete, Box
-import logging
+
 from Learner import Learner
-from ActionSelection import ProbabilisticCategoricalActionSelection
 from utils import discount_rewards
 from Reporter import Reporter
+from ActionSelection import ProbabilisticCategoricalActionSelection
 
-logging.getLogger().setLevel("INFO")
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
 
@@ -21,6 +25,7 @@ class A2C(Learner):
     def __init__(self, env, action_selection, **usercfg):
         super(A2C, self).__init__(env, **usercfg)
         self.action_selection = action_selection
+        self.nA = self.action_space.n
 
         self.config = dict(
             episode_max_length=100,
@@ -39,7 +44,6 @@ class A2C(Learner):
         return
 
     def build_networks(self):
-        self.nA = self.action_space.n
         self.actor_input = tf.placeholder(tf.float32, name='actor_input')
         self.actions_taken = tf.placeholder(tf.float32, name='actions_taken')
         self.critic_feedback = tf.placeholder(tf.float32, name='critic_feedback')
@@ -214,11 +218,16 @@ class A2CContinuous(A2C):
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
             # get_trajectory(self, env, config["episode_max_length"], render=True)
 
+parser = argparse.ArgumentParser()
+parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
+parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+
 def main():
-    if(len(sys.argv) < 3):
-        logging.error("Please provide the name of an environment and a path to save monitor files")
-        return
-    env = gym.make(sys.argv[1])
+    try:
+        args = parser.parse_args()
+    except:
+        sys.exit()
+    env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
         agent = A2C(env, action_selection, episode_max_length=env.spec.timestep_limit)
@@ -228,7 +237,7 @@ def main():
     else:
         raise NotImplementedError
     try:
-        env.monitor.start(sys.argv[2], force=True)
+        env.monitor.start(args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

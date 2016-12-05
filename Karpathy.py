@@ -1,20 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import numpy as np
-import gym
 import sys
+import numpy as np
 import logging
+import argparse
+
+import gym
+from gym.spaces import Discrete, Box
 
 from Learner import Learner
 from utils import discount_rewards
 from Reporter import Reporter
-from gym.spaces import Discrete, Box
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Adaption of Karpathy's Pong from Pixels article to apply it using a simple neural network on the MountainCar environment
+np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
+
+# Adaption of Karpathy's Pong from Pixels article to apply it using a simple neural network on other environments
 
 def scale_state(state, O):
     return state - O.low
@@ -31,8 +35,9 @@ def choose_action(output, n_actions, temperature=1.0):
 
 class KPLearner(Learner):
     """Karpathy policy gradient learner"""
-    def __init__(self, ob_space, action_space, **usercfg):
-        super(KPLearner, self).__init__(ob_space, action_space, **usercfg)
+    def __init__(self, env, **usercfg):
+        super(KPLearner, self).__init__(env, **usercfg)
+        self.nA = self.action_space.n
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
             # episode_max_length=100,
@@ -46,11 +51,11 @@ class KPLearner(Learner):
             draw_frequency=50  # Draw a plot every 50 episodes
         )
         self.config.update(usercfg)
+        self.build_network()
 
+    def build_network(self):
         self.w1 = np.random.randn(self.nO, self.config['n_hidden_units']) / np.sqrt(self.config['n_hidden_units'])
         self.w2 = np.random.randn(self.config['n_hidden_units'], self.nA) / np.sqrt(self.nA)
-
-        self.n_episodes = 6000
 
     def act(self, state):
         x1, nn_outputs = self.forward_step(state)
@@ -152,12 +157,16 @@ class KPLearner(Learner):
                 if episode_nr % self.config['draw_frequency'] == 0:
                     reporter.draw_rewards(mean_rewards)
 
+parser = argparse.ArgumentParser()
+parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
+parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 
 def main():
-    if(len(sys.argv) < 3):
-        logging.error("Please provide the name of an environment and a path to save monitor files")
-        return
-    env = gym.make(sys.argv[1])
+    try:
+        args = parser.parse_args()
+    except:
+        sys.exit()
+    env = gym.make(args.environment)
     print(env.action_space)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
@@ -167,7 +176,7 @@ def main():
     else:
         raise NotImplementedError
     try:
-        env.monitor.start(sys.argv[2], force=True)
+        env.monitor.start(args.monitor_path, force=True)
         agent.learn(env)
     except KeyboardInterrupt:
         pass

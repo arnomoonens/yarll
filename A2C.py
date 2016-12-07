@@ -28,7 +28,7 @@ class A2C(Learner):
         self.nA = self.action_space.n
 
         self.config = dict(
-            episode_max_length=100,
+            episode_max_length=env.spec.timestep_limit,
             timesteps_per_batch=1000,
             trajectories_per_batch=10,
             batch_update="timesteps",
@@ -37,7 +37,8 @@ class A2C(Learner):
             actor_learning_rate=0.01,
             critic_learning_rate=0.05,
             actor_n_hidden=20,
-            critic_n_hidden=20
+            critic_n_hidden=20,
+            repeat_n_actions=1
         )
         self.config.update(usercfg)
         self.build_networks()
@@ -106,7 +107,7 @@ class A2C(Learner):
         total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories(self.env)
+            trajectories = self.get_trajectories()
             total_n_trajectories += len(trajectories)
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_action = (possible_actions == all_action[:, None]).astype(np.float32)
@@ -233,7 +234,7 @@ def main():
         agent = A2C(env, action_selection, episode_max_length=env.spec.timestep_limit)
     elif isinstance(env.action_space, Box):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = A2CContinuous(env, action_selection, episode_max_length=env.spec.timestep_limit)
+        agent = A2CContinuous(env, action_selection)
     else:
         raise NotImplementedError
     try:

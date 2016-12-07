@@ -27,26 +27,28 @@ class REINFORCELearner(Learner):
         self.action_selection = action_selection
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
-            episode_max_length=100,
+            episode_max_length=env.spec.timestep_limit,
             timesteps_per_batch=10000,
             n_iter=100,
             gamma=1.0,
             stepsize=0.05,
-            nhid=20)
+            nhid=20,
+            repeat_n_actions=1
+        )
         self.config.update(usercfg)
 
     def act(self, ob):
         """Choose an action."""
         pass
 
-    def learn(self, env):
+    def learn(self):
         """Run learning algorithm"""
         reporter = Reporter()
         config = self.config
         total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories(env)
+            trajectories = self.get_trajectories()
             total_n_trajectories += len(trajectories)
             all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
             # Compute discounted sums of rewards
@@ -119,7 +121,7 @@ def main():
     env = gym.make(sys.argv[1])
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = REINFORCELearnerDiscrete(env, action_selection, episode_max_length=env.spec.timestep_limit)
+        agent = REINFORCELearnerDiscrete(env, action_selection)
     if isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

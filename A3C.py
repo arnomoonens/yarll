@@ -88,7 +88,7 @@ class A3CThread(Thread):
         self.master = master
         first_thread = thread_id == 0
         if first_thread:
-            self.env.monitor.start(self.master.monitor_dir, force=True, video_callable=False)
+            self.env.monitor.start(self.master.monitor_dir, force=True)
 
         self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net", print_loss=first_thread)
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net", print_loss=first_thread)
@@ -248,11 +248,7 @@ class A3CLearner(Learner):
         self.monitor_dir = monitor_dir
 
         self.config = dict(
-            episode_max_length=200,
-            timesteps_per_batch=1000,
-            trajectories_per_batch=10,
-            batch_update="timesteps",
-            n_iter=200,
+            episode_max_length=env.spec.timestep_limit,
             gamma=0.99,
             actor_learning_rate=0.01,
             critic_learning_rate=0.05,
@@ -260,7 +256,8 @@ class A3CLearner(Learner):
             critic_n_hidden=20,
             gradient_clip_value=40,
             n_threads=8,
-            T_max=2e5
+            T_max=5e5,
+            repeat_n_actions=1
         )
         self.config.update(usercfg)
 
@@ -302,7 +299,7 @@ def main():
         sys.exit()
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), args.monitor_path, episode_max_length=env.spec.timestep_limit)
+        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), args.monitor_path)
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

@@ -25,4 +25,4 @@ def preprocess_image(img):
     """
     img = img[35:195]  # crop
     img = img[::2, ::2]  # downsample by factor of 2
-    return rgb2gray(img) / 256.0
+    return (rgb2gray(img) / 256.0)[:, :, None]

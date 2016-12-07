@@ -13,8 +13,7 @@ from Learner import Learner
 from utils import discount_rewards
 from Reporter import Reporter
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.getLogger().setLevel("INFO")
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
 
@@ -40,7 +39,7 @@ class KPLearner(Learner):
         self.nA = self.action_space.n
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
-            # episode_max_length=100,
+            episode_max_length=env.spec.timestep_limit,
             # timesteps_per_batch=10000,
             # n_iter=100,
             gamma=0.99,
@@ -48,7 +47,8 @@ class KPLearner(Learner):
             batch_size=10,  # Amount of episodes after which to adapt gradients
             decay_rate=0.99,  # Used for RMSProp
             n_hidden_units=20,
-            draw_frequency=50  # Draw a plot every 50 episodes
+            draw_frequency=50,  # Draw a plot every 50 episodes
+            repeat_n_actions=1
         )
         self.config.update(usercfg)
         self.build_network()
@@ -64,7 +64,7 @@ class KPLearner(Learner):
 
     def forward_step(self, state):
         x1 = np.dot(state, self.w1)
-        x1[x1 < 0] = 0
+        x1[x1 < 0] = 0  # ReLU
         output = sigmoid(np.dot(x1, self.w2))
         return x1, output
 
@@ -76,19 +76,20 @@ class KPLearner(Learner):
         change_w1 = x0.T.dot(dh)  # 2x200 * 200x8 = 2x8
         return change_w1, change_w2
 
-    def get_trajectory(self, env, episode_max_length, render=False):
+    def get_trajectory(self, render=False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
         Note that this function returns more than the get_trajectory in the Learner class.
         """
+        env = self.env
         state = env.reset()
         states = []
         actions = []
         rewards = []
         episode_probabilities = []
         x1s = []
-        for _ in range(episode_max_length):
+        for _ in range(self.config['episode_max_length']):
             action, probabilities, x1 = self.act(state)
             x1s.append(x1)
             states.append(state)
@@ -107,7 +108,7 @@ class KPLearner(Learner):
                 "x1": np.array(x1s)
                 }
 
-    def learn(self, env):
+    def learn(self):
         reporter = Reporter()
 
         gradient1 = np.zeros_like(self.w1)
@@ -122,7 +123,7 @@ class KPLearner(Learner):
         episode_rewards = np.zeros(self.config['batch_size'])
         mean_rewards = []
         while True:  # Keep executing episodes
-            trajectory = self.get_trajectory(env, self.config["episode_max_length"])
+            trajectory = self.get_trajectory(self.config["episode_max_length"])
 
             episode_rewards[episode_nr % self.config['batch_size']] = sum(trajectory['reward'])
             episode_lengths[episode_nr % self.config['batch_size']] = len(trajectory['reward'])

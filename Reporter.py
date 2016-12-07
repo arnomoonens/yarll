@@ -11,6 +11,8 @@ class Reporter(object):
         self.fig = plt.figure()
         self.ax1 = self.fig.add_subplot(1, 1, 1)
 
+        logging.getLogger().setLevel("INFO")
+
     def print_iteration_stats(self, iteration, episode_rewards, episode_lengths, total_n_trajectories):
         """Print statistics about rewards and episode lengths of the current iteration"""
         logging.info("-----------------")

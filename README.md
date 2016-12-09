@@ -36,19 +36,30 @@ Total reward per episode when applying this algorithm on the _CartPole-v0_ envir
 ![Total reward per episode using A2C](./results/a2c-cartpole-v0-rewards.png)
 
 [OpenAI Gym page](https://gym.openai.com/evaluations/eval_8lGn053RQref7asqoiPPw)
+
+### Asynchronous Advantage Actor Critic
+Total reward per episode when applying this algorithm on the _CartPole-v0_ environment:
+![Total reward per episode using A3C](./results/a3c-cartpole-v0-rewards.png)
+
+This only show the results of one of the 8 A3C threads.
+Results of another execution are also posted on the [OpenAI Gym](https://gym.openai.com/evaluations/eval_deHd1IsvTQeWAnEaSvvkg).
+Results of an execution using the _Acrobot-v1_ environment can also be found [on OpenAI Gym](https://gym.openai.com/evaluations/eval_Ig1wrPzQlGipmBAhZ5Tw).
 ## How to run
 First, install the requirements using [pip](https://pypi.python.org/pypi/pip):
 ```
 pip install -r requirements.txt
 ```
+
 Then you can run the Sarsa + Function approximation using:
 ```
 python MountainCar.py <episodes_to_run> <monitor_target_directory>
 ```
-You can run the `REINFORCE`, `Karpathy` or `A2C` algorithm using:
+
+You can run the `REINFORCE`, `Karpathy`, `A2C` or `A3C` algorithm using:
 ```
 python REINFORCE.py <environment_name> <monitor_target_directory>
 ```
+
 You can plot the episode lengths and total reward per episode graphs using:
 ```
 python plot_statistics.py <path_to_stats.json> <moving_average_window>

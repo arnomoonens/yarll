@@ -14,7 +14,7 @@ import gym
 from gym.spaces import Discrete, Box
 from Learner import Learner
 from ActionSelection import ProbabilisticCategoricalActionSelection
-from utils import discount_rewards
+from utils import discount_rewards, preprocess_image
 from Reporter import Reporter
 
 class REINFORCELearner(Learner):
@@ -23,16 +23,17 @@ class REINFORCELearner(Learner):
     """
 
     def __init__(self, env, action_selection, **usercfg):
-        super(REINFORCELearner, self).__init__(env, usercfg)
+        super(REINFORCELearner, self).__init__(env, **usercfg)
         self.action_selection = action_selection
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
             episode_max_length=env.spec.timestep_limit,
+            batch_update="timesteps",
             timesteps_per_batch=10000,
             n_iter=100,
             gamma=1.0,
-            stepsize=0.05,
-            nhid=20,
+            learning_rate=0.05,
+            n_hidden_units=20,
             repeat_n_actions=1
         )
         self.config.update(usercfg)
@@ -62,7 +63,7 @@ class REINFORCELearner(Learner):
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_adv = np.concatenate(advs)
             # Do policy gradient update step
-            self.sess.run([self.train], feed_dict={self.ob_no: all_state, self.a_n: all_action, self.adv_n: all_adv, self.N: len(all_state)})
+            self.sess.run([self.train], feed_dict={self.state: all_state, self.a_n: all_action, self.adv_n: all_adv})
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
@@ -70,34 +71,31 @@ class REINFORCELearner(Learner):
 
 class REINFORCELearnerDiscrete(REINFORCELearner):
 
-    def __init__(self, ob_space, action_space, action_selection, **usercfg):
-        super(REINFORCELearnerDiscrete, self).__init__(ob_space, action_space, action_selection, **usercfg)
+    def __init__(self, env, action_selection, **usercfg):
+        super(REINFORCELearnerDiscrete, self).__init__(env, action_selection, **usercfg)
+        self.nA = self.action_space.n
+        self.build_network()
 
+    def build_network(self):
         # Symbolic variables for observation, action, and advantage
         # These variables stack the results from many timesteps--the first dimension is the timestep
-        self.ob_no = tf.placeholder(tf.float32, name='ob_no')  # Observation
+        self.state = tf.placeholder(tf.float32, name='state')  # Observation
         self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
         self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
 
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config['nhid']]) / np.sqrt(self.nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config['nhid']]), name='b0')
-        W1 = tf.Variable(1e-4 * tf.random_normal([self.config['nhid'], self.nA]), name='W1')
+        W0 = tf.Variable(tf.random_normal([self.nO, self.config['n_hidden_units']]) / np.sqrt(self.nO), name='W0')
+        b0 = tf.Variable(tf.zeros([self.config['n_hidden_units']]), name='b0')
+        W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], self.nA]), name='W1')
         b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
         # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.ob_no, W0) + b0[None, :])
-        self.prob_na = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='prob_na')
-        # N = self.ob_no.get_shape()[0].value
-        self.N = tf.placeholder(tf.int32, name='N')
-        # Loss function that we'll differentiate to get the policy gradient
-        # Note that we've divided by the total number of timesteps
-        # loss = T.log(prob_na[T.arange(N), self.a_n]).dot(self.adv_n) / N
-        good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        L1 = tf.tanh(tf.matmul(self.state, W0) + b0[None, :])
+        self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='probs')
+
+        good_probabilities = tf.reduce_sum(tf.mul(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         eligibility = tf.Print(eligibility, [eligibility], first_n=5)
         loss = -tf.reduce_sum(eligibility)
-        # stepsize = tf.placeholder(tf.float32)
-        # grads = T.grad(loss, params)
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['stepsize'], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
 
         init = tf.initialize_all_variables()
@@ -108,11 +106,70 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
 
     def act(self, state):
         """Choose an action."""
-        state = state.reshape(1, -1)
-        prob = self.sess.run([self.prob_na], feed_dict={self.ob_no: state})[0][0]
-        action = self.action_selection.select_action(prob)
-        # action = categorical_sample_max(prob)
+        probs = self.sess.run([self.probs], feed_dict={self.state: [state]})[0][0]
+        action = self.action_selection.select_action(probs)
         return action
+
+class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
+    def __init__(self, env, action_selection, **usercfg):
+        super(REINFORCELearnerDiscreteCNN, self).__init__(env, action_selection, **usercfg)
+        self.config['n_hidden_units'] = 200
+        self.config.update(usercfg)
+
+    def reset_env(self):
+        return preprocess_image(self.env.reset())
+
+    def step_env(self, action):
+        state, reward, done, info = self.env.step(action)
+        return preprocess_image(state), reward, done, info
+
+    def build_network(self):
+        image_size = 80
+        image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
+
+        self.state = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="state")
+        self.a_n = tf.placeholder(tf.float32, name='a_n')
+        self.N = tf.placeholder(tf.int32, name='N')
+        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+
+        # Convolution layer 1
+        depth = 32
+        patch_size = 4
+        self.w1 = tf.Variable(tf.truncated_normal([patch_size, patch_size, image_depth, depth], stddev=0.01))
+        self.b1 = tf.Variable(tf.zeros([depth]))
+        self.L1 = tf.nn.relu(tf.nn.conv2d(self.state, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
+        self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+
+        # Convolution layer 2
+        self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
+        self.b2 = tf.Variable(tf.zeros([depth]))
+        self.L2 = tf.nn.relu(tf.nn.conv2d(self.L1, self.w2, strides=[1, 2, 2, 1], padding="SAME") + self.b2)
+
+        # Flatten
+        shape = self.L2.get_shape().as_list()
+        reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+
+        # Fully connected layer 1
+        self.w3 = tf.Variable(tf.truncated_normal([image_size // 8 * image_size // 8 * depth, self.config['n_hidden_units']], stddev=0.01))
+        self.b3 = tf.Variable(tf.zeros([self.config['n_hidden_units']]))
+        self.L3 = tf.nn.relu(tf.matmul(reshape, self.w3) + self.b3)
+
+        # Fully connected layer 2
+        self.w4 = tf.Variable(tf.truncated_normal([self.config['n_hidden_units'], self.nA]))
+        self.b4 = tf.Variable(tf.zeros([self.nA]))
+        self.probs = tf.nn.softmax(tf.matmul(self.L3, self.w4) + self.b4)
+
+        good_probabilities = tf.reduce_sum(tf.mul(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        eligibility = tf.log(good_probabilities) * self.adv_n
+        loss = -tf.reduce_sum(eligibility)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        self.train = optimizer.minimize(loss)
+
+        init = tf.initialize_all_variables()
+
+        # Launch the graph.
+        self.sess = tf.Session()
+        self.sess.run(init)
 
 def main():
     if(len(sys.argv) < 3):
@@ -121,14 +178,18 @@ def main():
     env = gym.make(sys.argv[1])
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = REINFORCELearnerDiscrete(env, action_selection)
-    if isinstance(env.action_space, Box):
+        rank = len(env.observation_space.shape)  # Observation space rank
+        if rank == 1:
+            agent = REINFORCELearnerDiscrete(env, action_selection)
+        else:
+            agent = REINFORCELearnerDiscreteCNN(env, action_selection)
+    elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:
         raise NotImplementedError
     try:
         env.monitor.start(sys.argv[2], force=True)
-        agent.learn(env)
+        agent.learn()
     except KeyboardInterrupt:
         pass
 

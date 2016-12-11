@@ -30,7 +30,7 @@ class KPCNNLearner(Learner):
     """Karpathy policy gradient learner using a convolutional neural network"""
     def __init__(self, env, action_selection, **usercfg):
         super(KPCNNLearner, self).__init__(env, **usercfg)
-        self.nA = 2
+        self.nA = env.action_space.n
         self.action_selection = action_selection
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
@@ -156,7 +156,7 @@ class KPCNNLearner(Learner):
         for _ in range(episode_max_length):
             action, probabilities = self.act(state)
             states.append(state)
-            state, rew, done, _ = env.step(action + 2)
+            state, rew, done, _ = env.step(action)
             state = preprocess_image(state)
             actions.append(action)
             rewards.append(rew)
@@ -189,13 +189,12 @@ class KPCNNLearner(Learner):
             episode_nr += 1
             action_taken = (np.arange(self.nA) == trajectory['action'][:, None]).astype(np.float32)  # one-hot encoding
 
-            # episode_states = np.vstack(encountered_states)
-
             discounted_episode_rewards = discount_rewards(trajectory['reward'], self.config['gamma'])
-            # print(discounted_episode_rewards)
             # standardize
             discounted_episode_rewards -= np.mean(discounted_episode_rewards)
-            discounted_episode_rewards /= np.std(discounted_episode_rewards)
+            std = np.std(discounted_episode_rewards)
+            std = std if std > 0 else 1
+            discounted_episode_rewards /= std
             feedback = np.reshape(np.repeat(discounted_episode_rewards, self.nA), (len(discounted_episode_rewards), self.nA))
 
             self.session.run([self.accumulate_grads], feed_dict={self.state: trajectory["state"], self.action_taken: action_taken, self.feedback: feedback})

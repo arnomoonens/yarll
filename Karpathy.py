@@ -178,7 +178,7 @@ def main():
         raise NotImplementedError
     try:
         env.monitor.start(args.monitor_path, force=True)
-        agent.learn(env)
+        agent.learn()
     except KeyboardInterrupt:
         pass
 

@@ -4,7 +4,8 @@
 This code is part of my master thesis at the VUB, Brussels.
 
 ## Status
-Currently, different algorithms have been implemented:
+Currently studying and implementing the use of convolutional neural networks in deep learning algorithms.
+Different algorithms have already been implemented:
 ### Sarsa + function apprixmation
 The following parts are combined to learn to act in the [Mountain Car environment](https://gym.openai.com/envs/MountainCar-v0):
 - Sarsa
@@ -27,7 +28,7 @@ Total reward per episode when applying this algorithm on the _CartPole-v0_ envir
 ### Karpathy Policy Gradient
 Adapted version of the code of [this article](http://karpathy.github.io/2016/05/31/rl/) of Andrej Karpathy.
 Total reward per episode when applying this algorithm on the _CartPole-v0_ environment:
-![Total reward per episode using REINFORCE](./results/karpathy-cartpole-v0-rewards.png)
+![Total reward per episode using Karpathy](./results/karpathy-cartpole-v0-rewards.png)
 
 How quickly the optimal reward is reached and kept heavily varies however because of randomness. Results of an earlier execution are also posted on the [OpenAI Gym](https://gym.openai.com/evaluations/eval_dyl7JQpTXGXY4lIe0pSA).
 
@@ -57,7 +58,7 @@ python MountainCar.py <episodes_to_run> <monitor_target_directory>
 
 You can run the `REINFORCE`, `Karpathy`, `A2C` or `A3C` algorithm using:
 ```
-python REINFORCE.py <environment_name> <monitor_target_directory>
+python <algorithm_name>.py <environment_name> <monitor_target_directory>
 ```
 
 You can plot the episode lengths and total reward per episode graphs using:

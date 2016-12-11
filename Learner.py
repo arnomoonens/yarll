@@ -9,7 +9,6 @@ class Learner(object):
         self.ob_space = self.env.observation_space
         self.action_space = self.env.action_space
         self.nO = self.ob_space.shape[0]
-        # self.nA = action_space.n
         self.config = dict(
             episode_max_length=100,
             timesteps_per_batch=10000,
@@ -17,7 +16,16 @@ class Learner(object):
         self.config.update(usercfg)
 
     def act(self, state):
+        """Return which action to take based on the given state"""
         pass
+
+    def reset_env(self):
+        """Reset the current environment and get the initial state"""
+        return self.env.reset()
+
+    def step_env(self, action):
+        """Execute an action in the current environment."""
+        return self.env.step(action)
 
     def get_trajectory(self, render=False):
         """
@@ -25,15 +33,15 @@ class Learner(object):
         Return dictionary of results
         """
         env = self.env
-        state = env.reset()
+        state = self.reset_env()
         states = []
         actions = []
         rewards = []
         for _ in range(self.config['episode_max_length']):
             action = self.act(state)
-            states.append(state.flatten())
+            states.append(state)
             for _ in range(self.config['repeat_n_actions']):
-                state, rew, done, _ = env.step(action)
+                state, rew, done, _ = self.step_env(action)
                 if done:  # Don't continue if episode has already ended
                     break
             actions.append(action)
@@ -49,6 +57,7 @@ class Learner(object):
                 }
 
     def get_trajectories(self):
+        """Generate trajectories until a certain number of timesteps or trajectories."""
         use_timesteps = self.config["batch_update"] == "timesteps"
         trajectories = []
         timesteps_total = 0
@@ -61,4 +70,5 @@ class Learner(object):
         return trajectories
 
     def learn(self):
+        """Learn in the current environment."""
         pass

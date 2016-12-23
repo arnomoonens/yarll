@@ -26,7 +26,7 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 
 class ActorNetwork(object):
     """Neural network for the Actor of an Actor-Critic algorithm"""
-    def __init__(self, state_shape, n_actions, n_hidden, scope, print_loss):
+    def __init__(self, state_shape, n_actions, n_hidden, scope, print_loss, summary=True):
         super(ActorNetwork, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
@@ -51,7 +51,8 @@ class ActorNetwork(object):
             eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
             self.loss = -tf.reduce_mean(eligibility)
-            tf.summary.scalar("Actor_loss", self.loss)
+            if summary:
+                self.summary = tf.summary.scalar("Actor_loss", self.loss)
             if print_loss:
                 self.loss = tf.Print(self.loss, [self.loss], message='Actor loss=')
 
@@ -59,7 +60,7 @@ class ActorNetwork(object):
 
 class CriticNetwork(object):
     """Neural network for the Critic of an Actor-Critic algorithm"""
-    def __init__(self, state_shape, n_hidden, scope, print_loss):
+    def __init__(self, state_shape, n_hidden, scope, print_loss, summary=True):
         super(CriticNetwork, self).__init__()
         self.state_shape = state_shape
         self.n_hidden = n_hidden
@@ -77,7 +78,8 @@ class CriticNetwork(object):
             b1 = tf.Variable(tf.zeros([1]), name='b1')
             self.value = tf.matmul(L1, W1) + b1[None, :]
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
-            tf.summary.scalar("Critic_loss", self.loss)
+            if summary:
+                self.summary = tf.summary.scalar("Critic_loss", self.loss)
             if print_loss:
                 self.loss = tf.Print(self.loss, [self.loss], message='Critic loss=')
 
@@ -94,10 +96,10 @@ class A3CThread(Thread):
         if first_thread:
             self.env.monitor.start(self.master.monitor_dir, force=True)
 
-        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net", print_loss=first_thread)
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net", print_loss=first_thread)
+        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="thread" + str(thread_id) + "_local_actor_net", print_loss=first_thread)
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="thread" + str(thread_id) + "_local_critic_net", print_loss=first_thread)
 
-        self.summary_op = tf.summary.merge_all()
+        self.summary_op = tf.summary.merge([self.actor_net.summary, self.critic_net.summary])
         self.writer = tf.summary.FileWriter(self.master.monitor_dir + '/thread' + str(self.thread_id), self.master.session.graph)
 
         self.actor_sync_net = self.sync_gradients_op(master.shared_actor_net, self.actor_net.vars)
@@ -231,7 +233,7 @@ class A3CThread(Thread):
             cr_net = self.critic_net
             qw_new = self.master.session.run([cr_net.value], feed_dict={cr_net.state: trajectory['state']})[0].flatten()
             all_action = (possible_actions == trajectory['action'][:, None]).astype(np.float32)
-            summary, _ = sess.run(fetches, feed_dict={
+            summary = sess.run(fetches, feed_dict={
                 ac_net.state: trajectory["state"],
                 cr_net.state: trajectory["state"],
                 ac_net.actions_taken: all_action,
@@ -239,7 +241,8 @@ class A3CThread(Thread):
                 ac_net.critic_rewards: returns,
                 cr_net.target: returns.reshape(-1, 1)
             })
-            self.writer.add_summary(summary, t)
+            self.writer.add_summary(summary[0], t)
+            self.writer.flush()
             sess.run([self.apply_actor_gradients, self.apply_critic_gradients])
             t += 1
             self.master.T += trajectory['steps']
@@ -269,8 +272,8 @@ class A3CLearner(Learner):
         )
         self.config.update(usercfg)
 
-        self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", print_loss=False)
-        self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", print_loss=False)
+        self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", print_loss=False, summary=False)
+        self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", print_loss=False, summary=False)
 
         self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['actor_learning_rate'], decay=0.9, epsilon=1e-9)
         self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['critic_learning_rate'], decay=0.9, epsilon=1e-9)

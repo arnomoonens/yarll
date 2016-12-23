@@ -7,6 +7,7 @@ import tensorflow as tf
 import logging
 import argparse
 from threading import Thread
+import multiprocessing
 
 import gym
 from gym.spaces import Discrete, Box
@@ -46,9 +47,11 @@ class ActorNetwork(object):
             b1 = tf.Variable(tf.zeros([n_actions]), name='b1')
             self.prob_na = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='prob_na')
             good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, self.actions_taken), reduction_indices=[1])
+            # Replace probabilities that are zero with a small value and multiply by advantage:
             eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
             self.loss = -tf.reduce_mean(eligibility)
+            tf.summary.scalar("Actor_loss", self.loss)
             if print_loss:
                 self.loss = tf.Print(self.loss, [self.loss], message='Actor loss=')
 
@@ -74,6 +77,7 @@ class CriticNetwork(object):
             b1 = tf.Variable(tf.zeros([1]), name='b1')
             self.value = tf.matmul(L1, W1) + b1[None, :]
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
+            tf.summary.scalar("Critic_loss", self.loss)
             if print_loss:
                 self.loss = tf.Print(self.loss, [self.loss], message='Critic loss=')
 
@@ -86,12 +90,15 @@ class A3CThread(Thread):
         self.thread_id = thread_id
         self.env = gym.make(master.env_name)
         self.master = master
-        first_thread = thread_id == 0
+        first_thread = (thread_id == 0)
         if first_thread:
             self.env.monitor.start(self.master.monitor_dir, force=True)
 
         self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net", print_loss=first_thread)
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net", print_loss=first_thread)
+
+        self.summary_op = tf.summary.merge_all()
+        self.writer = tf.summary.FileWriter(self.master.monitor_dir + '/thread' + str(self.thread_id), self.master.session.graph)
 
         self.actor_sync_net = self.sync_gradients_op(master.shared_actor_net, self.actor_net.vars)
         self.actor_create_ag = self.create_accumulative_gradients_op(self.actor_net.vars)
@@ -126,15 +133,14 @@ class A3CThread(Thread):
                 zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
                 name = var.name.replace(":", "_") + "_accum_grad"
                 accum_grad = tf.Variable(zero, name=name, trainable=False)
-                accum_grads.append(accum_grad.ref())
+                accum_grads.append(accum_grad)
             return accum_grads
 
     def add_accumulative_gradients_op(self, net_vars, accum_grads, loss):
         """Make an operation to add a gradient to the total"""
         accum_grad_ops = []
         with tf.name_scope(name="grad_ops_%d" % self.thread_id, values=net_vars):
-            var_refs = [v.ref() for v in net_vars]
-            grads = tf.gradients(loss, var_refs, gate_gradients=False,
+            grads = tf.gradients(loss, net_vars, gate_gradients=False,
                                  aggregation_method=None,
                                  colocate_gradients_with_ops=False)
         with tf.name_scope(name="accum_ops_%d" % self.thread_id, values=[]):
@@ -194,12 +200,13 @@ class A3CThread(Thread):
                 break
             if render:
                 self.env.render()
-        return {"reward": np.array(rewards),
-                "state": np.array(states),
-                "action": np.array(actions),
-                "done": done,  # Say if tajectory ended because a terminal state was reached
-                "steps": i + 1
-                }
+        return {
+            "reward": np.array(rewards),
+            "state": np.array(states),
+            "action": np.array(actions),
+            "done": done,  # Say if tajectory ended because a terminal state was reached
+            "steps": i + 1
+        }
 
     def run(self):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
@@ -219,21 +226,22 @@ class A3CThread(Thread):
             trajectory = self.get_trajectory(t_start + self.master.config['episode_max_length'])
             trajectory['reward'][-1] = 0 if trajectory['done'] else self.get_critic_value(trajectory['state'][None, -1])[0]
             returns = discount_rewards(trajectory['reward'], self.master.config['gamma'])
-            fetches = [self.actor_add_ag, self.critic_add_ag, self.master.global_step]  # What does the master global step thing do?
+            fetches = [self.summary_op, self.actor_add_ag, self.critic_add_ag, self.master.global_step]  # What does the master global step thing do?
             ac_net = self.actor_net
             cr_net = self.critic_net
             qw_new = self.master.session.run([cr_net.value], feed_dict={cr_net.state: trajectory['state']})[0].flatten()
             all_action = (possible_actions == trajectory['action'][:, None]).astype(np.float32)
-            # print(returns.reshape(-1, 1))
-            sess.run(fetches, feed_dict={
-                     ac_net.state: trajectory["state"],
-                     cr_net.state: trajectory["state"],
-                     ac_net.actions_taken: all_action,
-                     ac_net.critic_feedback: qw_new,
-                     ac_net.critic_rewards: returns,
-                     cr_net.target: returns.reshape(-1, 1),
-                     })
+            summary, _ = sess.run(fetches, feed_dict={
+                ac_net.state: trajectory["state"],
+                cr_net.state: trajectory["state"],
+                ac_net.actions_taken: all_action,
+                ac_net.critic_feedback: qw_new,
+                ac_net.critic_rewards: returns,
+                cr_net.target: returns.reshape(-1, 1)
+            })
+            self.writer.add_summary(summary, t)
             sess.run([self.apply_actor_gradients, self.apply_critic_gradients])
+            t += 1
             self.master.T += trajectory['steps']
 
 class A3CLearner(Learner):
@@ -255,7 +263,7 @@ class A3CLearner(Learner):
             actor_n_hidden=20,
             critic_n_hidden=20,
             gradient_clip_value=40,
-            n_threads=8,
+            n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
             T_max=5e5,
             repeat_n_actions=1
         )
@@ -269,14 +277,16 @@ class A3CLearner(Learner):
 
         self.global_step = tf.get_variable("global_step", [], initializer=tf.constant_initializer(0), trainable=False)
 
+        self.session = tf.Session(config=tf.ConfigProto(
+            log_device_placement=False,
+            allow_soft_placement=True))
+
         self.jobs = []
         for thread_id in range(self.config["n_threads"]):
             job = A3CThread(self, thread_id)
             self.jobs.append(job)
-        self.session = tf.Session(config=tf.ConfigProto(
-            log_device_placement=False,
-            allow_soft_placement=True))
-        self.session.run(tf.initialize_all_variables())
+
+        self.session.run(tf.global_variables_initializer())
 
         self.global_step_val = 0
 

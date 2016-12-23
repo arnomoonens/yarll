@@ -149,13 +149,16 @@ class KPCNNLearner(Learner):
         Note that this function returns more than the get_trajectory in the Learner class.
         """
         state = preprocess_image(env.reset())
+        prev_state = state
         states = []
         actions = []
         rewards = []
         episode_probabilities = []
         for _ in range(episode_max_length):
-            action, probabilities = self.act(state)
-            states.append(state)
+            delta = state - prev_state
+            action, probabilities = self.act(delta)
+            states.append(delta)
+            prev_state = state
             state, rew, done, _ = env.step(action)
             state = preprocess_image(state)
             actions.append(action)

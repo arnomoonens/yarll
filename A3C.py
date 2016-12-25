@@ -26,7 +26,7 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 
 class ActorNetwork(object):
     """Neural network for the Actor of an Actor-Critic algorithm"""
-    def __init__(self, state_shape, n_actions, n_hidden, scope, print_loss, summary=True):
+    def __init__(self, state_shape, n_actions, n_hidden, scope, summary=True):
         super(ActorNetwork, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
@@ -51,16 +51,11 @@ class ActorNetwork(object):
             eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
             self.loss = -tf.reduce_mean(eligibility)
-            if summary:
-                self.summary = tf.summary.scalar("Actor_loss", self.loss)
-            if print_loss:
-                self.loss = tf.Print(self.loss, [self.loss], message='Actor loss=')
-
             self.vars = [W0, b0, W1, b1]
 
 class CriticNetwork(object):
     """Neural network for the Critic of an Actor-Critic algorithm"""
-    def __init__(self, state_shape, n_hidden, scope, print_loss, summary=True):
+    def __init__(self, state_shape, n_hidden, scope, summary=True):
         super(CriticNetwork, self).__init__()
         self.state_shape = state_shape
         self.n_hidden = n_hidden
@@ -78,10 +73,6 @@ class CriticNetwork(object):
             b1 = tf.Variable(tf.zeros([1]), name='b1')
             self.value = tf.matmul(L1, W1) + b1[None, :]
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
-            if summary:
-                self.summary = tf.summary.scalar("Critic_loss", self.loss)
-            if print_loss:
-                self.loss = tf.Print(self.loss, [self.loss], message='Critic loss=')
 
             self.vars = [W0, b0, W1, b1]
 
@@ -92,14 +83,13 @@ class A3CThread(Thread):
         self.thread_id = thread_id
         self.env = gym.make(master.env_name)
         self.master = master
-        first_thread = (thread_id == 0)
-        if first_thread:
+        if thread_id == 2:
             self.env.monitor.start(self.master.monitor_dir, force=True)
 
-        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="thread" + str(thread_id) + "_local_actor_net", print_loss=first_thread)
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="thread" + str(thread_id) + "_local_critic_net", print_loss=first_thread)
+        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net")
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net")
 
-        self.summary_op = tf.summary.merge([self.actor_net.summary, self.critic_net.summary])
+        # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(self.master.monitor_dir + '/thread' + str(self.thread_id), self.master.session.graph)
 
         self.actor_sync_net = self.sync_gradients_op(master.shared_actor_net, self.actor_net.vars)
@@ -217,7 +207,7 @@ class A3CThread(Thread):
         possible_actions = np.arange(self.env.action_space.n)
         t = 1  # thread step counter
         while self.master.T < self.master.config['T_max']:
-            if self.thread_id == 0:
+            if self.thread_id == 2:
                 logging.info("Total steps: " + str(self.master.T))
             # Reset gradients: dθ←0 and dθv←0
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
@@ -226,14 +216,15 @@ class A3CThread(Thread):
             sess.run([self.actor_sync_net, self.critic_sync_net])
             t_start = t
             trajectory = self.get_trajectory(t_start + self.master.config['episode_max_length'])
+            reward = sum(trajectory['reward'])
             trajectory['reward'][-1] = 0 if trajectory['done'] else self.get_critic_value(trajectory['state'][None, -1])[0]
             returns = discount_rewards(trajectory['reward'], self.master.config['gamma'])
-            fetches = [self.summary_op, self.actor_add_ag, self.critic_add_ag, self.master.global_step]  # What does the master global step thing do?
+            fetches = [self.actor_net.loss, self.critic_net.loss, self.actor_add_ag, self.critic_add_ag, self.master.global_step]  # What does the master global step thing do?
             ac_net = self.actor_net
             cr_net = self.critic_net
             qw_new = self.master.session.run([cr_net.value], feed_dict={cr_net.state: trajectory['state']})[0].flatten()
             all_action = (possible_actions == trajectory['action'][:, None]).astype(np.float32)
-            summary = sess.run(fetches, feed_dict={
+            results = sess.run(fetches, feed_dict={
                 ac_net.state: trajectory["state"],
                 cr_net.state: trajectory["state"],
                 ac_net.actions_taken: all_action,
@@ -241,6 +232,12 @@ class A3CThread(Thread):
                 ac_net.critic_rewards: returns,
                 cr_net.target: returns.reshape(-1, 1)
             })
+            summary = sess.run([self.master.summary_op], feed_dict={
+                               self.master.actor_loss: results[0],
+                               self.master.critic_loss: results[1],
+                               self.master.reward: reward,
+                               self.master.episode_length: trajectory["steps"]
+                               })
             self.writer.add_summary(summary[0], t)
             self.writer.flush()
             sess.run([self.apply_actor_gradients, self.apply_critic_gradients])
@@ -272,8 +269,8 @@ class A3CLearner(Learner):
         )
         self.config.update(usercfg)
 
-        self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", print_loss=False, summary=False)
-        self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", print_loss=False, summary=False)
+        self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", summary=False)
+        self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", summary=False)
 
         self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['actor_learning_rate'], decay=0.9, epsilon=1e-9)
         self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['critic_learning_rate'], decay=0.9, epsilon=1e-9)
@@ -283,6 +280,17 @@ class A3CLearner(Learner):
         self.session = tf.Session(config=tf.ConfigProto(
             log_device_placement=False,
             allow_soft_placement=True))
+
+        self.critic_loss = tf.placeholder("float", name="critic_loss")
+        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss)
+
+        self.actor_loss = tf.placeholder("float", name="actor_loss")
+        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss)
+        self.reward = tf.placeholder("float", name="reward")
+        reward_summary = tf.summary.scalar("Reward", self.reward)
+        self.episode_length = tf.placeholder("float", name="episode_length")
+        episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length_summary)
+        self.summary_op = tf.summary.merge([actor_loss_summary, critic_loss_summary, reward_summary, episode_length_summary])
 
         self.jobs = []
         for thread_id in range(self.config["n_threads"]):

@@ -83,7 +83,7 @@ class A3CThread(Thread):
         self.thread_id = thread_id
         self.env = gym.make(master.env_name)
         self.master = master
-        if thread_id == 2:
+        if thread_id == 0 and self.master.monitor:
             self.env.monitor.start(self.master.monitor_dir, force=True)
 
         self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net")
@@ -207,15 +207,12 @@ class A3CThread(Thread):
         possible_actions = np.arange(self.env.action_space.n)
         t = 1  # thread step counter
         while self.master.T < self.master.config['T_max']:
-            if self.thread_id == 2:
-                logging.info("Total steps: " + str(self.master.T))
             # Reset gradients: dθ←0 and dθv←0
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
             sess.run([self.actor_reset_ag, self.critic_reset_ag])
             # sync variables
             sess.run([self.actor_sync_net, self.critic_sync_net])
-            t_start = t
-            trajectory = self.get_trajectory(t_start + self.master.config['episode_max_length'])
+            trajectory = self.get_trajectory(self.master.config['episode_max_length'])
             reward = sum(trajectory['reward'])
             trajectory['reward'][-1] = 0 if trajectory['done'] else self.get_critic_value(trajectory['state'][None, -1])[0]
             returns = discount_rewards(trajectory['reward'], self.master.config['gamma'])
@@ -246,13 +243,14 @@ class A3CThread(Thread):
 
 class A3CLearner(Learner):
     """Asynchronous Advantage Actor Critic learner."""
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+    def __init__(self, env, action_selection, monitor, monitor_dir, **usercfg):
         super(A3CLearner, self).__init__(env)
         self.env = env
         self.shared_counter = 0
         self.T = 0
         self.action_selection = action_selection
         self.env_name = env.spec.id
+        self.monitor = monitor
         self.monitor_dir = monitor_dir
 
         self.config = dict(
@@ -289,7 +287,7 @@ class A3CLearner(Learner):
         self.reward = tf.placeholder("float", name="reward")
         reward_summary = tf.summary.scalar("Reward", self.reward)
         self.episode_length = tf.placeholder("float", name="episode_length")
-        episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length_summary)
+        episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length)
         self.summary_op = tf.summary.merge([actor_loss_summary, critic_loss_summary, reward_summary, episode_length_summary])
 
         self.jobs = []
@@ -311,7 +309,8 @@ class A3CLearner(Learner):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--monitor", action="store_true", default=False, help="Track performance of a single thread using gym monitor.")
+parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved.")
 
 def main():
     try:
@@ -320,7 +319,7 @@ def main():
         sys.exit()
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), args.monitor_path)
+        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), args.monitor, args.monitor_path)
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

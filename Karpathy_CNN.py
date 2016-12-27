@@ -9,6 +9,7 @@ import argparse
 
 import gym
 from gym.spaces import Discrete, Box
+# import gym_ple
 
 from Learner import Learner
 from utils import discount_rewards, preprocess_image
@@ -98,7 +99,7 @@ class KPCNNLearner(Learner):
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=self.config['decay_rate'], epsilon=1e-9)
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.create_accumulative_grads, self.vars))
 
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
 
         # Launch the graph.
         self.session = tf.Session()
@@ -111,14 +112,13 @@ class KPCNNLearner(Learner):
             zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
             name = var.name.replace(":", "_") + "_accum_grad"
             accum_grad = tf.Variable(zero, name=name, trainable=False)
-            accum_grads.append(accum_grad.ref())
+            accum_grads.append(accum_grad)
         return accum_grads
 
     def add_accumulative_gradients_op(self, net_vars, accum_grads, loss):
         """Make an operation to add a gradient to the total"""
         accum_grad_ops = []
-        var_refs = [v.ref() for v in net_vars]
-        grads = tf.gradients(loss, var_refs, gate_gradients=False,
+        grads = tf.gradients(loss, net_vars, gate_gradients=False,
                              aggregation_method=None,
                              colocate_gradients_with_ops=False)
         for (grad, var, accum_grad) in zip(grads, net_vars, accum_grads):

@@ -9,5 +9,9 @@ class ContinuousActionSelection(ActionSelection):
     def __init__(self):
         super(ContinuousActionSelection, self).__init__()
 
-    def select_action(mu, sigma):
-        return np.random.normal(mu, sigma)
+    # def select_action(self, mu, sigma):
+    #     return np.random.normal(mu, sigma)
+
+    # Without sigma
+    def select_action(self, mu):
+        return np.random.normal(mu)

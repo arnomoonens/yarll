@@ -14,7 +14,7 @@ from gym.spaces import Discrete, Box
 
 from Learner import Learner
 from utils import discount_rewards
-from ActionSelection import ProbabilisticCategoricalActionSelection
+from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 
 logging.getLogger().setLevel("INFO")
 
@@ -24,10 +24,10 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 # - Pseudo code from Asynchronous Methods for Deep Reinforcement Learning
 # - Tensorflow code from https://github.com/yao62995/A3C/blob/master/A3C_atari.py
 
-class ActorNetwork(object):
-    """Neural network for the Actor of an Actor-Critic algorithm"""
+class ActorNetworkDiscrete(object):
+    """Neural network for the Actor of an Actor-Critic algorithm using a discrete action space"""
     def __init__(self, state_shape, n_actions, n_hidden, scope, summary=True):
-        super(ActorNetwork, self).__init__()
+        super(ActorNetworkDiscrete, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
         self.n_hidden = n_hidden
@@ -51,7 +51,51 @@ class ActorNetwork(object):
             eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
             self.loss = -tf.reduce_mean(eligibility)
+            self.summary_loss = self.loss  # Loss to show as a summary
             self.vars = [W0, b0, W1, b1]
+
+class ActorNetworkContinuous(object):
+    """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
+    def __init__(self, action_space, state_shape, n_hidden, scope, summary=True):
+        super(ActorNetworkContinuous, self).__init__()
+        self.state_shape = state_shape
+        self.n_hidden = n_hidden
+        self.scope = scope
+
+        with tf.variable_scope("%s_actor" % scope):
+            self.state = tf.placeholder("float", [None, self.state_shape], name='state')
+            self.actions_taken = tf.placeholder(tf.float32, name='actions_taken')  # Not used (yet?)
+            self.critic_feedback = tf.placeholder(tf.float32, name='critic_feedback')  # Advantage
+            self.critic_rewards = tf.placeholder(tf.float32, name='critic_rewards')
+
+            mu_W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]) / np.sqrt(self.state_shape), name='mu_W0')
+            mu_b0 = tf.Variable(tf.zeros([self.n_hidden]), name='mu_b0')
+            mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.n_hidden, 1]), name='mu_W1')
+            mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
+            # Action probabilities
+            L1 = tf.tanh(tf.matmul(self.state, mu_W0) + mu_b0[None, :])
+            mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
+            mu = tf.squeeze(mu)
+
+            sigma_W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]) / np.sqrt(self.state_shape), name='sigma_W0')
+            sigma_b0 = tf.Variable(tf.zeros([self.n_hidden]), name='sigma_b0')
+            sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.n_hidden, 1]), name='sigma_W1')
+            sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
+            # Action probabilities
+            sigma_L1 = tf.tanh(tf.matmul(self.state, sigma_W0) + sigma_b0[None, :])
+            sigma = tf.matmul(sigma_L1, sigma_W1) + sigma_b1[None, :]
+            sigma = tf.squeeze(sigma)
+            sigma = tf.nn.softplus(sigma) + 1e-5
+
+            self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
+            self.action = self.normal_dist.sample_n(1)
+            self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0])
+            self.loss = -self.normal_dist.log_prob(self.actions_taken) * self.critic_feedback
+            # Add cross entropy cost to encourage exploration
+            self.loss -= 1e-1 * self.normal_dist.entropy()
+            self.summary_loss = -tf.reduce_mean(self.loss)  # Loss to show as a summary
+            self.vars = [mu_W0, mu_b0, mu_W1, mu_b1, sigma_W0, sigma_b0, sigma_W1, sigma_b1]
+
 
 class CriticNetwork(object):
     """Neural network for the Critic of an Actor-Critic algorithm"""
@@ -73,7 +117,7 @@ class CriticNetwork(object):
             b1 = tf.Variable(tf.zeros([1]), name='b1')
             self.value = tf.matmul(L1, W1) + b1[None, :]
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
-
+            self.summary_loss = self.loss
             self.vars = [W0, b0, W1, b1]
 
 class A3CThread(Thread):
@@ -86,8 +130,8 @@ class A3CThread(Thread):
         if thread_id == 0 and self.master.monitor:
             self.env.monitor.start(self.master.monitor_dir, force=True)
 
-        self.actor_net = ActorNetwork(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net")
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net")
+        # Build actor and critic networks
+        self.build_networks()
 
         # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(self.master.monitor_dir + '/thread' + str(self.thread_id), self.master.session.graph)
@@ -162,13 +206,6 @@ class A3CThread(Thread):
                 sync_ops.append(ops)
             return tf.group(*sync_ops, name="sync_group_%d" % self.thread_id)
 
-    def act(self, state):
-        """Choose an action."""
-        state = state.reshape(1, -1)
-        prob = self.master.session.run([self.actor_net.prob_na], feed_dict={self.actor_net.state: state})[0][0]
-        action = self.master.action_selection.select_action(prob)
-        return action
-
     def get_critic_value(self, state):
         return self.master.session.run([self.critic_net.value], feed_dict={self.critic_net.state: state})[0].flatten()
 
@@ -182,7 +219,7 @@ class A3CThread(Thread):
         actions = []
         rewards = []
         for i in range(episode_max_length):
-            action = self.act(state)
+            action = self.act(state)  # Predict the next action (using a neural network) depending on the current state
             states.append(state.flatten())
             state, reward, done, _ = self.env.step(action)
             reward = np.clip(reward, -1, 1)  # Clip reward
@@ -204,7 +241,6 @@ class A3CThread(Thread):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
         # Assume thread-specific parameter vectors θ' and θ'v
         sess = self.master.session
-        possible_actions = np.arange(self.env.action_space.n)
         t = 1  # thread step counter
         while self.master.T < self.master.config['T_max']:
             # Reset gradients: dθ←0 and dθv←0
@@ -216,11 +252,11 @@ class A3CThread(Thread):
             reward = sum(trajectory['reward'])
             trajectory['reward'][-1] = 0 if trajectory['done'] else self.get_critic_value(trajectory['state'][None, -1])[0]
             returns = discount_rewards(trajectory['reward'], self.master.config['gamma'])
-            fetches = [self.actor_net.loss, self.critic_net.loss, self.actor_add_ag, self.critic_add_ag, self.master.global_step]  # What does the master global step thing do?
+            fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss, self.actor_add_ag, self.critic_add_ag, self.master.global_step]  # What does the master global step thing do?
             ac_net = self.actor_net
             cr_net = self.critic_net
             qw_new = self.master.session.run([cr_net.value], feed_dict={cr_net.state: trajectory['state']})[0].flatten()
-            all_action = (possible_actions == trajectory['action'][:, None]).astype(np.float32)
+            all_action = self.transform_actions(trajectory['action'])  # Transform actions back to the output shape of the actor network (e.g. one-hot for discrete action space)
             results = sess.run(fetches, feed_dict={
                 ac_net.state: trajectory["state"],
                 cr_net.state: trajectory["state"],
@@ -240,6 +276,42 @@ class A3CThread(Thread):
             sess.run([self.apply_actor_gradients, self.apply_critic_gradients])
             t += 1
             self.master.T += trajectory['steps']
+
+class A3CThreadDiscrete(A3CThread):
+    """A3CThread for a discrete action space."""
+    def __init__(self, master, thread_id):
+        super(A3CThreadDiscrete, self).__init__(master, thread_id)
+
+    def build_networks(self):
+        self.actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net")
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net")
+
+    def act(self, state):
+        """Choose an action."""
+        prob = self.master.session.run([self.actor_net.prob_na], feed_dict={self.actor_net.state: [state]})[0][0]
+        action = self.master.action_selection.select_action(prob)
+        return action
+
+    def transform_actions(self, actions):
+        possible_actions = np.arange(self.env.action_space.n)
+        return (possible_actions == actions[:, None]).astype(np.float32)
+
+class A3CThreadContinuous(A3CThread):
+    """A3CThread for a continuous action space."""
+    def __init__(self, master, thread_id):
+        super(A3CThreadContinuous, self).__init__(master, thread_id)
+
+    def build_networks(self):
+        self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.master.config['actor_n_hidden'], scope="local_actor_net")
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net")
+
+    def act(self, state):
+        """Choose an action."""
+        action = self.master.session.run([self.actor_net.action], feed_dict={self.actor_net.state: [state]})[0]
+        return action
+
+    def transform_actions(self, actions):
+        return actions  # Nothing has to be done in case of a continuous action space
 
 class A3CLearner(Learner):
     """Asynchronous Advantage Actor Critic learner."""
@@ -267,8 +339,9 @@ class A3CLearner(Learner):
         )
         self.config.update(usercfg)
 
-        self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", summary=False)
-        self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", summary=False)
+        # self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", summary=False)
+        # self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", summary=False)
+        self.build_networks()
 
         self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['actor_learning_rate'], decay=0.9, epsilon=1e-9)
         self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['critic_learning_rate'], decay=0.9, epsilon=1e-9)
@@ -292,7 +365,7 @@ class A3CLearner(Learner):
 
         self.jobs = []
         for thread_id in range(self.config["n_threads"]):
-            job = A3CThread(self, thread_id)
+            job = self.make_thread(thread_id)
             self.jobs.append(job)
 
         self.session.run(tf.global_variables_initializer())
@@ -307,6 +380,30 @@ class A3CLearner(Learner):
         for job in self.jobs:
             job.join()
 
+class A3CLearnerDiscrete(A3CLearner):
+    """A3CLearner for a discrete action space"""
+    def __init__(self, env, action_selection, monitor, monitor_dir, **usercfg):
+        super(A3CLearnerDiscrete, self).__init__(env, action_selection, monitor, monitor_dir, **usercfg)
+
+    def build_networks(self):
+        self.shared_actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", summary=False)
+        self.shared_critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", summary=False)
+
+    def make_thread(self, thread_id):
+        return A3CThreadDiscrete(self, thread_id)
+
+class A3CLearnerContinuous(A3CLearner):
+    """A3CLearner for a continuous action space"""
+    def __init__(self, env, action_selection, monitor, monitor_dir, **usercfg):
+        super(A3CLearnerContinuous, self).__init__(env, action_selection, monitor, monitor_dir, **usercfg)
+
+    def build_networks(self):
+        self.shared_actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.config['actor_n_hidden'], scope="global_actor_net", summary=False)
+        self.shared_critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", summary=False)
+
+    def make_thread(self, thread_id):
+        return A3CThreadContinuous(self, thread_id)
+
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("--monitor", action="store_true", default=False, help="Track performance of a single thread using gym monitor.")
@@ -319,9 +416,9 @@ def main():
         sys.exit()
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = A3CLearner(env, ProbabilisticCategoricalActionSelection(), args.monitor, args.monitor_path)
+        agent = A3CLearnerDiscrete(env, ProbabilisticCategoricalActionSelection(), args.monitor, args.monitor_path)
     elif isinstance(env.action_space, Box):
-        raise NotImplementedError
+        agent = A3CLearnerContinuous(env, ContinuousActionSelection(), args.monitor, args.monitor_path)
     else:
         raise NotImplementedError
     try:

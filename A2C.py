@@ -13,7 +13,7 @@ from gym.spaces import Discrete, Box
 from Learner import Learner
 from utils import discount_rewards
 from Reporter import Reporter
-from ActionSelection import ProbabilisticCategoricalActionSelection
+from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -25,7 +25,6 @@ class A2C(Learner):
     def __init__(self, env, action_selection, **usercfg):
         super(A2C, self).__init__(env, **usercfg)
         self.action_selection = action_selection
-        self.nA = self.action_space.n
 
         self.config = dict(
             episode_max_length=env.spec.timestep_limit,
@@ -43,6 +42,39 @@ class A2C(Learner):
         self.config.update(usercfg)
         self.build_networks()
         return
+
+    def get_critic_value(self, state):
+        return self.sess.run([self.critic_value], feed_dict={self.critic_state_in: state})[0].flatten()
+
+    def learn(self):
+        """Run learning algorithm"""
+        reporter = Reporter()
+        config = self.config
+        possible_actions = np.arange(self.nA)
+        total_n_trajectories = 0
+        for iteration in range(config["n_iter"]):
+            # Collect trajectories until we get timesteps_per_batch total timesteps
+            trajectories = self.get_trajectories()
+            total_n_trajectories += len(trajectories)
+            all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
+            all_action = (possible_actions == all_action[:, None]).astype(np.float32)
+            all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
+            # Compute discounted sums of rewards
+            returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
+            qw_new = self.get_critic_value(all_state)
+
+            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns})  # Reshape or not?
+            self.sess.run([self.actor_train], feed_dict={self.actor_input: all_state, self.actions_taken: all_action, self.critic_feedback: qw_new, self.critic_rewards: returns})
+
+            episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
+            episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
+            reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
+
+class A2CDiscrete(A2C):
+    """A2C learner for a discrete action space"""
+    def __init__(self, env, action_selection):
+        self.nA = env.action_space.n
+        super(A2CDiscrete, self).__init__(env, action_selection)
 
     def build_networks(self):
         self.actor_input = tf.placeholder(tf.float32, name='actor_input')
@@ -83,7 +115,7 @@ class A2C(Learner):
         critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['critic_learning_rate'], decay=0.9, epsilon=1e-9)
         self.critic_train = critic_optimizer.minimize(critic_loss)
 
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
 
         # Launch the graph.
         self.sess = tf.Session()
@@ -95,34 +127,6 @@ class A2C(Learner):
         prob = self.sess.run([self.prob_na], feed_dict={self.actor_input: state})[0][0]
         action = self.action_selection.select_action(prob)
         return action
-
-    def get_critic_value(self, state):
-        return self.sess.run([self.critic_value], feed_dict={self.critic_state_in: state})[0].flatten()
-
-    def learn(self):
-        """Run learning algorithm"""
-        reporter = Reporter()
-        config = self.config
-        possible_actions = np.arange(self.nA)
-        total_n_trajectories = 0
-        for iteration in range(config["n_iter"]):
-            # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories()
-            total_n_trajectories += len(trajectories)
-            all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
-            all_action = (possible_actions == all_action[:, None]).astype(np.float32)
-            all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
-            # Compute discounted sums of rewards
-            returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
-            qw_new = self.get_critic_value(all_state)
-
-            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns.reshape(-1, 1)})  # Reshape or not?
-            self.sess.run([self.actor_train], feed_dict={self.actor_input: all_state, self.actions_taken: all_action, self.critic_feedback: qw_new, self.critic_rewards: returns})
-
-            episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
-            episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
-            # get_trajectory(self, env, config["episode_max_length"], render=True)
 
 class A2CContinuous(A2C):
     """Advantage Actor Critic for continuous action spaces."""
@@ -140,7 +144,8 @@ class A2CContinuous(A2C):
 
         mu_W1 = tf.Variable(tf.random_normal([self.config['actor_n_hidden'], 1]), name='W1')
         mu_b1 = tf.Variable(tf.zeros([1]), name='b1')
-        self.mu = tf.matmul(mu_L1, mu_W1) + mu_b1[None, :]
+        mu = tf.matmul(mu_L1, mu_W1) + mu_b1[None, :]
+        mu = tf.squeeze(mu)
 
         # Actor network
         sigma_W0 = tf.Variable(tf.random_normal([self.nO, self.config['actor_n_hidden']]), name='W0')
@@ -149,11 +154,11 @@ class A2CContinuous(A2C):
 
         sigma_W1 = tf.Variable(tf.random_normal([self.config['actor_n_hidden'], 1]), name='W1')
         sigma_b1 = tf.Variable(tf.zeros([1]), name='b1')
-        self.sigma = tf.matmul(sigma_L1, sigma_W1) + sigma_b1[None, :]
+        sigma = tf.matmul(sigma_L1, sigma_W1) + sigma_b1[None, :]
+        sigma = tf.squeeze(sigma)
+        sigma = tf.nn.softplus(sigma) + 1e-5
 
-        self.sigma = tf.squeeze(self.sigma)
-        self.sigma = tf.nn.softplus(self.sigma) + 1e-5
-        self.normal_dist = tf.contrib.distributions.Normal(self.mu, self.sigma)
+        self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample_n(1)
         self.action = tf.clip_by_value(self.action, self.action_space.low[0], self.action_space.high[0])
 
@@ -183,7 +188,7 @@ class A2CContinuous(A2C):
         critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config['critic_learning_rate'])
         self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
 
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
 
         # Launch the graph.
         self.sess = tf.Session()
@@ -191,8 +196,7 @@ class A2CContinuous(A2C):
 
     def act(self, state):
         """Choose an action."""
-        state = state.reshape(1, -1)
-        return self.sess.run([self.action], feed_dict={self.input_state: state})[0][0]
+        return self.sess.run([self.action], feed_dict={self.input_state: [state]})[0]
 
     def learn(self):
         """Run learning algorithm"""
@@ -201,7 +205,7 @@ class A2CContinuous(A2C):
         total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories(self.env)
+            trajectories = self.get_trajectories()
             total_n_trajectories += len(trajectories)
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
@@ -209,8 +213,7 @@ class A2CContinuous(A2C):
             returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
             qw_new = self.get_critic_value(all_state)
 
-            print(qw_new)
-            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns.reshape(-1, 1)})
+            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns})
             target = np.mean((returns - qw_new) ** 2)
             self.sess.run([self.actor_train], feed_dict={self.input_state: all_state, self.actions_taken: all_action, self.target: target})
 
@@ -231,9 +234,9 @@ def main():
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = A2C(env, action_selection, episode_max_length=env.spec.timestep_limit)
+        agent = A2CDiscrete(env, action_selection, episode_max_length=env.spec.timestep_limit)
     elif isinstance(env.action_space, Box):
-        action_selection = ProbabilisticCategoricalActionSelection()
+        action_selection = ContinuousActionSelection()
         agent = A2CContinuous(env, action_selection)
     else:
         raise NotImplementedError

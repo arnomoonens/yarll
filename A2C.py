@@ -22,16 +22,17 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 
 class A2C(Learner):
     """Advantage Actor Critic"""
-    def __init__(self, env, action_selection, **usercfg):
+    def __init__(self, env, action_selection, monitor_dir, **usercfg):
         super(A2C, self).__init__(env, **usercfg)
         self.action_selection = action_selection
+        self.monitor_dir = monitor_dir
 
         self.config = dict(
             episode_max_length=env.spec.timestep_limit,
-            timesteps_per_batch=1000,
+            timesteps_per_batch=2000,
             trajectories_per_batch=10,
             batch_update="timesteps",
-            n_iter=200,
+            n_iter=400,
             gamma=0.99,
             actor_learning_rate=0.01,
             critic_learning_rate=0.05,
@@ -41,6 +42,14 @@ class A2C(Learner):
         )
         self.config.update(usercfg)
         self.build_networks()
+        self.rewards = tf.placeholder("float", name="Rewards")
+        self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
+        summary_actor_loss = tf.summary.scalar("Actor_loss", self.summary_actor_loss)
+        summary_critic_loss = tf.summary.scalar("Critic_loss", self.summary_critic_loss)
+        summary_rewards = tf.summary.scalar("Rewards", self.rewards)
+        summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
+        self.summary_op = tf.summary.merge([summary_actor_loss, summary_critic_loss, summary_rewards, summary_episode_lengths])
+        self.writer = tf.summary.FileWriter(self.monitor_dir + '/summaries', self.sess.graph)
         return
 
     def get_critic_value(self, state):
@@ -63,18 +72,29 @@ class A2C(Learner):
             returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
             qw_new = self.get_critic_value(all_state)
 
-            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns})  # Reshape or not?
-            self.sess.run([self.actor_train], feed_dict={self.actor_input: all_state, self.actions_taken: all_action, self.critic_feedback: qw_new, self.critic_rewards: returns})
-
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
+
+            results = self.sess.run([self.summary_op, self.critic_train, self.actor_train], feed_dict={
+                                    self.critic_state_in: all_state,
+                                    self.critic_target: returns,
+                                    self.actor_input: all_state,
+                                    self.actions_taken: all_action,
+                                    self.critic_feedback: qw_new,
+                                    self.critic_rewards: returns,
+                                    self.rewards: np.mean(episode_rewards),
+                                    self.episode_lengths: np.mean(episode_lengths)
+                                    })
+            self.writer.add_summary(results[0], iteration)
+            self.writer.flush()
+
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
 
 class A2CDiscrete(A2C):
     """A2C learner for a discrete action space"""
-    def __init__(self, env, action_selection):
+    def __init__(self, env, action_selection, monitor_dir, **usercfg):
         self.nA = env.action_space.n
-        super(A2CDiscrete, self).__init__(env, action_selection)
+        super(A2CDiscrete, self).__init__(env, action_selection, monitor_dir, **usercfg)
 
     def build_networks(self):
         self.actor_input = tf.placeholder(tf.float32, name='actor_input')
@@ -95,9 +115,10 @@ class A2CDiscrete(A2C):
         eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
             * (self.critic_rewards - self.critic_feedback)
         loss = -tf.reduce_mean(eligibility)
-        loss = tf.Print(loss, [loss], message='Actor loss=')
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['actor_learning_rate'], decay=0.9, epsilon=1e-9)
-        self.actor_train = optimizer.minimize(loss)
+        # loss = tf.Print(loss, [loss], message='Actor loss=')
+        self.summary_actor_loss = loss
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.config['actor_learning_rate'])
+        self.actor_train = self.optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
         self.critic_state_in = tf.placeholder("float", [None, self.nO], name='critic_state_in')
         self.critic_target = tf.placeholder("float", name="critic_target")
@@ -111,9 +132,10 @@ class A2CDiscrete(A2C):
         critic_b1 = tf.Variable(tf.zeros([1]), name='b1')
         self.critic_value = tf.matmul(critic_L1, critic_W1) + critic_b1[None, :]
         critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_value))
-        critic_loss = tf.Print(critic_loss, [critic_loss], message='Critic loss=')
-        critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['critic_learning_rate'], decay=0.9, epsilon=1e-9)
-        self.critic_train = critic_optimizer.minimize(critic_loss)
+        # critic_loss = tf.Print(critic_loss, [critic_loss], message='Critic loss=')
+        self.summary_critic_loss = critic_loss
+        critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config['critic_learning_rate'])
+        self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
 
         init = tf.global_variables_initializer()
 
@@ -130,31 +152,27 @@ class A2CDiscrete(A2C):
 
 class A2CContinuous(A2C):
     """Advantage Actor Critic for continuous action spaces."""
-    def __init__(self, env, action_selection, **usercfg):
-        super(A2CContinuous, self).__init__(env, action_selection, **usercfg)
+    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+        super(A2CContinuous, self).__init__(env, action_selection, monitor_dir, **usercfg)
 
     def build_networks(self):
-        self.input_state = tf.placeholder(tf.float32, name='input_state')
+        self.input_state = tf.placeholder(tf.float32, [None, self.ob_space.shape[0]], name='input_state')
         self.actions_taken = tf.placeholder(tf.float32, name='actions_taken')
-        self.target = tf.placeholder(tf.float32, name='target')
+        self.critic_feedback = tf.placeholder(tf.float32, name='critic_feedback')
+        self.critic_rewards = tf.placeholder(tf.float32, name='critic_rewards')
 
-        mu_W0 = tf.Variable(tf.random_normal([self.nO, self.config['actor_n_hidden']]), name='W0')
-        mu_b0 = tf.Variable(tf.zeros([self.config['actor_n_hidden']]), name='b0')
-        mu_L1 = tf.tanh(tf.matmul(self.input_state, mu_W0) + mu_b0[None, :], name='L1')
-
-        mu_W1 = tf.Variable(tf.random_normal([self.config['actor_n_hidden'], 1]), name='W1')
-        mu_b1 = tf.Variable(tf.zeros([1]), name='b1')
-        mu = tf.matmul(mu_L1, mu_W1) + mu_b1[None, :]
+        mu = tf.contrib.layers.fully_connected(
+            inputs=tf.expand_dims(self.input_state, 0),
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.zeros_initializer)
         mu = tf.squeeze(mu)
 
-        # Actor network
-        sigma_W0 = tf.Variable(tf.random_normal([self.nO, self.config['actor_n_hidden']]), name='W0')
-        sigma_b0 = tf.Variable(tf.zeros([self.config['actor_n_hidden']]), name='b0')
-        sigma_L1 = tf.tanh(tf.matmul(self.input_state, sigma_W0) + sigma_b0[None, :], name='L1')
-
-        sigma_W1 = tf.Variable(tf.random_normal([self.config['actor_n_hidden'], 1]), name='W1')
-        sigma_b1 = tf.Variable(tf.zeros([1]), name='b1')
-        sigma = tf.matmul(sigma_L1, sigma_W1) + sigma_b1[None, :]
+        sigma = tf.contrib.layers.fully_connected(
+            inputs=tf.expand_dims(self.input_state, 0),
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.zeros_initializer)
         sigma = tf.squeeze(sigma)
         sigma = tf.nn.softplus(sigma) + 1e-5
 
@@ -163,9 +181,10 @@ class A2CContinuous(A2C):
         self.action = tf.clip_by_value(self.action, self.action_space.low[0], self.action_space.high[0])
 
         # Loss and train op
-        self.loss = -self.normal_dist.log_prob(self.actions_taken) * self.target
+        self.loss = -self.normal_dist.log_prob(tf.squeeze(self.actions_taken)) * (self.critic_rewards - self.critic_feedback)
         # Add cross entropy cost to encourage exploration
         self.loss -= 1e-1 * self.normal_dist.entropy()
+        self.summary_actor_loss = tf.reduce_mean(self.loss)
 
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.config['actor_learning_rate'])
         self.actor_train = self.optimizer.minimize(
@@ -185,6 +204,7 @@ class A2CContinuous(A2C):
 
         critic_loss = tf.reduce_mean(tf.squared_difference(self.critic_target, self.critic_value))
         # critic_loss = tf.Print(critic_loss, [critic_loss], message='Critic loss=')
+        self.summary_critic_loss = critic_loss
         critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config['critic_learning_rate'])
         self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
 
@@ -213,12 +233,22 @@ class A2CContinuous(A2C):
             returns = np.concatenate([discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories])
             qw_new = self.get_critic_value(all_state)
 
-            self.sess.run([self.critic_train], feed_dict={self.critic_state_in: all_state, self.critic_target: returns})
-            target = np.mean((returns - qw_new) ** 2)
-            self.sess.run([self.actor_train], feed_dict={self.input_state: all_state, self.actions_taken: all_action, self.target: target})
-
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
+
+            results = self.sess.run([self.summary_op, self.critic_train, self.actor_train], feed_dict={
+                                    self.critic_state_in: all_state,
+                                    self.critic_target: returns,
+                                    self.input_state: all_state,
+                                    self.actions_taken: all_action,
+                                    self.critic_feedback: qw_new,
+                                    self.critic_rewards: returns,
+                                    self.rewards: np.mean(episode_rewards),
+                                    self.episode_lengths: np.mean(episode_lengths)
+                                    })
+            self.writer.add_summary(results[0], iteration)
+            self.writer.flush()
+
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
             # get_trajectory(self, env, config["episode_max_length"], render=True)
 
@@ -234,10 +264,10 @@ def main():
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = A2CDiscrete(env, action_selection, episode_max_length=env.spec.timestep_limit)
+        agent = A2CDiscrete(env, action_selection, args.monitor_path)
     elif isinstance(env.action_space, Box):
         action_selection = ContinuousActionSelection()
-        agent = A2CContinuous(env, action_selection)
+        agent = A2CContinuous(env, action_selection, args.monitor_path)
     else:
         raise NotImplementedError
     try:

@@ -33,7 +33,7 @@ class REINFORCELearner(Learner):
             timesteps_per_batch=10000,
             n_iter=100,
             gamma=1.0,
-            learning_rate=0.05,
+            learning_rate=0.01,
             n_hidden_units=20,
             repeat_n_actions=1
         )
@@ -41,11 +41,10 @@ class REINFORCELearner(Learner):
         self.build_network()
         self.rewards = tf.placeholder("float", name="Rewards")
         self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
-        # summary_loss = tf.summary.scalar("Loss", self.loss)
+        summary_loss = tf.summary.scalar("Loss", self.summary_loss)
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
-        # self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
-        self.summary_op = tf.summary.merge([summary_rewards, summary_episode_lengths])
+        self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
         self.writer = tf.summary.FileWriter(self.monitor_dir + '/summaries', self.sess.graph)
 
     def act(self, ob):
@@ -91,9 +90,8 @@ class REINFORCELearner(Learner):
 class REINFORCELearnerDiscrete(REINFORCELearner):
 
     def __init__(self, env, action_selection, monitor_dir, **usercfg):
+        self.nA = env.action_space.n
         super(REINFORCELearnerDiscrete, self).__init__(env, action_selection, monitor_dir, **usercfg)
-        self.nA = self.action_space.n
-        self.build_network()
 
     def build_network(self):
         # Symbolic variables for observation, action, and advantage
@@ -113,9 +111,10 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         good_probabilities = tf.reduce_sum(tf.mul(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         eligibility = tf.Print(eligibility, [eligibility], first_n=5)
-        self.loss = -tf.reduce_sum(eligibility)
+        loss = -tf.reduce_sum(eligibility)
+        self.summary_loss = loss
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
-        self.train = optimizer.minimize(self.loss)
+        self.train = optimizer.minimize(loss)
 
         init = tf.global_variables_initializer()
 
@@ -132,7 +131,6 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
 class REINFORCELearnerContinuous(REINFORCELearner):
     def __init__(self, env, action_selection, monitor_dir, **usercfg):
         super(REINFORCELearnerContinuous, self).__init__(env, action_selection, monitor_dir, **usercfg)
-        self.build_network()
 
     def build_network(self):
         # Symbolic variables for observation, action, and advantage
@@ -163,12 +161,14 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample_n(1)
         self.action = tf.clip_by_value(self.action, self.env.action_space.low[0], self.env.action_space.high[0])
-        self.loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
+        loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
         # Add cross entropy cost to encourage exploration
-        self.loss -= 1e-1 * self.normal_dist.entropy()
-
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
-        self.train = optimizer.minimize(self.loss)
+        loss -= 1e-1 * self.normal_dist.entropy()
+        loss = tf.clip_by_value(loss, -1e10, 1e10)
+        self.summary_loss = tf.reduce_mean(loss)
+        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.config['learning_rate'])
+        self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
         init = tf.global_variables_initializer()
 
@@ -233,6 +233,7 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         good_probabilities = tf.reduce_sum(tf.mul(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         loss = -tf.reduce_sum(eligibility)
+        self.summary_loss = loss
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
 

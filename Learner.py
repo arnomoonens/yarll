@@ -15,33 +15,32 @@ class Learner(object):
             n_iter=100)
         self.config.update(usercfg)
 
-    def act(self, state):
+    def act(self, state, task=0):
         """Return which action to take based on the given state"""
         pass
 
-    def reset_env(self):
+    def reset_env(self, env):
         """Reset the current environment and get the initial state"""
-        return self.env.reset()
+        return env.reset()
 
-    def step_env(self, action):
+    def step_env(self, env, action):
         """Execute an action in the current environment."""
-        return self.env.step(action)
+        return env.step(action)
 
-    def get_trajectory(self, render=False):
+    def get_trajectory(self, env, task=None, render=False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
         """
-        env = self.env
-        state = self.reset_env()
+        state = self.reset_env(env)
         states = []
         actions = []
         rewards = []
         for _ in range(self.config['episode_max_length']):
-            action = self.act(state)
+            action = self.act(state, task)
             states.append(state)
             for _ in range(self.config['repeat_n_actions']):
-                state, rew, done, _ = self.step_env(action)
+                state, rew, done, _ = self.step_env(env, action)
                 if done:  # Don't continue if episode has already ended
                     break
             actions.append(action)
@@ -56,15 +55,17 @@ class Learner(object):
                 "done": done  # Tajectory ended because a terminal state was reached
                 }
 
-    def get_trajectories(self):
+    def get_trajectories(self, env=None, task=None):
         """Generate trajectories until a certain number of timesteps or trajectories."""
+        if env is None:
+            env = self.env
         use_timesteps = self.config["batch_update"] == "timesteps"
         trajectories = []
         timesteps_total = 0
         i = 0
         while (use_timesteps and timesteps_total < self.config["timesteps_per_batch"]) or (not(use_timesteps) and i < self.config["trajectories_per_batch"]):
             i += 1
-            trajectory = self.get_trajectory()
+            trajectory = self.get_trajectory(env, task)
             trajectories.append(trajectory)
             timesteps_total += len(trajectory["reward"])
         return trajectories

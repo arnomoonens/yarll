@@ -47,7 +47,7 @@ class REINFORCELearner(Learner):
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
         self.writer = tf.summary.FileWriter(self.monitor_dir + '/summaries', self.sess.graph)
 
-    def act(self, ob):
+    def act(self, state, *args):
         """Choose an action."""
         pass
 
@@ -122,7 +122,7 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def act(self, state):
+    def act(self, state, *args):
         """Choose an action."""
         probs = self.sess.run([self.probs], feed_dict={self.state: [state]})[0][0]
         action = self.action_selection.select_action(probs)
@@ -176,7 +176,7 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def act(self, state):
+    def act(self, state, *args):
         """Choose an action."""
         action = self.sess.run([self.action], feed_dict={self.state: [state]})[0]
         return action

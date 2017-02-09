@@ -13,24 +13,61 @@ from gym.spaces import Discrete, Box
 from Learner import Learner
 from utils import discount_rewards
 from ActionSelection import ProbabilisticCategoricalActionSelection
+from Reporter import Reporter
+
+def create_accumulative_gradients_op(net_vars, identifier):
+    """Make an operation to create accumulative gradients"""
+    accum_grads = []
+    with tf.name_scope(name="create_accum_%d" % identifier, values=net_vars):
+        for var in net_vars:
+            zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
+            name = var.name.replace(":", "_") + "_accum_grad"
+            accum_grad = tf.Variable(zero, name=name, trainable=False)
+            accum_grads.append(accum_grad)
+        return accum_grads
+
+def add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier):
+    """Make an operation to add a gradient to the total"""
+    accum_grad_ops = []
+    with tf.name_scope(name="grad_ops_%d" % identifier, values=net_vars):
+        grads = tf.gradients(loss, net_vars, gate_gradients=False,
+                             aggregation_method=None,
+                             colocate_gradients_with_ops=False)
+    with tf.name_scope(name="accum_ops_%d" % identifier, values=[]):
+        for (grad, var, accum_grad) in zip(grads, net_vars, accum_grads):
+            name = var.name.replace(":", "_") + "_accum_grad_ops"
+            accum_ops = tf.assign_add(accum_grad, grad, name=name)
+            accum_grad_ops.append(accum_ops)
+        return tf.group(*accum_grad_ops, name="accum_group_%d" % identifier)
+
+def reset_accumulative_gradients_op(net_vars, accum_grads, identifier):
+    """Make an operation to reset the accumulation to zero"""
+    reset_grad_ops = []
+    with tf.name_scope(name="reset_grad_ops_%d" % identifier, values=net_vars):
+        for (var, accum_grad) in zip(net_vars, accum_grads):
+            zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
+            name = var.name.replace(":", "_") + "_reset_grad_ops"
+            reset_ops = tf.assign(accum_grad, zero, name=name)
+            reset_grad_ops.append(reset_ops)
+        return tf.group(*reset_grad_ops, name="reset_accum_group_%d" % identifier)
 
 class KnowledgeTransferLearner(Learner):
     """Learner for variations of a task."""
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
-        super(KnowledgeTransferLearner, self).__init__(env, **usercfg)
+    def __init__(self, envs, action_selection, monitor_dir, **usercfg):
+        super(KnowledgeTransferLearner, self).__init__(envs[0], **usercfg)
+        self.envs = envs
         self.action_selection = action_selection
         self.monitor_dir = monitor_dir
+        self.nA = envs[0].action_space.n
         self.config = dict(
-            episode_max_length=env.spec.timestep_limit,
+            episode_max_length=envs[0].spec.timestep_limit,
             timesteps_per_batch=2000,
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=400,
             gamma=0.99,
-            actor_learning_rate=0.01,
-            critic_learning_rate=0.05,
-            actor_n_hidden=20,
-            critic_n_hidden=20,
+            learning_rate=0.01,
+            n_hidden_units=20,
             repeat_n_actions=1,
             n_task_variations=3,
             n_sparse_units=10
@@ -39,6 +76,8 @@ class KnowledgeTransferLearner(Learner):
         self.build_networks()
 
     def build_networks(self):
+        self.sess = tf.Session()
+
         self.state = tf.placeholder(tf.float32, name='state')
         self.action_taken = tf.placeholder(tf.float32, name='action_taken')
         self.advantage = tf.placeholder(tf.float32, name='advantage')
@@ -48,26 +87,44 @@ class KnowledgeTransferLearner(Learner):
         # Action probabilities
         L1 = tf.tanh(tf.matmul(self.state, W0) + b0[None, :])
 
-        knowledge_base = tf.Variable(tf.random.normal([self.config['n_hidden_units'], self.config['n_sparse_units']]))
-        sparse_representations = [tf.Variable(tf.random.normal([self.config['n_sparse_units'], self.nA])) for _ in range(self.config['n_task_variations'])]
+        knowledge_base = tf.Variable(tf.random_normal([self.config['n_hidden_units'], self.config['n_sparse_units']]))
 
-        variation_probs = [tf.nn.softmax(tf.matmul(L1, tf.matmul(knowledge_base, s))) for s in sparse_representations]
+        self.shared_vars = [W0, b0, knowledge_base]
 
+        # Every task has its own sparse representation
+        sparse_representations = [tf.Variable(tf.random_normal([self.config['n_sparse_units'], self.nA])) for _ in range(self.config['n_task_variations'])]
+
+        self.variation_probs = [tf.nn.softmax(tf.matmul(L1, tf.matmul(knowledge_base, s))) for s in sparse_representations]
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        net_vars = self.shared_vars + sparse_representations
+        self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
+
+        # self.writers = []
         self.losses = []
-        self.trainers = []
-        for probabilities in variation_probs:
+        for i, probabilities in enumerate(self.variation_probs):
             good_probabilities = tf.reduce_sum(tf.mul(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
             # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
             loss = -tf.reduce_sum(eligibility)
             self.losses.append(loss)
-            optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
-            self.trainers.append(optimizer.minimize(loss))
+            # writer = tf.summary.FileWriter(self.monitor_dir + '/task' + str(i), self.sess.graph)
+
+        # An add op for every task & its loss
+        # add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier)
+        self.add_accum_grads = [add_accumulative_gradients_op(
+            self.shared_vars + [sparse_representations[i]],
+            self.accum_grads,
+            loss,
+            i)
+            for i, loss in enumerate(self.losses)]
+
+        self.apply_gradients = self.optimizer.apply_gradients(
+            zip(self.accum_grads, net_vars))
+        self.reset_accum_grads = reset_accumulative_gradients_op(net_vars, self.accum_grads, 1)
 
         init = tf.global_variables_initializer()
 
         # Launch the graph.
-        self.sess = tf.Session()
         self.sess.run(init)
 
     def act(self, state, task):
@@ -76,65 +133,83 @@ class KnowledgeTransferLearner(Learner):
         action = self.action_selection.select_action(probs)
         return action
 
-    # TODO: Need to implement:
-    # - Collect trajectories for each task
-    # - Compute the loss for each task C
-    # - Compute the gradients
-    # - Sum gradients
-    # - Apply gradients
-    # Back to start
     def learn(self):
         """Run learning algorithm"""
-        # reporter = Reporter()
+        reporter = Reporter()
         config = self.config
-        total_n_trajectories = 0
+        total_n_trajectories = np.zeros(len(self.envs))
         for iteration in range(config["n_iter"]):
-            # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories()
-            total_n_trajectories += len(trajectories)
-            all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
-            # Compute discounted sums of rewards
-            rets = [discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
-            max_len = max(len(ret) for ret in rets)
-            padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
-            # Compute time-dependent baseline
-            baseline = np.mean(padded_rets, axis=0)
-            # Compute advantage function
-            advs = [ret - baseline[:len(ret)] for ret in rets]
-            all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
-            all_adv = np.concatenate(advs)
-            # Do policy gradient update step
-            episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
-            episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            result = self.sess.run([self.summary_op, self.train], feed_dict={
-                                   self.state: all_state,
-                                   self.a_n: all_action,
-                                   self.adv_n: all_adv,
-                                   self.episode_lengths: np.mean(episode_lengths),
-                                   self.rewards: np.mean(episode_rewards)
-                                   })
-            self.writer.add_summary(result[0], iteration)
-            self.writer.flush()
+            self.sess.run([self.reset_accum_grads])
+            for i, env in enumerate(self.envs):
+                # Collect trajectories until we get timesteps_per_batch total timesteps
+                trajectories = self.get_trajectories(env, task=i)
+                total_n_trajectories[i] += len(trajectories)
+                all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
+                # Compute discounted sums of rewards
+                rets = [discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
+                max_len = max(len(ret) for ret in rets)
+                padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
+                # Compute time-dependent baseline
+                baseline = np.mean(padded_rets, axis=0)
+                # Compute advantage function
+                advs = [ret - baseline[:len(ret)] for ret in rets]
+                all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
+                all_adv = np.concatenate(advs)
+                # Do policy gradient update step
+                episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
+                episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
+                self.sess.run([self.add_accum_grads[i]], feed_dict={
+                    self.state: all_state,
+                    self.action_taken: all_action,
+                    self.advantage: all_adv
+                })
+                # summary = self.sess.run([self.master.summary_op], feed_dict={
+                #     self.reward: reward
+                #     # self.master.episode_length: trajectory["steps"]
+                # })
+
+                # self.writer.add_summary(summary[0], iteration)
+                # self.writer.flush()
+                print("Task:", i)
+                reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories[i])
+
+                self.sess.run([self.apply_gradients])
+                # self.writer.add_summary(result[0], iteration)
+                # self.writer.flush()
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+
+def make_envs(env_name):
+    """Make variations of the same game."""
+    envs = []
+    envs.append(gym.make(env_name))  # First one has the standard behaviour
+    env = gym.make(env_name)
+    env.length = 0.25  # 5 times longer
+    env.masspole = 0.5  # 5 times heavier
+    envs.append(env)
+    env = gym.make(env_name)
+    env.length = 0.025  # 2 times shorter
+    env.masspole = 0.05  # 2 times lighter
+    envs.append(env)
+    return envs
 
 def main():
     try:
         args = parser.parse_args()
     except:
         sys.exit()
-    env = gym.make(args.environment)
-    if isinstance(env.action_space, Discrete):
+    if args.environment != "CartPole-v0":
+        raise NotImplementedError("Only CartPole-v0 is supported right now")
+    envs = make_envs(args.environment)
+    if isinstance(envs[0].action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = KnowledgeTransferLearner(env, action_selection, args.monitor_path)
-    elif isinstance(env.action_space, Box):
-        raise NotImplementedError
+        agent = KnowledgeTransferLearner(envs, action_selection, args.monitor_path)
     else:
-        raise NotImplementedError
+        raise NotImplementedError("Only environments with a discrete action space are supported right now.")
     try:
-        env.monitor.start(args.monitor_path, force=True)
+        # env.monitor.start(args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

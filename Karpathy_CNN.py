@@ -20,7 +20,7 @@ logging.getLogger().setLevel("INFO")
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
 
-def choose_action(output, n_actions, temperature=1.0):
+def random_with_probability(output, n_actions, temperature=1.0):
     # total = sum([np.exp(float(o) / temperature) for o in output])
     # probs = [np.exp(float(o) / temperature) / total for o in output]
     probs = output / np.sum(output)
@@ -137,9 +137,9 @@ class KPCNNLearner(Learner):
             reset_grad_ops.append(reset_ops)
         return tf.group(*reset_grad_ops, name="reset_accum_group")
 
-    def act(self, state):
+    def choose_action(self, state):
         nn_outputs = self.session.run([self.output], feed_dict={self.state: [state]})[0][0]
-        action, probabilities = choose_action(nn_outputs, self.nA)
+        action, probabilities = random_with_probability(nn_outputs, self.nA)
         return action, probabilities
 
     def get_trajectory(self, env, episode_max_length, render=False):
@@ -156,7 +156,7 @@ class KPCNNLearner(Learner):
         episode_probabilities = []
         for _ in range(episode_max_length):
             delta = state - prev_state
-            action, probabilities = self.act(delta)
+            action, probabilities = self.choose_action(delta)
             states.append(delta)
             prev_state = state
             state, rew, done, _ = env.step(action)

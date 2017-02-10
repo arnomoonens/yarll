@@ -15,32 +15,32 @@ class Learner(object):
             n_iter=100)
         self.config.update(usercfg)
 
-    def act(self, state, task=0):
+    def choose_action(self, state, task=0):
         """Return which action to take based on the given state"""
         pass
 
-    def reset_env(self, env):
+    def reset_env(self):
         """Reset the current environment and get the initial state"""
-        return env.reset()
+        return self.env.reset()
 
-    def step_env(self, env, action):
+    def step_env(self, action):
         """Execute an action in the current environment."""
-        return env.step(action)
+        return self.env.step(action)
 
-    def get_trajectory(self, env, task=None, render=False):
+    def get_trajectory(self, render=False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
         """
-        state = self.reset_env(env)
+        state = self.reset_env()
         states = []
         actions = []
         rewards = []
         for _ in range(self.config['episode_max_length']):
-            action = self.act(state, task)
+            action = self.choose_action(state)
             states.append(state)
             for _ in range(self.config['repeat_n_actions']):
-                state, rew, done, _ = self.step_env(env, action)
+                state, rew, done, _ = self.step_env(action)
                 if done:  # Don't continue if episode has already ended
                     break
             actions.append(action)
@@ -48,24 +48,22 @@ class Learner(object):
             if done:
                 break
             if render:
-                env.render()
+                self.env.render()
         return {"reward": np.array(rewards),
                 "state": np.array(states),
                 "action": np.array(actions),
                 "done": done  # Tajectory ended because a terminal state was reached
                 }
 
-    def get_trajectories(self, env=None, task=None):
+    def get_trajectories(self):
         """Generate trajectories until a certain number of timesteps or trajectories."""
-        if env is None:
-            env = self.env
         use_timesteps = self.config["batch_update"] == "timesteps"
         trajectories = []
         timesteps_total = 0
         i = 0
         while (use_timesteps and timesteps_total < self.config["timesteps_per_batch"]) or (not(use_timesteps) and i < self.config["trajectories_per_batch"]):
             i += 1
-            trajectory = self.get_trajectory(env, task)
+            trajectory = self.get_trajectory()
             trajectories.append(trajectory)
             timesteps_total += len(trajectory["reward"])
         return trajectories

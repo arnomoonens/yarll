@@ -143,7 +143,7 @@ class A2CDiscrete(A2C):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def act(self, state):
+    def choose_action(self, state):
         """Choose an action."""
         state = state.reshape(1, -1)
         prob = self.sess.run([self.prob_na], feed_dict={self.actor_input: state})[0][0]
@@ -214,7 +214,7 @@ class A2CContinuous(A2C):
         self.sess = tf.Session()
         self.sess.run(init)
 
-    def act(self, state):
+    def choose_action(self, state):
         """Choose an action."""
         return self.sess.run([self.action], feed_dict={self.input_state: [state]})[0]
 

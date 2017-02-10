@@ -51,6 +51,20 @@ def reset_accumulative_gradients_op(net_vars, accum_grads, identifier):
             reset_grad_ops.append(reset_ops)
         return tf.group(*reset_grad_ops, name="reset_accum_group_%d" % identifier)
 
+class TaskLearner(Learner):
+    """Learner for a specific environment and with its own action selection."""
+    def __init__(self, env, action_selection, probabilities_fetch, master, **usercfg):
+        super(TaskLearner, self).__init__(env, **usercfg)
+        self.action_selection = action_selection
+        self.probabilities_fetch = probabilities_fetch
+        self.master = master
+
+    def choose_action(self, state):
+        """Choose an action."""
+        probs = self.master.session.run([self.probabilities_fetch], feed_dict={self.master.state: [state]})[0][0]
+        action = self.action_selection.select_action(probs)
+        return action
+
 class KnowledgeTransferLearner(Learner):
     """Learner for variations of a task."""
     def __init__(self, envs, action_selection, monitor_dir, **usercfg):
@@ -74,9 +88,10 @@ class KnowledgeTransferLearner(Learner):
         )
         self.config.update(usercfg)
         self.build_networks()
+        self.task_learners = [TaskLearner(envs[i], action_selection, probs, self, **self.config) for i, probs in enumerate(self.variation_probs)]
 
     def build_networks(self):
-        self.sess = tf.Session()
+        self.session = tf.Session()
 
         self.state = tf.placeholder(tf.float32, name='state')
         self.action_taken = tf.placeholder(tf.float32, name='action_taken')
@@ -107,7 +122,7 @@ class KnowledgeTransferLearner(Learner):
             # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
             loss = -tf.reduce_sum(eligibility)
             self.losses.append(loss)
-            # writer = tf.summary.FileWriter(self.monitor_dir + '/task' + str(i), self.sess.graph)
+            # writer = tf.summary.FileWriter(self.monitor_dir + '/task' + str(i), self.session.graph)
 
         # An add op for every task & its loss
         # add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier)
@@ -125,13 +140,7 @@ class KnowledgeTransferLearner(Learner):
         init = tf.global_variables_initializer()
 
         # Launch the graph.
-        self.sess.run(init)
-
-    def act(self, state, task):
-        """Choose an action."""
-        probs = self.sess.run([self.variation_probs[task]], feed_dict={self.state: [state]})[0][0]
-        action = self.action_selection.select_action(probs)
-        return action
+        self.session.run(init)
 
     def learn(self):
         """Run learning algorithm"""
@@ -139,10 +148,10 @@ class KnowledgeTransferLearner(Learner):
         config = self.config
         total_n_trajectories = np.zeros(len(self.envs))
         for iteration in range(config["n_iter"]):
-            self.sess.run([self.reset_accum_grads])
-            for i, env in enumerate(self.envs):
+            self.session.run([self.reset_accum_grads])
+            for i, learner in enumerate(self.task_learners):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
-                trajectories = self.get_trajectories(env, task=i)
+                trajectories = learner.get_trajectories()
                 total_n_trajectories[i] += len(trajectories)
                 all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
                 # Compute discounted sums of rewards
@@ -158,12 +167,12 @@ class KnowledgeTransferLearner(Learner):
                 # Do policy gradient update step
                 episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
                 episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-                self.sess.run([self.add_accum_grads[i]], feed_dict={
+                self.session.run([self.add_accum_grads[i]], feed_dict={
                     self.state: all_state,
                     self.action_taken: all_action,
                     self.advantage: all_adv
                 })
-                # summary = self.sess.run([self.master.summary_op], feed_dict={
+                # summary = self.session.run([self.master.summary_op], feed_dict={
                 #     self.reward: reward
                 #     # self.master.episode_length: trajectory["steps"]
                 # })
@@ -173,7 +182,7 @@ class KnowledgeTransferLearner(Learner):
                 print("Task:", i)
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories[i])
 
-                self.sess.run([self.apply_gradients])
+                self.session.run([self.apply_gradients])
                 # self.writer.add_summary(result[0], iteration)
                 # self.writer.flush()
 

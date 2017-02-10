@@ -45,9 +45,9 @@ class REINFORCELearner(Learner):
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
-        self.writer = tf.summary.FileWriter(self.monitor_dir + '/summaries', self.sess.graph)
+        self.writer = tf.summary.FileWriter(self.monitor_dir + '/summaries', self.session.graph)
 
-    def act(self, state, *args):
+    def choose_action(self, state, *args):
         """Choose an action."""
         pass
 
@@ -74,7 +74,7 @@ class REINFORCELearner(Learner):
             # Do policy gradient update step
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            result = self.sess.run([self.summary_op, self.train], feed_dict={
+            result = self.session.run([self.summary_op, self.train], feed_dict={
                                    self.state: all_state,
                                    self.a_n: all_action,
                                    self.adv_n: all_adv,
@@ -119,12 +119,12 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         init = tf.global_variables_initializer()
 
         # Launch the graph.
-        self.sess = tf.Session()
-        self.sess.run(init)
+        self.session = tf.Session()
+        self.session.run(init)
 
-    def act(self, state, *args):
+    def choose_action(self, state):
         """Choose an action."""
-        probs = self.sess.run([self.probs], feed_dict={self.state: [state]})[0][0]
+        probs = self.session.run([self.probs], feed_dict={self.state: [state]})[0][0]
         action = self.action_selection.select_action(probs)
         return action
 
@@ -173,12 +173,12 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         init = tf.global_variables_initializer()
 
         # Launch the graph.
-        self.sess = tf.Session()
-        self.sess.run(init)
+        self.session = tf.Session()
+        self.session.run(init)
 
-    def act(self, state, *args):
+    def choose_action(self, state):
         """Choose an action."""
-        action = self.sess.run([self.action], feed_dict={self.state: [state]})[0]
+        action = self.session.run([self.action], feed_dict={self.state: [state]})[0]
         return action
 
 class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
@@ -240,8 +240,8 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         init = tf.global_variables_initializer()
 
         # Launch the graph.
-        self.sess = tf.Session()
-        self.sess.run(init)
+        self.session = tf.Session()
+        self.session.run(init)
 
 def main():
     if(len(sys.argv) < 3):

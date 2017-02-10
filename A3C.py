@@ -219,7 +219,7 @@ class A3CThread(Thread):
         actions = []
         rewards = []
         for i in range(episode_max_length):
-            action = self.act(state)  # Predict the next action (using a neural network) depending on the current state
+            action = self.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
             states.append(state.flatten())
             state, reward, done, _ = self.env.step(action)
             reward = np.clip(reward, -1, 1)  # Clip reward
@@ -286,7 +286,7 @@ class A3CThreadDiscrete(A3CThread):
         self.actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config['actor_n_hidden'], scope="local_actor_net")
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net")
 
-    def act(self, state):
+    def choose_action(self, state):
         """Choose an action."""
         prob = self.master.session.run([self.actor_net.prob_na], feed_dict={self.actor_net.state: [state]})[0][0]
         action = self.master.action_selection.select_action(prob)
@@ -305,7 +305,7 @@ class A3CThreadContinuous(A3CThread):
         self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.master.config['actor_n_hidden'], scope="local_actor_net")
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config['critic_n_hidden'], scope="local_critic_net")
 
-    def act(self, state):
+    def choose_action(self, state):
         """Choose an action."""
         action = self.master.session.run([self.actor_net.action], feed_dict={self.actor_net.state: [state]})[0]
         return action

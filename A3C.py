@@ -15,6 +15,7 @@ from gym.spaces import Discrete, Box
 from Learner import Learner
 from utils import discount_rewards
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
+from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_gradients_op
 
 logging.getLogger().setLevel("INFO")
 
@@ -136,15 +137,15 @@ class A3CThread(Thread):
         # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(self.master.monitor_dir + '/thread' + str(self.thread_id), self.master.session.graph)
 
-        self.actor_sync_net = self.sync_gradients_op(master.shared_actor_net, self.actor_net.vars)
-        self.actor_create_ag = self.create_accumulative_gradients_op(self.actor_net.vars)
-        self.actor_add_ag = self.add_accumulative_gradients_op(self.actor_net.vars, self.actor_create_ag, self.actor_net.loss)
-        self.actor_reset_ag = self.reset_accumulative_gradients_op(self.actor_net.vars, self.actor_create_ag)
+        self.actor_sync_net = sync_gradients_op(master.shared_actor_net, self.actor_net.vars, self.thread_id)
+        self.actor_create_ag = create_accumulative_gradients_op(self.actor_net.vars, self.thread_id)
+        self.actor_add_ag = add_accumulative_gradients_op(self.actor_net.vars, self.actor_create_ag, self.actor_net.loss, self.thread_id)
+        self.actor_reset_ag = reset_accumulative_gradients_op(self.actor_net.vars, self.actor_create_ag, self.thread_id)
 
-        self.critic_sync_net = self.sync_gradients_op(master.shared_critic_net, self.critic_net.vars)
-        self.critic_create_ag = self.create_accumulative_gradients_op(self.critic_net.vars)
-        self.critic_add_ag = self.add_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.critic_net.loss)
-        self.critic_reset_ag = self.reset_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag)
+        self.critic_sync_net = sync_gradients_op(master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        self.critic_create_ag = create_accumulative_gradients_op(self.critic_net.vars, self.thread_id)
+        self.critic_add_ag = add_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.critic_net.loss, self.thread_id)
+        self.critic_reset_ag = reset_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.thread_id)
 
         # Clipped gradients
         gradient_clip_value = self.master.config['gradient_clip_value']
@@ -160,51 +161,6 @@ class A3CThread(Thread):
         #     zip(self.actor_create_ag, master.shared_actor_net.vars), global_step=master.global_step)
         # self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
         #     zip(self.critic_create_ag, master.shared_critic_net.vars), global_step=master.global_step)
-
-    def create_accumulative_gradients_op(self, net_vars):
-        """Make an operation to create accumulative gradients"""
-        accum_grads = []
-        with tf.name_scope(name="create_accum_%d" % self.thread_id, values=net_vars):
-            for var in net_vars:
-                zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
-                name = var.name.replace(":", "_") + "_accum_grad"
-                accum_grad = tf.Variable(zero, name=name, trainable=False)
-                accum_grads.append(accum_grad)
-            return accum_grads
-
-    def add_accumulative_gradients_op(self, net_vars, accum_grads, loss):
-        """Make an operation to add a gradient to the total"""
-        accum_grad_ops = []
-        with tf.name_scope(name="grad_ops_%d" % self.thread_id, values=net_vars):
-            grads = tf.gradients(loss, net_vars, gate_gradients=False,
-                                 aggregation_method=None,
-                                 colocate_gradients_with_ops=False)
-        with tf.name_scope(name="accum_ops_%d" % self.thread_id, values=[]):
-            for (grad, var, accum_grad) in zip(grads, net_vars, accum_grads):
-                name = var.name.replace(":", "_") + "_accum_grad_ops"
-                accum_ops = tf.assign_add(accum_grad, grad, name=name)
-                accum_grad_ops.append(accum_ops)
-            return tf.group(*accum_grad_ops, name="accum_group_%d" % self.thread_id)
-
-    def reset_accumulative_gradients_op(self, net_vars, accum_grads):
-        """Make an operation to reset the accumulation to zero"""
-        reset_grad_ops = []
-        with tf.name_scope(name="reset_grad_ops_%d" % self.thread_id, values=net_vars):
-            for (var, accum_grad) in zip(net_vars, accum_grads):
-                zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
-                name = var.name.replace(":", "_") + "_reset_grad_ops"
-                reset_ops = tf.assign(accum_grad, zero, name=name)
-                reset_grad_ops.append(reset_ops)
-            return tf.group(*reset_grad_ops, name="reset_accum_group_%d" % self.thread_id)
-
-    def sync_gradients_op(self, source_net, local_net_vars):
-        """Make an operation to sync the gradients"""
-        sync_ops = []
-        with tf.name_scope(name="sync_ops_%d" % self.thread_id, values=[]):
-            for (target_var, source_var) in zip(local_net_vars, source_net.vars):
-                ops = tf.assign(target_var, source_var)
-                sync_ops.append(ops)
-            return tf.group(*sync_ops, name="sync_group_%d" % self.thread_id)
 
     def get_critic_value(self, state):
         return self.master.session.run([self.critic_net.value], feed_dict={self.critic_net.state: state})[0].flatten()

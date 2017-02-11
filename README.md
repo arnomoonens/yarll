@@ -6,6 +6,12 @@ This code is part of my master thesis at the VUB, Brussels.
 ## Status
 Currently studying and implementing the use of convolutional neural networks in deep learning algorithms.
 Different algorithms have already been implemented:
+- [Sarsa with with function approximation and eligibility traces](https://github.com/arnomoonens/DeepRL/blob/master/SarsaFA.py)
+- [REINFORCE](https://github.com/arnomoonens/DeepRL/blob/master/REINFORCE.py) (convolutional neural network part has not been tested yet)
+- [Karpathy's policy gradient algorithm](https://github.com/arnomoonens/DeepRL/blob/master/Karpathy.py) ([version using convolutional neural networks](https://github.com/arnomoonens/DeepRL/blob/master/Karpathy_CNN.py) has not been tested yet)
+- [Advantage Actor Critic](https://github.com/arnomoonens/DeepRL/blob/master/A2C.py)
+- [Asynchronous Advantage Actor Critic (A3C)](https://github.com/arnomoonens/DeepRL/blob/master/A3C.py)
+
 ### Sarsa + function apprixmation
 The following parts are combined to learn to act in the [Mountain Car environment](https://gym.openai.com/envs/MountainCar-v0):
 - Sarsa
@@ -53,10 +59,10 @@ pip install -r requirements.txt
 
 Then you can run the Sarsa + Function approximation using:
 ```
-python MountainCar.py <episodes_to_run> <monitor_target_directory>
+python SarsaFA.py <episodes_to_run> <monitor_target_directory>
 ```
 
-You can run the `REINFORCE`, `Karpathy`, `A2C` or `A3C` algorithm using:
+You can run the `REINFORCE`, `Karpathy`, `Karpathy_CNN`, `A2C` or `A3C` algorithm using:
 ```
 python <algorithm_name>.py <environment_name> <monitor_target_directory>
 ```

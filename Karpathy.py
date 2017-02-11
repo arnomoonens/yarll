@@ -168,7 +168,6 @@ def main():
     except:
         sys.exit()
     env = gym.make(args.environment)
-    print(env.action_space)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
         agent = KPLearner(env, episode_max_length=env.spec.timestep_limit)

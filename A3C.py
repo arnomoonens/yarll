@@ -199,10 +199,9 @@ class A3CThread(Thread):
         sess = self.master.session
         t = 1  # thread step counter
         while self.master.T < self.master.config['T_max']:
-            # Reset gradients: dθ←0 and dθv←0
-            # Synchronize thread-specific parameters θ' = θ and θ'v = θv
+            # Reset gradients: dθ = 0 and dθv = 0
             sess.run([self.actor_reset_ag, self.critic_reset_ag])
-            # sync variables
+            # Synchronize thread-specific parameters θ' = θ and θ'v = θv
             sess.run([self.actor_sync_net, self.critic_sync_net])
             trajectory = self.get_trajectory(self.master.config['episode_max_length'])
             reward = sum(trajectory['reward'])

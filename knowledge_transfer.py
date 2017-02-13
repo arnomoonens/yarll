@@ -147,7 +147,9 @@ class KnowledgeTransferLearner(Learner):
                 print("Task:", i)
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories[i])
 
-                self.session.run([self.apply_gradients])
+            # Apply accumulated gradient after all the gradients of each task are summed
+            self.session.run([self.apply_gradients])
+
                 # self.writer.add_summary(result[0], iteration)
                 # self.writer.flush()
 
@@ -175,7 +177,7 @@ def main():
     except:
         sys.exit()
     if args.environment != "CartPole-v0":
-        raise NotImplementedError("Only CartPole-v0 is supported right now")
+        raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
     envs = make_envs(args.environment)
     if isinstance(envs[0].action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()

@@ -25,7 +25,7 @@ def scale_state(state, O):
 def sigmoid(x):
     return 1.0 / (1.0 + np.exp(-x))
 
-def choose_action(output, n_actions, temperature=1.0):
+def random_with_probability(output, n_actions, temperature=1.0):
     # total = sum([np.exp(float(o) / temperature) for o in output])
     # probs = [np.exp(float(o) / temperature) / total for o in output]
     probs = output / np.sum(output)
@@ -57,9 +57,9 @@ class KPLearner(Learner):
         self.w1 = np.random.randn(self.nO, self.config['n_hidden_units']) / np.sqrt(self.config['n_hidden_units'])
         self.w2 = np.random.randn(self.config['n_hidden_units'], self.nA) / np.sqrt(self.nA)
 
-    def act(self, state):
+    def choose_action(self, state):
         x1, nn_outputs = self.forward_step(state)
-        action, probabilities = choose_action(nn_outputs, self.nA)
+        action, probabilities = random_with_probability(nn_outputs, self.nA)
         return action, probabilities, x1
 
     def forward_step(self, state):
@@ -90,7 +90,7 @@ class KPLearner(Learner):
         episode_probabilities = []
         x1s = []
         for _ in range(self.config['episode_max_length']):
-            action, probabilities, x1 = self.act(state)
+            action, probabilities, x1 = self.choose_action(state)
             x1s.append(x1)
             states.append(state)
             (state, rew, done, _) = env.step(action)

@@ -15,7 +15,7 @@ class Learner(object):
             n_iter=100)
         self.config.update(usercfg)
 
-    def act(self, state):
+    def choose_action(self, state, task=0):
         """Return which action to take based on the given state"""
         pass
 
@@ -32,13 +32,12 @@ class Learner(object):
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
         """
-        env = self.env
         state = self.reset_env()
         states = []
         actions = []
         rewards = []
-        for _ in range(self.config['episode_max_length']):
-            action = self.act(state)
+        for i in range(self.config['episode_max_length']):
+            action = self.choose_action(state)
             states.append(state)
             for _ in range(self.config['repeat_n_actions']):
                 state, rew, done, _ = self.step_env(action)
@@ -49,11 +48,12 @@ class Learner(object):
             if done:
                 break
             if render:
-                env.render()
+                self.env.render()
         return {"reward": np.array(rewards),
                 "state": np.array(states),
                 "action": np.array(actions),
-                "done": done  # Tajectory ended because a terminal state was reached
+                "done": done,  # Tajectory ended because a terminal state was reached
+                "steps": i + 1
                 }
 
     def get_trajectories(self):

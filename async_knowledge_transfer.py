@@ -32,6 +32,9 @@ class AKTThread(Thread):
         self.session = self.master.session
         self.task_learner = TaskLearner(env, self.master.action_selection, self.probabilities, self, **self.master.config)
 
+        # Write the summary of each thread in a different directory
+        self.writer = tf.summary.FileWriter(self.master.monitor_dir + '/thread' + str(self.thread_id), self.master.session.graph)
+
     def build_networks(self):
         self.sparse_representation = tf.Variable(tf.random_normal([self.master.config['n_sparse_units'], self.master.nA]))
         self.probabilities = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
@@ -48,6 +51,10 @@ class AKTThread(Thread):
 
     def run(self):
         """Run learning algorithm"""
+        self.learn1()
+
+    def learn1(self):
+        """Learn using updates like in the REINFORCE algorithm."""
         reporter = Reporter()
         config = self.master.config
         total_n_trajectories = 0
@@ -75,17 +82,51 @@ class AKTThread(Thread):
                 self.master.action_taken: all_action,
                 self.master.advantage: all_adv
             })
-            # summary = self.session.run([self.master.summary_op], feed_dict={
-            #     self.reward: reward
-            #     # self.master.episode_length: trajectory["steps"]
-            # })
-
-            # self.writer.add_summary(summary[0], iteration)
-            # self.writer.flush()
             print("Task:", self.thread_id)
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
 
             self.master.session.run([self.master.apply_gradients])
+
+    def learn2(self):
+        """Learn using updates like in the Karpathy algorithm."""
+        reporter = Reporter()
+        config = self.master.config
+        self.master.session.run([self.master.reset_accum_grads])
+
+        iteration = 0  # amount of batches processed
+        episode_nr = 0
+        mean_rewards = []
+        while True:  # Keep executing episodes
+            iteration += 1
+            trajectory = self.task_learner.get_trajectory()
+            reward = sum(trajectory['reward'])
+            # action_taken = (np.arange(self.master.nA) == trajectory['action'][:, None]).astype(np.float32)  # one-hot encoding
+            action_taken = trajectory['action']
+
+            discounted_episode_rewards = discount_rewards(trajectory['reward'], config['gamma'])
+            # standardize
+            discounted_episode_rewards -= np.mean(discounted_episode_rewards)
+            std = np.std(discounted_episode_rewards)
+            std = std if std > 0 else 1
+            discounted_episode_rewards /= std
+            # feedback = np.reshape(np.repeat(discounted_episode_rewards, self.master.nA), (len(discounted_episode_rewards), self.master.nA))
+            feedback = discounted_episode_rewards
+
+            results = self.master.session.run([self.loss, self.add_accum_grad], feed_dict={
+                             self.master.state: trajectory["state"],
+                             self.master.action_taken: action_taken,
+                             self.master.advantage: feedback
+            })
+            results = self.master.session.run([self.master.summary_op], feed_dict={
+                            self.master.loss: results[0],
+                            self.master.reward: reward,
+                            self.master.episode_length: trajectory["steps"]
+            })
+            self.writer.add_summary(results[0], iteration)
+            self.writer.flush()
+
+            self.master.session.run([self.master.apply_gradients])
+            self.master.session.run([self.master.reset_accum_grads])
 
 
 class AsyncKnowledgeTransferLearner(Learner):
@@ -103,7 +144,7 @@ class AsyncKnowledgeTransferLearner(Learner):
             batch_update="timesteps",
             n_iter=400,
             gamma=0.99,
-            learning_rate=0.01,
+            learning_rate=0.005,
             n_hidden_units=20,
             repeat_n_actions=1,
             n_task_variations=3,
@@ -116,6 +157,14 @@ class AsyncKnowledgeTransferLearner(Learner):
             allow_soft_placement=True))
 
         self.build_networks()
+
+        self.loss = tf.placeholder("float", name="loss")
+        loss_summary = tf.summary.scalar("Loss", self.loss)
+        self.reward = tf.placeholder("float", name="reward")
+        reward_summary = tf.summary.scalar("Reward", self.reward)
+        self.episode_length = tf.placeholder("float", name="episode_length")
+        episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length)
+        self.summary_op = tf.summary.merge([loss_summary, reward_summary, episode_length_summary])
 
         self.jobs = [self.make_thread(env, i) for i, env in enumerate(self.envs)]
 

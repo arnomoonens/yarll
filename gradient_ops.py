@@ -3,7 +3,7 @@
 
 import tensorflow as tf
 
-def create_accumulative_gradients_op(net_vars, identifier):
+def create_accumulative_gradients_op(net_vars, identifier=0):
     """Make an operation to create accumulative gradients"""
     accum_grads = []
     with tf.name_scope(name="create_accum_%d" % identifier, values=net_vars):
@@ -14,7 +14,7 @@ def create_accumulative_gradients_op(net_vars, identifier):
             accum_grads.append(accum_grad)
         return accum_grads
 
-def add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier):
+def add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier=0):
     """Make an operation to add a gradient to the total"""
     accum_grad_ops = []
     with tf.name_scope(name="grad_ops_%d" % identifier, values=net_vars):
@@ -28,7 +28,7 @@ def add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier):
             accum_grad_ops.append(accum_ops)
         return tf.group(*accum_grad_ops, name="accum_group_%d" % identifier)
 
-def reset_accumulative_gradients_op(net_vars, accum_grads, identifier):
+def reset_accumulative_gradients_op(net_vars, accum_grads, identifier=0):
     """Make an operation to reset the accumulation to zero"""
     reset_grad_ops = []
     with tf.name_scope(name="reset_grad_ops_%d" % identifier, values=net_vars):
@@ -39,7 +39,7 @@ def reset_accumulative_gradients_op(net_vars, accum_grads, identifier):
             reset_grad_ops.append(reset_ops)
         return tf.group(*reset_grad_ops, name="reset_accum_group_%d" % identifier)
 
-def sync_gradients_op(source_net, local_net_vars, identifier):
+def sync_gradients_op(source_net, local_net_vars, identifier=0):
     """Make an operation to sync the gradients"""
     sync_ops = []
     with tf.name_scope(name="sync_ops_%d" % identifier, values=[]):

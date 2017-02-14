@@ -36,7 +36,7 @@ class Learner(object):
         states = []
         actions = []
         rewards = []
-        for _ in range(self.config['episode_max_length']):
+        for i in range(self.config['episode_max_length']):
             action = self.choose_action(state)
             states.append(state)
             for _ in range(self.config['repeat_n_actions']):
@@ -52,7 +52,8 @@ class Learner(object):
         return {"reward": np.array(rewards),
                 "state": np.array(states),
                 "action": np.array(actions),
-                "done": done  # Tajectory ended because a terminal state was reached
+                "done": done,  # Tajectory ended because a terminal state was reached
+                "steps": i + 1
                 }
 
     def get_trajectories(self):

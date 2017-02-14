@@ -309,7 +309,6 @@ class A3CLearner(Learner):
 
         self.critic_loss = tf.placeholder("float", name="critic_loss")
         critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss)
-
         self.actor_loss = tf.placeholder("float", name="actor_loss")
         actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss)
         self.reward = tf.placeholder("float", name="reward")

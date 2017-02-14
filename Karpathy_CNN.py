@@ -15,6 +15,7 @@ from Learner import Learner
 from utils import discount_rewards, preprocess_image
 from Reporter import Reporter
 from ActionSelection import ProbabilisticCategoricalActionSelection
+from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
 logging.getLogger().setLevel("INFO")
 
@@ -92,9 +93,9 @@ class KPCNNLearner(Learner):
         self.feedback = tf.placeholder(tf.float32, shape=[None, self.nA], name="feedback")
         loss = tf.reduce_mean(tf.squared_difference(self.action_taken, self.output) * self.feedback)
 
-        self.create_accumulative_grads = self.create_accumulative_gradients_op(self.vars)
-        self.accumulate_grads = self.add_accumulative_gradients_op(self.vars, self.create_accumulative_grads, loss)
-        self.reset_accumulative_grads = self.reset_accumulative_gradients_op(self.vars, self.create_accumulative_grads)
+        self.create_accumulative_grads = create_accumulative_gradients_op(self.vars)
+        self.accumulate_grads = add_accumulative_gradients_op(self.vars, self.create_accumulative_grads, loss)
+        self.reset_accumulative_grads = reset_accumulative_gradients_op(self.vars, self.create_accumulative_grads)
 
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=self.config['decay_rate'], epsilon=1e-9)
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.create_accumulative_grads, self.vars))
@@ -104,38 +105,6 @@ class KPCNNLearner(Learner):
         # Launch the graph.
         self.session = tf.Session()
         self.session.run(init)
-
-    def create_accumulative_gradients_op(self, net_vars):
-        """Make an operation to create accumulative gradients"""
-        accum_grads = []
-        for var in net_vars:
-            zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
-            name = var.name.replace(":", "_") + "_accum_grad"
-            accum_grad = tf.Variable(zero, name=name, trainable=False)
-            accum_grads.append(accum_grad)
-        return accum_grads
-
-    def add_accumulative_gradients_op(self, net_vars, accum_grads, loss):
-        """Make an operation to add a gradient to the total"""
-        accum_grad_ops = []
-        grads = tf.gradients(loss, net_vars, gate_gradients=False,
-                             aggregation_method=None,
-                             colocate_gradients_with_ops=False)
-        for (grad, var, accum_grad) in zip(grads, net_vars, accum_grads):
-            name = var.name.replace(":", "_") + "_accum_grad_ops"
-            accum_ops = tf.assign_add(accum_grad, grad, name=name)
-            accum_grad_ops.append(accum_ops)
-        return tf.group(*accum_grad_ops, name="accum_group")
-
-    def reset_accumulative_gradients_op(self, net_vars, accum_grads):
-        """Make an operation to reset the accumulation to zero"""
-        reset_grad_ops = []
-        for (var, accum_grad) in zip(net_vars, accum_grads):
-            zero = tf.zeros(var.get_shape().as_list(), dtype=var.dtype)
-            name = var.name.replace(":", "_") + "_reset_grad_ops"
-            reset_ops = tf.assign(accum_grad, zero, name=name)
-            reset_grad_ops.append(reset_ops)
-        return tf.group(*reset_grad_ops, name="reset_accum_group")
 
     def choose_action(self, state):
         nn_outputs = self.session.run([self.output], feed_dict={self.state: [state]})[0][0]

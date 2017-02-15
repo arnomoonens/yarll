@@ -8,6 +8,7 @@ import logging
 import argparse
 from threading import Thread
 import multiprocessing
+import signal
 
 import gym
 from gym.spaces import Discrete, Box
@@ -50,15 +51,17 @@ class AKTThread(Thread):
         return action
 
     def run(self):
-        """Run learning algorithm"""
-        self.learn1()
+        """Run the appropriate learning algorithm."""
+        self.learn_REINFORCE() if self.master.learning_method == "REINFORCE" else self.learn_Karpathy()
 
-    def learn1(self):
+    def learn_REINFORCE(self):
         """Learn using updates like in the REINFORCE algorithm."""
         reporter = Reporter()
         config = self.master.config
         total_n_trajectories = 0
-        for iteration in range(config["n_iter"]):
+        iteration = 0
+        while iteration < config["n_iter"] and not self.master.stop_requested:
+            iteration += 1
             self.master.session.run([self.master.reset_accum_grads])
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectories = self.task_learner.get_trajectories()
@@ -87,20 +90,19 @@ class AKTThread(Thread):
 
             self.master.session.run([self.master.apply_gradients])
 
-    def learn2(self):
+    def learn_Karpathy(self):
         """Learn using updates like in the Karpathy algorithm."""
         reporter = Reporter()
         config = self.master.config
         self.master.session.run([self.master.reset_accum_grads])
 
-        iteration = 0  # amount of batches processed
+        iteration = 0
         episode_nr = 0
         mean_rewards = []
-        while True:  # Keep executing episodes
+        while not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
             iteration += 1
             trajectory = self.task_learner.get_trajectory()
             reward = sum(trajectory['reward'])
-            # action_taken = (np.arange(self.master.nA) == trajectory['action'][:, None]).astype(np.float32)  # one-hot encoding
             action_taken = trajectory['action']
 
             discounted_episode_rewards = discount_rewards(trajectory['reward'], config['gamma'])
@@ -109,7 +111,6 @@ class AKTThread(Thread):
             std = np.std(discounted_episode_rewards)
             std = std if std > 0 else 1
             discounted_episode_rewards /= std
-            # feedback = np.reshape(np.repeat(discounted_episode_rewards, self.master.nA), (len(discounted_episode_rewards), self.master.nA))
             feedback = discounted_episode_rewards
 
             results = self.master.session.run([self.loss, self.add_accum_grad], feed_dict={
@@ -131,10 +132,11 @@ class AKTThread(Thread):
 
 class AsyncKnowledgeTransferLearner(Learner):
     """Asynchronous learner for variations of a task."""
-    def __init__(self, envs, action_selection, monitor_dir, **usercfg):
+    def __init__(self, envs, action_selection, learning_method, monitor_dir, **usercfg):
         super(AsyncKnowledgeTransferLearner, self).__init__(envs[0], **usercfg)
         self.envs = envs
         self.action_selection = action_selection
+        self.learning_method = learning_method
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
         self.config = dict(
@@ -151,6 +153,8 @@ class AsyncKnowledgeTransferLearner(Learner):
             n_sparse_units=10,
         )
         self.config.update(usercfg)
+
+        self.stop_requested = False
 
         self.session = tf.Session(config=tf.ConfigProto(
             log_device_placement=False,
@@ -196,8 +200,13 @@ class AsyncKnowledgeTransferLearner(Learner):
 
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
 
+    def signal_handler(self, signal, frame):
+        """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""
+        logging.info("SIGINT signal received: Requesting a stop...")
+        self.stop_requested = True
+
     def learn(self):
-        # signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGINT, self.signal_handler)
         for job in self.jobs:
             job.start()
         for job in self.jobs:
@@ -209,6 +218,7 @@ class AsyncKnowledgeTransferLearner(Learner):
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--learning_method", metavar="learning_method", type=str, default="REINFORCE", choices=["REINFORCE", "Karpathy"])
 
 def make_envs(env_name):
     """Make variations of the same game."""
@@ -234,7 +244,7 @@ def main():
     envs = make_envs(args.environment)
     if isinstance(envs[0].action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = AsyncKnowledgeTransferLearner(envs, action_selection, args.monitor_path)
+        agent = AsyncKnowledgeTransferLearner(envs, action_selection, args.learning_method, args.monitor_path)
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
     try:

@@ -8,6 +8,7 @@ import logging
 import argparse
 from threading import Thread
 import multiprocessing
+import signal
 
 import gym
 from gym.spaces import Discrete, Box
@@ -198,7 +199,7 @@ class A3CThread(Thread):
         # Assume thread-specific parameter vectors θ' and θ'v
         sess = self.master.session
         t = 1  # thread step counter
-        while self.master.T < self.master.config['T_max']:
+        while self.master.T < self.master.config['T_max'] and not self.master.stop_requested:
             # Reset gradients: dθ = 0 and dθv = 0
             sess.run([self.actor_reset_ag, self.critic_reset_ag])
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
@@ -294,6 +295,8 @@ class A3CLearner(Learner):
         )
         self.config.update(usercfg)
 
+        self.stop_requested = False
+
         # self.shared_actor_net = ActorNetwork(env.observation_space.shape[0], env.action_space.n, self.config['actor_n_hidden'], scope="global_actor_net", summary=False)
         # self.shared_critic_net = CriticNetwork(env.observation_space.shape[0], self.config['critic_n_hidden'], scope="global_critic_net", summary=False)
         self.build_networks()
@@ -326,9 +329,14 @@ class A3CLearner(Learner):
 
         self.global_step_val = 0
 
+    def signal_handler(self, signal, frame):
+        """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""
+        logging.info("SIGINT signal received: Requesting a stop...")
+        self.stop_requested = True
+
     def learn(self):
+        signal.signal(signal.SIGINT, self.signal_handler)
         self.train_step = 0
-        # signal.signal(signal.SIGINT, signal_handler)
         for job in self.jobs:
             job.start()
         for job in self.jobs:

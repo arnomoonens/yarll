@@ -45,7 +45,7 @@ class KnowledgeTransferLearner(Learner):
             batch_update="timesteps",
             n_iter=400,
             gamma=0.99,
-            learning_rate=0.01,
+            learning_rate=0.005,
             n_hidden_units=20,
             repeat_n_actions=1,
             n_task_variations=3,
@@ -164,10 +164,14 @@ def make_envs(env_name):
     env = gym.make(env_name)
     env.length = 0.25  # 5 times longer
     env.masspole = 0.5  # 5 times heavier
+    env.total_mass = (env.masspole + env.masscart)  # Recalculate
+    env.polemass_length = (env.masspole * env.length)  # Recalculate
     envs.append(env)
     env = gym.make(env_name)
     env.length = 0.025  # 2 times shorter
     env.masspole = 0.05  # 2 times lighter
+    env.total_mass = (env.masspole + env.masscart)  # Recalculate
+    env.polemass_length = (env.masspole * env.length)  # Recalculate
     envs.append(env)
     return envs
 

@@ -227,10 +227,14 @@ def make_envs(env_name):
     env = gym.make(env_name)
     env.length = 0.25  # 5 times longer
     env.masspole = 0.5  # 5 times heavier
+    env.total_mass = (env.masspole + env.masscart)  # Recalculate
+    env.polemass_length = (env.masspole * env.length)  # Recalculate
     envs.append(env)
     env = gym.make(env_name)
     env.length = 0.025  # 2 times shorter
     env.masspole = 0.05  # 2 times lighter
+    env.total_mass = (env.masspole + env.masscart)  # Recalculate
+    env.polemass_length = (env.masspole * env.length)  # Recalculate
     envs.append(env)
     return envs
 

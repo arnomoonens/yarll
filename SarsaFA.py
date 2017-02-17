@@ -4,6 +4,7 @@ import sys
 import argparse
 
 import gym
+from gym import wrappers
 from gym.spaces import Discrete
 
 from Policies.EGreedy import EGreedy
@@ -32,7 +33,7 @@ class SarsaFALearner(object):
             epsilon=0,  # fully greedy in this case
             alpha=(0.05 * (0.5 / m)),
             gamma=1,
-            steps_per_episode=env.spec.timestep_limit  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
+            steps_per_episode=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
         )
         O = env.observation_space
         self.x_low, self.y_low = O.low
@@ -77,12 +78,10 @@ def main():
     #     raise NotImplementedError("Only environments with a discrete action space are supported right now.")
     agent = SarsaFALearner(env)
     try:
-        env.monitor.start(args.monitor_path, force=True)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn(args.n_episodes)
     except KeyboardInterrupt:
         pass
-    finally:
-        env.monitor.close()
 
 if __name__ == '__main__':
     main()

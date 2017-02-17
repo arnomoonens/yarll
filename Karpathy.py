@@ -7,6 +7,7 @@ import logging
 import argparse
 
 import gym
+from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
@@ -39,7 +40,7 @@ class KPLearner(Learner):
         self.nA = self.action_space.n
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
-            episode_max_length=env.spec.timestep_limit,
+            episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
             # timesteps_per_batch=10000,
             # n_iter=100,
             gamma=0.99,
@@ -170,13 +171,13 @@ def main():
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
-        agent = KPLearner(env, episode_max_length=env.spec.timestep_limit)
+        agent = KPLearner(env, episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'))
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:
         raise NotImplementedError
     try:
-        env.monitor.start(args.monitor_path, force=True)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

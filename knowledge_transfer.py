@@ -8,6 +8,7 @@ import logging
 import argparse
 
 import gym
+from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
@@ -39,7 +40,7 @@ class KnowledgeTransferLearner(Learner):
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
         self.config = dict(
-            episode_max_length=envs[0].spec.timestep_limit,
+            episode_max_length=envs[0].spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
             timesteps_per_batch=2000,
             trajectories_per_batch=10,
             batch_update="timesteps",
@@ -82,7 +83,7 @@ class KnowledgeTransferLearner(Learner):
         # self.writers = []
         self.losses = []
         for i, probabilities in enumerate(self.variation_probs):
-            good_probabilities = tf.reduce_sum(tf.mul(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
+            good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
             # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
             loss = -tf.reduce_sum(eligibility)
@@ -189,7 +190,7 @@ def main():
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
     try:
-        # env.monitor.start(args.monitor_path, force=True)
+        # agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

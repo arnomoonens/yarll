@@ -8,6 +8,7 @@ import logging
 import argparse
 
 import gym
+from gym import wrappers
 from gym.spaces import Discrete, Box
 # import gym_ple
 
@@ -190,13 +191,13 @@ def main():
         sys.exit()
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = KPCNNLearner(env, ProbabilisticCategoricalActionSelection(), episode_max_length=env.spec.timestep_limit)
+        agent = KPCNNLearner(env, ProbabilisticCategoricalActionSelection(), episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'))
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:
         raise NotImplementedError
     try:
-        env.monitor.start(args.monitor_path, force=True)
+        env = wrappers.Monitor(env, args.monitor_path, force=True)
         agent.learn(env)
     except KeyboardInterrupt:
         pass

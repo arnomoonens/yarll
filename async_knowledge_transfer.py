@@ -11,6 +11,7 @@ import multiprocessing
 import signal
 
 import gym
+from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
@@ -40,7 +41,7 @@ class AKTThread(Thread):
         self.sparse_representation = tf.Variable(tf.random_normal([self.master.config['n_sparse_units'], self.master.nA]))
         self.probabilities = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
 
-        good_probabilities = tf.reduce_sum(tf.mul(self.probabilities, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probabilities, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.master.advantage
         self.loss = -tf.reduce_sum(eligibility)
 
@@ -140,7 +141,7 @@ class AsyncKnowledgeTransferLearner(Learner):
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
         self.config = dict(
-            episode_max_length=envs[0].spec.timestep_limit,
+            episode_max_length=envs[0].spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
             timesteps_per_batch=2000,
             trajectories_per_batch=10,
             batch_update="timesteps",
@@ -252,7 +253,7 @@ def main():
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
     try:
-        # env.monitor.start(args.monitor_path, force=True)
+        # agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

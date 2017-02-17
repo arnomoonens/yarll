@@ -11,8 +11,10 @@ import numpy as np
 import sys
 import tensorflow as tf
 import gym
+from gym import wrappers
 from gym.spaces import Discrete, Box
 # import gym_ple
+
 from Learner import Learner
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 from utils import discount_rewards, preprocess_image
@@ -28,7 +30,7 @@ class REINFORCELearner(Learner):
         self.monitor_dir = monitor_dir
         # Default configuration. Can be overwritten using keyword arguments.
         self.config = dict(
-            episode_max_length=env.spec.timestep_limit,
+            episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
             batch_update="timesteps",
             timesteps_per_batch=10000,
             n_iter=100,
@@ -108,7 +110,7 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         L1 = tf.tanh(tf.matmul(self.state, W0) + b0[None, :])
         self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='probs')
 
-        good_probabilities = tf.reduce_sum(tf.mul(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         eligibility = tf.Print(eligibility, [eligibility], first_n=5)
         loss = -tf.reduce_sum(eligibility)
@@ -230,7 +232,7 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         self.b4 = tf.Variable(tf.zeros([self.nA]))
         self.probs = tf.nn.softmax(tf.matmul(self.L3, self.w4) + self.b4)
 
-        good_probabilities = tf.reduce_sum(tf.mul(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         loss = -tf.reduce_sum(eligibility)
         self.summary_loss = loss
@@ -264,7 +266,7 @@ def main():
     else:
         raise NotImplementedError
     try:
-        env.monitor.start(sys.argv[2], force=True)
+        agent.env = wrappers.Monitor(agent.env, sys.argv[2], force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

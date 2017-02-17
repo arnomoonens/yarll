@@ -11,6 +11,7 @@ import multiprocessing
 import signal
 
 import gym
+from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
@@ -48,9 +49,9 @@ class ActorNetworkDiscrete(object):
             W1 = tf.Variable(tf.random_normal([self.n_hidden, n_actions]), name='W1')
             b1 = tf.Variable(tf.zeros([n_actions]), name='b1')
             self.prob_na = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='prob_na')
-            good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, self.actions_taken), reduction_indices=[1])
+            good_probabilities = tf.reduce_sum(tf.multiply(self.prob_na, self.actions_taken), reduction_indices=[1])
             # Replace probabilities that are zero with a small value and multiply by advantage:
-            eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
+            eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
             self.loss = -tf.reduce_mean(eligibility)
             self.summary_loss = self.loss  # Loss to show as a summary
@@ -130,7 +131,7 @@ class A3CThread(Thread):
         self.env = gym.make(master.env_name)
         self.master = master
         if thread_id == 0 and self.master.monitor:
-            self.env.monitor.start(self.master.monitor_dir, force=True)
+            self.env = wrappers.Monitor(self.env, master.monitor_dir, force=True)
 
         # Build actor and critic networks
         self.build_networks()
@@ -282,7 +283,7 @@ class A3CLearner(Learner):
         self.monitor_dir = monitor_dir
 
         self.config = dict(
-            episode_max_length=env.spec.timestep_limit,
+            episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
             gamma=0.99,
             actor_learning_rate=0.01,
             critic_learning_rate=0.05,

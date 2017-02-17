@@ -8,6 +8,7 @@ import logging
 import argparse
 
 import gym
+from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
@@ -28,7 +29,7 @@ class A2C(Learner):
         self.monitor_dir = monitor_dir
 
         self.config = dict(
-            episode_max_length=env.spec.timestep_limit,
+            episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
             timesteps_per_batch=2000,
             trajectories_per_batch=10,
             batch_update="timesteps",
@@ -111,8 +112,8 @@ class A2CDiscrete(A2C):
         b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
         self.prob_na = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='prob_na')
 
-        good_probabilities = tf.reduce_sum(tf.mul(self.prob_na, self.actions_taken), reduction_indices=[1])
-        eligibility = tf.log(tf.select(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
+        good_probabilities = tf.reduce_sum(tf.multiply(self.prob_na, self.actions_taken), reduction_indices=[1])
+        eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
             * (self.critic_rewards - self.critic_feedback)
         loss = -tf.reduce_mean(eligibility)
         # loss = tf.Print(loss, [loss], message='Actor loss=')
@@ -165,14 +166,14 @@ class A2CContinuous(A2C):
             inputs=tf.expand_dims(self.input_state, 0),
             num_outputs=1,
             activation_fn=None,
-            weights_initializer=tf.zeros_initializer)
+            weights_initializer=tf.zeros_initializer())
         mu = tf.squeeze(mu)
 
         sigma = tf.contrib.layers.fully_connected(
             inputs=tf.expand_dims(self.input_state, 0),
             num_outputs=1,
             activation_fn=None,
-            weights_initializer=tf.zeros_initializer)
+            weights_initializer=tf.zeros_initializer())
         sigma = tf.squeeze(sigma)
         sigma = tf.nn.softplus(sigma) + 1e-5
 
@@ -271,7 +272,7 @@ def main():
     else:
         raise NotImplementedError
     try:
-        env.monitor.start(args.monitor_path, force=True)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

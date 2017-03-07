@@ -161,7 +161,7 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         sigma = tf.nn.softplus(sigma) + 1e-5
 
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
-        self.action = self.normal_dist.sample_n(1)
+        self.action = self.normal_dist.sample(1)
         self.action = tf.clip_by_value(self.action, self.env.action_space.low[0], self.env.action_space.high[0])
         loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
         # Add cross entropy cost to encourage exploration

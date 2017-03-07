@@ -178,7 +178,7 @@ class A2CContinuous(A2C):
         sigma = tf.nn.softplus(sigma) + 1e-5
 
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
-        self.action = self.normal_dist.sample_n(1)
+        self.action = self.normal_dist.sample(1)
         self.action = tf.clip_by_value(self.action, self.action_space.low[0], self.action_space.high[0])
 
         # Loss and train op

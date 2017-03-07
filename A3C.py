@@ -91,9 +91,9 @@ class ActorNetworkContinuous(object):
             sigma = tf.nn.softplus(sigma) + 1e-5
 
             self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
-            self.action = self.normal_dist.sample_n(1)
+            self.action = self.normal_dist.sample(1)
             self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0])
-            self.loss = -self.normal_dist.log_prob(self.actions_taken) * self.critic_feedback
+            self.loss = -tf.reduce_mean(self.normal_dist.log_prob(self.actions_taken) * self.critic_feedback)
             # Add cross entropy cost to encourage exploration
             self.loss -= 1e-1 * self.normal_dist.entropy()
             self.summary_loss = -tf.reduce_mean(self.loss)  # Loss to show as a summary

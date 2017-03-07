@@ -9,6 +9,8 @@
 
 import numpy as np
 import sys
+import argparse
+
 import tensorflow as tf
 import gym
 from gym import wrappers
@@ -35,7 +37,7 @@ class REINFORCELearner(Learner):
             timesteps_per_batch=10000,
             n_iter=100,
             gamma=1.0,
-            learning_rate=0.01,
+            learning_rate=0.05,
             n_hidden_units=20,
             repeat_n_actions=1
         )
@@ -77,7 +79,7 @@ class REINFORCELearner(Learner):
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
             result = self.session.run([self.summary_op, self.train], feed_dict={
-                                   self.state: all_state,
+                                   self.states: all_state,
                                    self.a_n: all_action,
                                    self.adv_n: all_adv,
                                    self.episode_lengths: np.mean(episode_lengths),
@@ -91,14 +93,20 @@ class REINFORCELearner(Learner):
 
 class REINFORCELearnerDiscrete(REINFORCELearner):
 
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+    def __init__(self, env, action_selection, rnn, monitor_dir, **usercfg):
         self.nA = env.action_space.n
+        self.rnn = rnn
         super(REINFORCELearnerDiscrete, self).__init__(env, action_selection, monitor_dir, **usercfg)
 
     def build_network(self):
+        if self.rnn:
+            self.build_network_rnn()
+        else:
+            self.build_network_normal()
+
+    def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        # These variables stack the results from many timesteps--the first dimension is the timestep
-        self.state = tf.placeholder(tf.float32, name='state')  # Observation
+        self.states = tf.placeholder(tf.float32, name='state')  # Observation
         self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
         self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
 
@@ -107,8 +115,40 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], self.nA]), name='W1')
         b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
         # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.state, W0) + b0[None, :])
+        L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
         self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='probs')
+
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        eligibility = tf.log(good_probabilities) * self.adv_n
+        # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
+        loss = -tf.reduce_sum(eligibility)
+        self.summary_loss = loss
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        self.train = optimizer.minimize(loss)
+
+        init = tf.global_variables_initializer()
+
+        # Launch the graph.
+        self.session = tf.Session()
+        self.session.run(init)
+
+    def build_network_rnn(self):
+        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name='state')  # Observation
+        # self.n_states = tf.placeholder(tf.float32, shape=[None], name='n_states')  # Observation
+        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
+        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+
+        n_states = tf.shape(self.states)[:1]
+
+        states = tf.expand_dims(flatten(self.states), [0])
+
+        enc_cell = tf.contrib.rnn.GRUCell(self.config['n_hidden_units'])
+        L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
+                                 sequence_length=n_states, dtype=tf.float32)
+        W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], self.nA]), name='W1')
+        b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
+        # Action probabilities
+        self.probs = tf.nn.softmax(tf.matmul(L1[0], W1) + b1[None, :], name='probs')
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
@@ -126,18 +166,24 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
 
     def choose_action(self, state):
         """Choose an action."""
-        probs = self.session.run([self.probs], feed_dict={self.state: [state]})[0][0]
+        probs = self.session.run([self.probs], feed_dict={self.states: [state]})[0][0]
         action = self.action_selection.select_action(probs)
         return action
 
 class REINFORCELearnerContinuous(REINFORCELearner):
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+    def __init__(self, env, action_selection, rnn, monitor_dir, **usercfg):
+        self.rnn = rnn
         super(REINFORCELearnerContinuous, self).__init__(env, action_selection, monitor_dir, **usercfg)
 
     def build_network(self):
+        if self.rnn:
+            self.build_network_rnn()
+        else:
+            self.build_network_normal()
+
+    def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        # These variables stack the results from many timesteps--the first dimension is the timestep
-        self.state = tf.placeholder(tf.float32, name='state')  # Observation
+        self.states = tf.placeholder(tf.float32, name='state')  # Observation
         self.a_n = tf.placeholder(tf.float32, name='a_n')  # Continuous action
         self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
 
@@ -146,7 +192,7 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='mu_W1')
         mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
         # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.state, mu_W0) + mu_b0[None, :])
+        L1 = tf.tanh(tf.matmul(self.states, mu_W0) + mu_b0[None, :])
         mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
         mu = tf.squeeze(mu)
 
@@ -155,8 +201,52 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='sigma_W1')
         sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
         # Action probabilities
-        sigma_L1 = tf.tanh(tf.matmul(self.state, sigma_W0) + sigma_b0[None, :])
+        sigma_L1 = tf.tanh(tf.matmul(self.states, sigma_W0) + sigma_b0[None, :])
         sigma = tf.matmul(sigma_L1, sigma_W1) + sigma_b1[None, :]
+        sigma = tf.squeeze(sigma)
+        sigma = tf.nn.softplus(sigma) + 1e-5
+
+        self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
+        self.action = self.normal_dist.sample(1)
+        self.action = tf.clip_by_value(self.action, self.env.action_space.low[0], self.env.action_space.high[0])
+        loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
+        # Add cross entropy cost to encourage exploration
+        loss -= 1e-1 * self.normal_dist.entropy()
+        loss = tf.clip_by_value(loss, -1e10, 1e10)
+        self.summary_loss = tf.reduce_mean(loss)
+        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.config['learning_rate'])
+        self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
+
+        init = tf.global_variables_initializer()
+
+        # Launch the graph.
+        self.session = tf.Session()
+        self.session.run(init)
+
+    def build_network_rnn(self):
+        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name='state')  # Observation
+        # self.n_states = tf.placeholder(tf.float32, shape=[None], name='n_states')  # Observation
+        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
+        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+
+        n_states = tf.shape(self.states)[:1]
+
+        states = tf.expand_dims(flatten(self.states), [0])
+
+        enc_cell = tf.contrib.rnn.GRUCell(self.config['n_hidden_units'])
+        L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
+                                 sequence_length=n_states, dtype=tf.float32)
+
+        L1 = L1[0]
+
+        mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='mu_W1')
+        mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
+        mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
+        mu = tf.squeeze(mu)
+        sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='sigma_W1')
+        sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
+        sigma = tf.matmul(L1, sigma_W1) + sigma_b1[None, :]
         sigma = tf.squeeze(sigma)
         sigma = tf.nn.softplus(sigma) + 1e-5
 
@@ -180,12 +270,15 @@ class REINFORCELearnerContinuous(REINFORCELearner):
 
     def choose_action(self, state):
         """Choose an action."""
-        action = self.session.run([self.action], feed_dict={self.state: [state]})[0]
+        action = self.session.run([self.action], feed_dict={self.states: [state]})[0]
         return action
 
+def flatten(x):
+    return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
+
 class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
-    def __init__(self, env, action_selection, **usercfg):
-        super(REINFORCELearnerDiscreteCNN, self).__init__(env, action_selection, **usercfg)
+    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+        super(REINFORCELearnerDiscreteCNN, self).__init__(env, action_selection, monitor_dir, **usercfg)
         self.config['n_hidden_units'] = 200
         self.config.update(usercfg)
 
@@ -200,7 +293,7 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         image_size = 80
         image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
 
-        self.state = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="state")
+        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="state")
         self.a_n = tf.placeholder(tf.float32, name='a_n')
         self.N = tf.placeholder(tf.int32, name='N')
         self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
@@ -245,28 +338,34 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         self.session = tf.Session()
         self.session.run(init)
 
+parser = argparse.ArgumentParser()
+parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
+parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--rnn", action="store_true", default=False, help="Use a Recurrent Neural Network (only for envs with a state space of rank 1).")
+
 def main():
-    if(len(sys.argv) < 3):
-        print("Please provide the name of an environment and a path to save monitor files")
-        return
-    env = gym.make(sys.argv[1])
+    try:
+        args = parser.parse_args()
+    except:
+        sys.exit()
+    env = gym.make(args.environment)
     rank = len(env.observation_space.shape)  # Observation space rank
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
         if rank == 1:
-            agent = REINFORCELearnerDiscrete(env, action_selection, sys.argv[2])
+            agent = REINFORCELearnerDiscrete(env, action_selection, args.rnn, args.monitor_path)
         else:
-            agent = REINFORCELearnerDiscreteCNN(env, action_selection, sys.argv[2])
+            agent = REINFORCELearnerDiscreteCNN(env, action_selection, args.monitor_path)
     elif isinstance(env.action_space, Box):
         action_selection = ContinuousActionSelection()
         if rank == 1:
-            agent = REINFORCELearnerContinuous(env, action_selection, sys.argv[2])
+            agent = REINFORCELearnerContinuous(env, action_selection, args.rnn, args.monitor_path)
         else:
             raise NotImplementedError
     else:
         raise NotImplementedError
     try:
-        agent.env = wrappers.Monitor(agent.env, sys.argv[2], force=True)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

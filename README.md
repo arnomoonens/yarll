@@ -1,10 +1,10 @@
-# DeepRL
+# Deep Reinforcement Learning
 
 This code is part of my master thesis at the [VUB](http://www.vub.ac.be), Brussels.
 
 ## Status
-Currently studying and implementing the use of convolutional neural networks in deep learning algorithms.
 Different algorithms have already been implemented:
+- [Cross-Entropy Method](https://github.com/arnomoonens/DeepRL/blob/master/CEM.py)
 - [Sarsa with with function approximation and eligibility traces](https://github.com/arnomoonens/DeepRL/blob/master/SarsaFA.py)
 - [REINFORCE](https://github.com/arnomoonens/DeepRL/blob/master/REINFORCE.py) (convolutional neural network part has not been tested yet)
 - [Karpathy's policy gradient algorithm](https://github.com/arnomoonens/DeepRL/blob/master/Karpathy.py) ([version using convolutional neural networks](https://github.com/arnomoonens/DeepRL/blob/master/Karpathy_CNN.py) has not been tested yet)
@@ -15,7 +15,7 @@ Different algorithms have already been implemented:
 The following parts are combined to learn to act in the [Mountain Car environment](https://gym.openai.com/envs/MountainCar-v0):
 - Sarsa
 - Eligibility traces
-- EGreedy action selection policy
+- epsilon-greedy action selection policy
 - Function approximation using tile coding
 
 Example of a run after training with a total greedy action selection policy for 729 episodes of each 200 steps:
@@ -23,6 +23,7 @@ Example of a run after training with a total greedy action selection policy for 
 
 Total reward per episode:
 ![Total reward per episode](./results/totalrewardperepisode.png)
+
 Note that, after a few thousand episodes, the algorithm still isn't capable of consistently reaching the goal in less than 200 steps.
 
 ### REINFORCE
@@ -47,7 +48,7 @@ Total reward per episode when applying this algorithm on the _CartPole-v0_ envir
 Total reward per episode when applying this algorithm on the _CartPole-v0_ environment:
 ![Total reward per episode using A3C](./results/a3c-cartpole-v0-rewards.png)
 
-This only show the results of one of the 8 A3C threads.
+This only shows the results of one of the A3C threads.
 Results of another execution are also posted on the [OpenAI Gym](https://gym.openai.com/evaluations/eval_deHd1IsvTQeWAnEaSvvkg).
 Results of an execution using the _Acrobot-v1_ environment can also be found [on OpenAI Gym](https://gym.openai.com/evaluations/eval_Ig1wrPzQlGipmBAhZ5Tw).
 ## How to run
@@ -56,12 +57,12 @@ First, install the requirements using [pip](https://pypi.python.org/pypi/pip):
 pip install -r requirements.txt
 ```
 
-Then you can run the Sarsa + Function approximation using:
+Then you can run the Sarsa + Function approximation algorithm using:
 ```
 python SarsaFA.py <episodes_to_run> <monitor_target_directory>
 ```
 
-You can run the `REINFORCE`, `Karpathy`, `Karpathy_CNN`, `A2C` or `A3C` algorithm using:
+You can run the `CEM`, `REINFORCE`, `Karpathy`, `Karpathy_CNN`, `A2C` and `A3C` algorithm using:
 ```
 python <algorithm_name>.py <environment_name> <monitor_target_directory>
 ```

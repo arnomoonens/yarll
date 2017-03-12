@@ -31,29 +31,34 @@ class REINFORCELearner(Learner):
         self.action_selection = action_selection
         self.monitor_dir = monitor_dir
         # Default configuration. Can be overwritten using keyword arguments.
-        self.config = dict(
-            episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
+        self.config.update(dict(
             batch_update="timesteps",
             timesteps_per_batch=10000,
             n_iter=100,
             gamma=1.0,
             learning_rate=0.05,
             n_hidden_units=20,
-            repeat_n_actions=1
-        )
+            repeat_n_actions=1,
+            save_model=False
+        ))
         self.config.update(usercfg)
         self.build_network()
+        if self.config["save_model"]:
+            tf.add_to_collection("action", self.action)
+            tf.add_to_collection("states", self.states)
+            self.saver = tf.train.Saver()
         self.rewards = tf.placeholder("float", name="Rewards")
         self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
         summary_loss = tf.summary.scalar("Loss", self.summary_loss)
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
-        self.writer = tf.summary.FileWriter(self.monitor_dir + '/summaries', self.session.graph)
+        self.writer = tf.summary.FileWriter(self.monitor_dir + "/summaries", self.session.graph)
 
-    def choose_action(self, state, *args):
+    def choose_action(self, state):
         """Choose an action."""
-        pass
+        action = self.session.run([self.action], feed_dict={self.states: [state]})[0]
+        return action
 
     def learn(self):
         """Run learning algorithm"""
@@ -89,7 +94,8 @@ class REINFORCELearner(Learner):
             self.writer.flush()
 
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
-            # get_trajectory(self, env, config["episode_max_length"], render=True)
+        if self.config["save_model"]:
+            self.saver.save(self.session, self.monitor_dir + "/model")
 
 class REINFORCELearnerDiscrete(REINFORCELearner):
 
@@ -106,25 +112,26 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
 
     def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, name='state')  # Observation
-        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+        self.states = tf.placeholder(tf.float32, name="states")  # Observation
+        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
+        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config['n_hidden_units']]) / np.sqrt(self.nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config['n_hidden_units']]), name='b0')
-        W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], self.nA]), name='W1')
+        W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
+        b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
+        W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], self.nA]), name='W1')
         b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
         # Action probabilities
         L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
-        self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name='probs')
+        self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name="probs")
+
+        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
-        # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
-        loss = -tf.reduce_sum(eligibility)
-        self.summary_loss = loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
-        self.train = optimizer.minimize(loss)
+        self.loss = -tf.reduce_sum(eligibility, name="loss")
+        self.summary_loss = self.loss
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        self.train = optimizer.minimize(self.loss, name="train")
 
         init = tf.global_variables_initializer()
 
@@ -133,29 +140,30 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         self.session.run(init)
 
     def build_network_rnn(self):
-        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name='state')  # Observation
-        # self.n_states = tf.placeholder(tf.float32, shape=[None], name='n_states')  # Observation
-        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
+        # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
+        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
+        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         n_states = tf.shape(self.states)[:1]
 
         states = tf.expand_dims(flatten(self.states), [0])
 
-        enc_cell = tf.contrib.rnn.GRUCell(self.config['n_hidden_units'])
+        enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
         L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
                                  sequence_length=n_states, dtype=tf.float32)
-        W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], self.nA]), name='W1')
+        W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], self.nA]), name='W1')
         b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
         # Action probabilities
-        self.probs = tf.nn.softmax(tf.matmul(L1[0], W1) + b1[None, :], name='probs')
+        self.probs = tf.nn.softmax(tf.matmul(L1[0], W1) + b1[None, :], name="probs")
+        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         eligibility = tf.Print(eligibility, [eligibility], first_n=5)
         loss = -tf.reduce_sum(eligibility)
         self.summary_loss = loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
 
         init = tf.global_variables_initializer()
@@ -163,12 +171,6 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         # Launch the graph.
         self.session = tf.Session()
         self.session.run(init)
-
-    def choose_action(self, state):
-        """Choose an action."""
-        probs = self.session.run([self.probs], feed_dict={self.states: [state]})[0][0]
-        action = self.action_selection.select_action(probs)
-        return action
 
 class REINFORCELearnerContinuous(REINFORCELearner):
     def __init__(self, env, action_selection, rnn, monitor_dir, **usercfg):
@@ -183,22 +185,22 @@ class REINFORCELearnerContinuous(REINFORCELearner):
 
     def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, name='state')  # Observation
-        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Continuous action
-        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+        self.states = tf.placeholder(tf.float32, name="states")  # Observation
+        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Continuous action
+        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
-        mu_W0 = tf.Variable(tf.random_normal([self.nO, self.config['n_hidden_units']]) / np.sqrt(self.nO), name='mu_W0')
-        mu_b0 = tf.Variable(tf.zeros([self.config['n_hidden_units']]), name='mu_b0')
-        mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='mu_W1')
+        mu_W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='mu_W0')
+        mu_b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='mu_b0')
+        mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='mu_W1')
         mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
         # Action probabilities
         L1 = tf.tanh(tf.matmul(self.states, mu_W0) + mu_b0[None, :])
         mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
         mu = tf.squeeze(mu)
 
-        sigma_W0 = tf.Variable(tf.random_normal([self.nO, self.config['n_hidden_units']]) / np.sqrt(self.nO), name='sigma_W0')
-        sigma_b0 = tf.Variable(tf.zeros([self.config['n_hidden_units']]), name='sigma_b0')
-        sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='sigma_W1')
+        sigma_W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='sigma_W0')
+        sigma_b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='sigma_b0')
+        sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='sigma_W1')
         sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
         # Action probabilities
         sigma_L1 = tf.tanh(tf.matmul(self.states, sigma_W0) + sigma_b0[None, :])
@@ -214,8 +216,8 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         loss -= 1e-1 * self.normal_dist.entropy()
         loss = tf.clip_by_value(loss, -1e10, 1e10)
         self.summary_loss = tf.reduce_mean(loss)
-        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.config['learning_rate'])
+        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
         self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
         init = tf.global_variables_initializer()
@@ -225,26 +227,26 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         self.session.run(init)
 
     def build_network_rnn(self):
-        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name='state')  # Observation
-        # self.n_states = tf.placeholder(tf.float32, shape=[None], name='n_states')  # Observation
-        self.a_n = tf.placeholder(tf.float32, name='a_n')  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
+        # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
+        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
+        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         n_states = tf.shape(self.states)[:1]
 
         states = tf.expand_dims(flatten(self.states), [0])
 
-        enc_cell = tf.contrib.rnn.GRUCell(self.config['n_hidden_units'])
+        enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
         L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
                                  sequence_length=n_states, dtype=tf.float32)
 
         L1 = L1[0]
 
-        mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='mu_W1')
+        mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='mu_W1')
         mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
         mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
         mu = tf.squeeze(mu)
-        sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config['n_hidden_units'], 1]), name='sigma_W1')
+        sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='sigma_W1')
         sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
         sigma = tf.matmul(L1, sigma_W1) + sigma_b1[None, :]
         sigma = tf.squeeze(sigma)
@@ -258,8 +260,8 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         loss -= 1e-1 * self.normal_dist.entropy()
         loss = tf.clip_by_value(loss, -1e10, 1e10)
         self.summary_loss = tf.reduce_mean(loss)
-        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.config['learning_rate'])
+        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
         self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
         init = tf.global_variables_initializer()
@@ -268,18 +270,13 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         self.session = tf.Session()
         self.session.run(init)
 
-    def choose_action(self, state):
-        """Choose an action."""
-        action = self.session.run([self.action], feed_dict={self.states: [state]})[0]
-        return action
-
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
 
 class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
     def __init__(self, env, action_selection, monitor_dir, **usercfg):
+        usercfg["n_hidden_units"] = 200
         super(REINFORCELearnerDiscreteCNN, self).__init__(env, action_selection, monitor_dir, **usercfg)
-        self.config['n_hidden_units'] = 200
         self.config.update(usercfg)
 
     def reset_env(self):
@@ -293,18 +290,18 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         image_size = 80
         image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
 
-        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="state")
-        self.a_n = tf.placeholder(tf.float32, name='a_n')
-        self.N = tf.placeholder(tf.int32, name='N')
-        self.adv_n = tf.placeholder(tf.float32, name='adv_n')  # Advantage
+        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
+        self.a_n = tf.placeholder(tf.float32, name="a_n")
+        self.N = tf.placeholder(tf.int32, name="N")
+        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         # Convolution layer 1
         depth = 32
         patch_size = 4
         self.w1 = tf.Variable(tf.truncated_normal([patch_size, patch_size, image_depth, depth], stddev=0.01))
         self.b1 = tf.Variable(tf.zeros([depth]))
-        self.L1 = tf.nn.relu(tf.nn.conv2d(self.state, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
-        self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+        self.L1 = tf.nn.relu(tf.nn.conv2d(self.states, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
+        self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
         # Convolution layer 2
         self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
@@ -316,12 +313,12 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
         # Fully connected layer 1
-        self.w3 = tf.Variable(tf.truncated_normal([image_size // 8 * image_size // 8 * depth, self.config['n_hidden_units']], stddev=0.01))
-        self.b3 = tf.Variable(tf.zeros([self.config['n_hidden_units']]))
+        self.w3 = tf.Variable(tf.truncated_normal([image_size // 8 * image_size // 8 * depth, self.config["n_hidden_units"]], stddev=0.01))
+        self.b3 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]))
         self.L3 = tf.nn.relu(tf.matmul(reshape, self.w3) + self.b3)
 
         # Fully connected layer 2
-        self.w4 = tf.Variable(tf.truncated_normal([self.config['n_hidden_units'], self.nA]))
+        self.w4 = tf.Variable(tf.truncated_normal([self.config["n_hidden_units"], self.nA]))
         self.b4 = tf.Variable(tf.zeros([self.nA]))
         self.probs = tf.nn.softmax(tf.matmul(self.L3, self.w4) + self.b4)
 
@@ -329,7 +326,7 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         eligibility = tf.log(good_probabilities) * self.adv_n
         loss = -tf.reduce_sum(eligibility)
         self.summary_loss = loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
 
         init = tf.global_variables_initializer()
@@ -340,8 +337,10 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved.")
 parser.add_argument("--rnn", action="store_true", default=False, help="Use a Recurrent Neural Network (only for envs with a state space of rank 1).")
+parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
+parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
     try:
@@ -353,13 +352,13 @@ def main():
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
         if rank == 1:
-            agent = REINFORCELearnerDiscrete(env, action_selection, args.rnn, args.monitor_path)
+            agent = REINFORCELearnerDiscrete(env, action_selection, args.rnn, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
         else:
-            agent = REINFORCELearnerDiscreteCNN(env, action_selection, args.monitor_path)
+            agent = REINFORCELearnerDiscreteCNN(env, action_selection, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
     elif isinstance(env.action_space, Box):
         action_selection = ContinuousActionSelection()
         if rank == 1:
-            agent = REINFORCELearnerContinuous(env, action_selection, args.rnn, args.monitor_path)
+            agent = REINFORCELearnerContinuous(env, action_selection, args.rnn, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
         else:
             raise NotImplementedError
     else:

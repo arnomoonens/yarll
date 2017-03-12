@@ -33,30 +33,30 @@ class SarsaFALearner(object):
             epsilon=0,  # fully greedy in this case
             alpha=(0.05 * (0.5 / m)),
             gamma=1,
-            steps_per_episode=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
+            steps_per_episode=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps")  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
         )
         O = env.observation_space
         self.x_low, self.y_low = O.low
         self.x_high, self.y_high = O.high
 
         self.nA = env.action_space.n
-        self.policy = EGreedy(self.config['epsilon'])
-        self.function_approximation = TileCoding(self.x_low, self.x_high, self.y_low, self.y_high, m, self.config['n_x_tiles'], self.config['n_y_tiles'], self.nA)
+        self.policy = EGreedy(self.config["epsilon"])
+        self.function_approximation = TileCoding(self.x_low, self.x_high, self.y_low, self.y_high, m, self.config["n_x_tiles"], self.config["n_y_tiles"], self.nA)
 
     def learn(self, n_episodes):
         for i in range(n_episodes):
             # print('Episode {}'.format(i))
-            traces = EligibilityTraces(self.function_approximation.features_shape, self.config['gamma'], self.config['Lambda'])
+            traces = EligibilityTraces(self.function_approximation.features_shape, self.config["gamma"], self.config["Lambda"])
             state, action = self.env.reset(), 0
-            sarsa = Sarsa(self.config['gamma'], self.config['alpha'], self.policy, traces, self.function_approximation, range(self.nA), state, action)
+            sarsa = Sarsa(self.config["gamma"], self.config["alpha"], self.policy, traces, self.function_approximation, range(self.nA), state, action)
             done = False  # Done says if the goal is reached or the maximum number of allowed steps for the episode is reached (determined by the gym library itself)
             iteration = 0
             while not(done):
                 iteration += 1
                 # env.render()
                 state, reward, done, info = self.env.step(action)
-                if done and iteration < self.config['steps_per_episode']:
-                    print("Episode {}: Less than {} steps were needed: {}".format(i, self.config['steps_per_episode'], iteration))
+                if done and iteration < self.config["steps_per_episode"]:
+                    print("Episode {}: Less than {} steps were needed: {}".format(i, self.config["steps_per_episode"], iteration))
                 action = sarsa.step(state, reward)
 
 parser = argparse.ArgumentParser()
@@ -83,5 +83,5 @@ def main():
     except KeyboardInterrupt:
         pass
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 
 import sys
+import os
 import numpy as np
 import tensorflow as tf
 import logging
@@ -16,7 +17,6 @@ from gym.spaces import Discrete, Box
 
 from Learner import Learner
 from utils import discount_rewards
-from ActionSelection import ProbabilisticCategoricalActionSelection
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from knowledge_transfer import TaskLearner
@@ -30,26 +30,26 @@ class AKTThread(Thread):
         self.add_accum_grad = None  # To be filled in later
 
         self.build_networks()
-        self.state = self.master.state
+        self.states = self.master.states
         self.session = self.master.session
-        self.task_learner = TaskLearner(env, self.master.action_selection, self.probabilities, self, **self.master.config)
+        self.task_learner = TaskLearner(env, self.action, self, **self.master.config)
 
         # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(self.master.monitor_dir + '/thread' + str(self.thread_id), self.master.session.graph)
+        self.writer = tf.summary.FileWriter(self.master.monitor_dir + "/thread" + str(self.thread_id), self.master.session.graph)
 
     def build_networks(self):
-        self.sparse_representation = tf.Variable(tf.random_normal([self.master.config['n_sparse_units'], self.master.nA]))
-        self.probabilities = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
+        self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
+        self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probabilities, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
+        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.master.advantage
         self.loss = -tf.reduce_sum(eligibility)
 
     def choose_action(self, state):
         """Choose an action."""
-        probs = self.master.session.run([self.probabilities_fetch], feed_dict={self.master.state: [state]})[0][0]
-        action = self.action_selection.select_action(probs)
-        return action
+        return self.master.session.run([self.action], feed_dict={self.master.states: [state]})[0]
 
     def run(self):
         """Run the appropriate learning algorithm."""
@@ -81,14 +81,20 @@ class AKTThread(Thread):
             # Do policy gradient update step
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            self.master.session.run([self.add_accum_grad], feed_dict={
-                self.master.state: all_state,
+            results = self.master.session.run([self.loss, self.add_accum_grad], feed_dict={
+                self.master.states: all_state,
                 self.master.action_taken: all_action,
                 self.master.advantage: all_adv
             })
             print("Task:", self.thread_id)
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
-
+            results = self.master.session.run([self.master.summary_op], feed_dict={
+                            self.master.loss: results[0],
+                            self.master.reward: np.mean(episode_rewards),
+                            self.master.episode_length: np.mean(episode_lengths)
+            })
+            self.writer.add_summary(results[0], iteration)
+            self.writer.flush()
             self.master.session.run([self.master.apply_gradients])
 
     def learn_Karpathy(self):
@@ -103,10 +109,10 @@ class AKTThread(Thread):
         while not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
             iteration += 1
             trajectory = self.task_learner.get_trajectory()
-            reward = sum(trajectory['reward'])
-            action_taken = trajectory['action']
+            reward = sum(trajectory["reward"])
+            action_taken = trajectory["action"]
 
-            discounted_episode_rewards = discount_rewards(trajectory['reward'], config['gamma'])
+            discounted_episode_rewards = discount_rewards(trajectory["reward"], config["gamma"])
             # standardize
             discounted_episode_rewards -= np.mean(discounted_episode_rewards)
             std = np.std(discounted_episode_rewards)
@@ -115,7 +121,7 @@ class AKTThread(Thread):
             feedback = discounted_episode_rewards
 
             results = self.master.session.run([self.loss, self.add_accum_grad], feed_dict={
-                             self.master.state: trajectory["state"],
+                             self.master.states: trajectory["state"],
                              self.master.action_taken: action_taken,
                              self.master.advantage: feedback
             })
@@ -133,15 +139,13 @@ class AKTThread(Thread):
 
 class AsyncKnowledgeTransferLearner(Learner):
     """Asynchronous learner for variations of a task."""
-    def __init__(self, envs, action_selection, learning_method, monitor_dir, **usercfg):
+    def __init__(self, envs, learning_method, monitor_dir, **usercfg):
         super(AsyncKnowledgeTransferLearner, self).__init__(envs[0], **usercfg)
         self.envs = envs
-        self.action_selection = action_selection
         self.learning_method = learning_method
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
-        self.config = dict(
-            episode_max_length=envs[0].spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
+        self.config.update(dict(
             timesteps_per_batch=2000,
             trajectories_per_batch=10,
             batch_update="timesteps",
@@ -152,7 +156,7 @@ class AsyncKnowledgeTransferLearner(Learner):
             repeat_n_actions=1,
             n_task_variations=3,
             n_sparse_units=10,
-        )
+        ))
         self.config.update(usercfg)
 
         self.stop_requested = False
@@ -186,20 +190,26 @@ class AsyncKnowledgeTransferLearner(Learner):
 
         self.session.run(tf.global_variables_initializer())
 
+        if self.config["save_model"]:
+            for job in self.jobs:
+                tf.add_to_collection("action", job.action)
+            tf.add_to_collection("states", self.states)
+            self.saver = tf.train.Saver()
+
     def build_networks(self):
-        self.state = tf.placeholder(tf.float32, name='state')
-        self.action_taken = tf.placeholder(tf.float32, name='action_taken')
-        self.advantage = tf.placeholder(tf.float32, name='advantage')
+        self.states= tf.placeholder(tf.float32, name="states")
+        self.action_taken = tf.placeholder(tf.float32, name="action_taken")
+        self.advantage = tf.placeholder(tf.float32, name="advantage")
 
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config['n_hidden_units']]) / np.sqrt(self.nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config['n_hidden_units']]), name='b0')
-        self.L1 = tf.tanh(tf.matmul(self.state, W0) + b0[None, :])
+        W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
+        b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
+        self.L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
 
-        self.knowledge_base = tf.Variable(tf.random_normal([self.config['n_hidden_units'], self.config['n_sparse_units']]))
+        self.knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]))
 
         self.shared_vars = [W0, b0, self.knowledge_base]
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=0.9, epsilon=1e-9)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
 
     def signal_handler(self, signal, frame):
         """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""
@@ -213,6 +223,11 @@ class AsyncKnowledgeTransferLearner(Learner):
         for job in self.jobs:
             job.join()
 
+        if self.config["save_model"]:
+            if not os.path.exists(self.monitor_dir):
+                os.makedirs(self.monitor_dir)
+            self.saver.save(self.session, self.monitor_dir + "/model")
+
     def make_thread(self, env, thread_id):
         return AKTThread(self, env, thread_id)
 
@@ -220,6 +235,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--learning_method", metavar="learning_method", type=str, default="REINFORCE", choices=["REINFORCE", "Karpathy"])
+parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def make_envs(env_name):
     """Make variations of the same game."""
@@ -248,8 +264,7 @@ def main():
         raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
     envs = make_envs(args.environment)
     if isinstance(envs[0].action_space, Discrete):
-        action_selection = ProbabilisticCategoricalActionSelection()
-        agent = AsyncKnowledgeTransferLearner(envs, action_selection, args.learning_method, args.monitor_path)
+        agent = AsyncKnowledgeTransferLearner(envs, args.learning_method, args.monitor_path, save_model=args.save_model)
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
     try:

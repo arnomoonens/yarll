@@ -39,8 +39,7 @@ class KPLearner(Learner):
         super(KPLearner, self).__init__(env, **usercfg)
         self.nA = self.action_space.n
         # Default configuration. Can be overwritten using keyword arguments.
-        self.config = dict(
-            episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
+        self.config.update(dict(
             # timesteps_per_batch=10000,
             # n_iter=100,
             gamma=0.99,
@@ -50,13 +49,13 @@ class KPLearner(Learner):
             n_hidden_units=20,
             draw_frequency=50,  # Draw a plot every 50 episodes
             repeat_n_actions=1
-        )
+        ))
         self.config.update(usercfg)
         self.build_network()
 
     def build_network(self):
-        self.w1 = np.random.randn(self.nO, self.config['n_hidden_units']) / np.sqrt(self.config['n_hidden_units'])
-        self.w2 = np.random.randn(self.config['n_hidden_units'], self.nA) / np.sqrt(self.nA)
+        self.w1 = np.random.randn(self.nO, self.config["n_hidden_units"]) / np.sqrt(self.config["n_hidden_units"])
+        self.w2 = np.random.randn(self.config["n_hidden_units"], self.nA) / np.sqrt(self.nA)
 
     def choose_action(self, state):
         x1, nn_outputs = self.forward_step(state)
@@ -90,7 +89,7 @@ class KPLearner(Learner):
         rewards = []
         episode_probabilities = []
         x1s = []
-        for _ in range(self.config['episode_max_length']):
+        for _ in range(self.config["episode_max_length"]):
             action, probabilities, x1 = self.choose_action(state)
             x1s.append(x1)
             states.append(state)
@@ -120,43 +119,43 @@ class KPLearner(Learner):
 
         iteration = 0  # amount of batches processed
         episode_nr = 0
-        episode_lengths = np.zeros(self.config['batch_size'])
-        episode_rewards = np.zeros(self.config['batch_size'])
+        episode_lengths = np.zeros(self.config["batch_size"])
+        episode_rewards = np.zeros(self.config["batch_size"])
         mean_rewards = []
         while True:  # Keep executing episodes
             trajectory = self.get_trajectory(self.config["episode_max_length"])
 
-            episode_rewards[episode_nr % self.config['batch_size']] = sum(trajectory['reward'])
-            episode_lengths[episode_nr % self.config['batch_size']] = len(trajectory['reward'])
+            episode_rewards[episode_nr % self.config["batch_size"]] = sum(trajectory["reward"])
+            episode_lengths[episode_nr % self.config["batch_size"]] = len(trajectory["reward"])
             episode_nr += 1
-            action_taken = (np.arange(self.nA) == trajectory['action'][:, None]).astype(np.float32)  # one-hot encoding
-            epdlogp = action_taken - trajectory['prob']
+            action_taken = (np.arange(self.nA) == trajectory["action"][:, None]).astype(np.float32)  # one-hot encoding
+            epdlogp = action_taken - trajectory["prob"]
 
             # episode_states = np.vstack(encountered_states)
 
-            discounted_episode_rewards = discount_rewards(trajectory['reward'], self.config['gamma'])
+            discounted_episode_rewards = discount_rewards(trajectory["reward"], self.config["gamma"])
             # print(discounted_episode_rewards)
             # standardize
             discounted_episode_rewards -= np.mean(discounted_episode_rewards)
             discounted_episode_rewards /= np.std(discounted_episode_rewards)
             epdlogp *= np.reshape(np.repeat(discounted_episode_rewards, self.nA), (len(discounted_episode_rewards), self.nA))
 
-            change_w1, change_w2 = self.backward_step(trajectory['state'], trajectory['x1'], epdlogp)
+            change_w1, change_w2 = self.backward_step(trajectory["state"], trajectory['x1'], epdlogp)
 
             gradient1 += change_w1
             gradient2 += change_w2
 
-            if episode_nr % self.config['batch_size'] == 0:  # batch is done
+            if episode_nr % self.config["batch_size"] == 0:  # batch is done
                 iteration += 1
-                rmsprop1 = self.config['decay_rate'] * rmsprop1 + (1 - self.config['decay_rate']) * gradient1**2
-                rmsprop2 = self.config['decay_rate'] * rmsprop2 + (1 - self.config['decay_rate']) * gradient2**2
-                self.w1 += self.config['learning_rate'] * gradient1 / (np.sqrt(rmsprop1) + 1e-5)
-                self.w2 += self.config['learning_rate'] * gradient2 / (np.sqrt(rmsprop2) + 1e-5)
+                rmsprop1 = self.config["decay_rate"] * rmsprop1 + (1 - self.config["decay_rate"]) * gradient1**2
+                rmsprop2 = self.config["decay_rate"] * rmsprop2 + (1 - self.config["decay_rate"]) * gradient2**2
+                self.w1 += self.config["learning_rate"] * gradient1 / (np.sqrt(rmsprop1) + 1e-5)
+                self.w2 += self.config["learning_rate"] * gradient2 / (np.sqrt(rmsprop2) + 1e-5)
                 gradient1 = np.zeros_like(self.w1)
                 gradient2 = np.zeros_like(self.w2)
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, episode_nr)
                 mean_rewards.append(episode_rewards.mean())
-                if episode_nr % self.config['draw_frequency'] == 0:
+                if episode_nr % self.config["draw_frequency"] == 0:
                     reporter.draw_rewards(mean_rewards)
 
 parser = argparse.ArgumentParser()
@@ -171,7 +170,7 @@ def main():
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
-        agent = KPLearner(env, episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'))
+        agent = KPLearner(env, episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"))
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

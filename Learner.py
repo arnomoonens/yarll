@@ -10,7 +10,7 @@ class Learner(object):
         self.action_space = self.env.action_space
         self.nO = self.ob_space.shape[0]
         self.config = dict(
-            episode_max_length=100,
+            episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             timesteps_per_batch=10000,
             n_iter=100)
         self.config.update(usercfg)
@@ -36,10 +36,10 @@ class Learner(object):
         states = []
         actions = []
         rewards = []
-        for i in range(self.config['episode_max_length']):
+        for i in range(self.config["episode_max_length"]):
             action = self.choose_action(state)
             states.append(state)
-            for _ in range(self.config['repeat_n_actions']):
+            for _ in range(self.config["repeat_n_actions"]):
                 state, rew, done, _ = self.step_env(action)
                 if done:  # Don't continue if episode has already ended
                     break

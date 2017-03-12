@@ -14,11 +14,29 @@ def moving_average(a, n):
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
 
+def exponential_smoothing(a, weight):
+    factor = (pow(1000, weight) - 1) / 999
+    length = len(a)
+    kernelRadius = np.floor(length * factor / 2)
+    result = []
+    for i, x in enumerate(a):
+        actualKernelRadius = min(kernelRadius, i)
+        start = int(i - actualKernelRadius)
+        end = int(i + actualKernelRadius + 1)
+        if end >= length:
+            result.append(np.inf)
+        elif x == np.inf:
+            result.append(x)
+        else:
+            result.append(np.mean(list(filter(lambda x: x != np.inf, a[start:end]))))
+    return result
+
+
 def main(stats_path, n, xmax):
     f = open(stats_path)
     contents = json.load(f)
 
-    averaged_episode_rewards = moving_average(contents['episode_rewards'], n)
+    averaged_episode_rewards = moving_average(contents["episode_rewards"], n)
     fig = plt.figure()
     plt.plot(range(len(averaged_episode_rewards)), averaged_episode_rewards)
     plt.xlim(xmax=xmax)
@@ -31,7 +49,7 @@ def main(stats_path, n, xmax):
     fig.canvas.set_window_title("Total reward per episode")
 
     fig = plt.figure()
-    averaged_episode_lengths = moving_average(contents['episode_lengths'], n)
+    averaged_episode_lengths = moving_average(contents["episode_lengths"], n)
     plt.plot(range(len(averaged_episode_lengths)), averaged_episode_lengths)
     plt.xlim(xmax=xmax)
     max_ael = max(averaged_episode_lengths)
@@ -54,7 +72,7 @@ parser.add_argument("stats_path", metavar="stats", type=str, help="Path to the s
 parser.add_argument("running_mean_length", metavar="rml", type=ge_1, help="Running mean length")
 parser.add_argument("--xmax", type=ge_1, default=None, help="Maximum episode for which to show results.")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         args = parser.parse_args()
     except:

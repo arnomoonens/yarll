@@ -92,7 +92,7 @@ class CEMLearner(Learner):
     def do_episode(self, policy):
         total_rew = 0
         ob = self.env.reset()
-        for t in range(self.config['num_steps']):
+        for t in range(self.config["num_steps"]):
             a = policy.act(ob)
             (ob, reward, done, _info) = self.env.step(a)
             total_rew += reward
@@ -101,13 +101,13 @@ class CEMLearner(Learner):
         return total_rew
 
     def learn(self):
-        for iteration in range(self.config['n_iter']):
+        for iteration in range(self.config["n_iter"]):
             # Sample parameter vectors
-            thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta) for _ in range(self.config['batch_size'])]
+            thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta) for _ in range(self.config["batch_size"])]
             rewards = [self.noisy_evaluation(theta) for theta in thetas]
             # Get elite parameters
-            n_elite = int(self.config['batch_size'] * self.config['elite_frac'])
-            elite_inds = np.argsort(rewards)[self.config['batch_size'] - n_elite:self.config['batch_size']]
+            n_elite = int(self.config["batch_size"] * self.config["elite_frac"])
+            elite_inds = np.argsort(rewards)[self.config["batch_size"] - n_elite:self.config["batch_size"]]
             elite_thetas = [thetas[i] for i in elite_inds]
             # Update theta_mean, theta_std
             theta_mean = np.mean(elite_thetas, axis=0)
@@ -127,7 +127,7 @@ def main():
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
-        agent = CEMLearner(env, episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'))
+        agent = CEMLearner(env, episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"))
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

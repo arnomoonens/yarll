@@ -31,13 +31,13 @@ def random_with_probability(output, n_actions, temperature=1.0):
 
 class KPCNNLearner(Learner):
     """Karpathy policy gradient learner using a convolutional neural network"""
-    def __init__(self, env, action_selection, **usercfg):
+    def __init__(self, env, action_selection, monitor_dir, **usercfg):
         super(KPCNNLearner, self).__init__(env, **usercfg)
         self.nA = env.action_space.n
         self.action_selection = action_selection
+        self.monitor_dir = monitor_dir
         # Default configuration. Can be overwritten using keyword arguments.
-        self.config = dict(
-            # episode_max_length=100,
+        self.config.update(dict(
             # timesteps_per_batch=10000,
             # n_iter=100,
             n_hidden_units=200,
@@ -49,20 +49,24 @@ class KPCNNLearner(Learner):
         )
         self.config.update(usercfg)
         self.build_network()
+        if self.config["save_model"]:
+            tf.add_to_collection("action", self.action)
+            tf.add_to_collection("states", self.states)
+            self.saver = tf.train.Saver()
 
     def build_network(self):
         image_size = 80
         image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
 
-        self.state = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="state")
+        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
 
         # Convolution layer 1
         depth = 32
         patch_size = 4
         self.w1 = tf.Variable(tf.truncated_normal([patch_size, patch_size, image_depth, depth], stddev=0.01))
         self.b1 = tf.Variable(tf.zeros([depth]))
-        self.L1 = tf.nn.relu(tf.nn.conv2d(self.state, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
-        self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+        self.L1 = tf.nn.relu(tf.nn.conv2d(self.states, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
+        self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
         # Convolution layer 2
         self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
@@ -74,14 +78,16 @@ class KPCNNLearner(Learner):
         reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
         # Fully connected layer 1
-        self.w3 = tf.Variable(tf.truncated_normal([image_size // 8 * image_size // 8 * depth, self.config['n_hidden_units']], stddev=0.01))
-        self.b3 = tf.Variable(tf.zeros([self.config['n_hidden_units']]))
+        self.w3 = tf.Variable(tf.truncated_normal([image_size // 8 * image_size // 8 * depth, self.config["n_hidden_units"]], stddev=0.01))
+        self.b3 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]))
         self.L3 = tf.nn.relu(tf.matmul(reshape, self.w3) + self.b3)
 
         # Fully connected layer 2
-        self.w4 = tf.Variable(tf.truncated_normal([self.config['n_hidden_units'], self.nA]))
+        self.w4 = tf.Variable(tf.truncated_normal([self.config["n_hidden_units"], self.nA]))
         self.b4 = tf.Variable(tf.zeros([self.nA]))
-        self.output = tf.nn.softmax(tf.matmul(self.L3, self.w4) + self.b4)
+        self.probs = tf.nn.softmax(tf.matmul(self.L3, self.w4) + self.b4)
+
+        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
         self.vars = [
             self.w1, self.b1,
@@ -92,13 +98,13 @@ class KPCNNLearner(Learner):
 
         self.action_taken = tf.placeholder(tf.float32, shape=[None, self.nA], name="action_taken")
         self.feedback = tf.placeholder(tf.float32, shape=[None, self.nA], name="feedback")
-        loss = tf.reduce_mean(tf.squared_difference(self.action_taken, self.output) * self.feedback)
+        loss = tf.reduce_mean(tf.squared_difference(self.action_taken, self.probs) * self.feedback)
 
         self.create_accumulative_grads = create_accumulative_gradients_op(self.vars)
         self.accumulate_grads = add_accumulative_gradients_op(self.vars, self.create_accumulative_grads, loss)
         self.reset_accumulative_grads = reset_accumulative_gradients_op(self.vars, self.create_accumulative_grads)
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config['learning_rate'], decay=self.config['decay_rate'], epsilon=1e-9)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay_rate"], epsilon=1e-9)
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.create_accumulative_grads, self.vars))
 
         init = tf.global_variables_initializer()
@@ -108,9 +114,7 @@ class KPCNNLearner(Learner):
         self.session.run(init)
 
     def choose_action(self, state):
-        nn_outputs = self.session.run([self.output], feed_dict={self.state: [state]})[0][0]
-        action, probabilities = random_with_probability(nn_outputs, self.nA)
-        return action, probabilities
+        return self.session.run([self.action], feed_dict={self.states: [state]})[0]
 
     def get_trajectory(self, env, episode_max_length, render=False):
         """
@@ -126,14 +130,13 @@ class KPCNNLearner(Learner):
         episode_probabilities = []
         for _ in range(episode_max_length):
             delta = state - prev_state
-            action, probabilities = self.choose_action(delta)
+            action = self.choose_action(delta)
             states.append(delta)
             prev_state = state
             state, rew, done, _ = env.step(action)
             state = preprocess_image(state)
             actions.append(action)
             rewards.append(rew)
-            episode_probabilities.append(probabilities)
             if done:
                 break
             if render:
@@ -141,7 +144,6 @@ class KPCNNLearner(Learner):
         return {"reward": np.array(rewards),
                 "state": np.array(states),
                 "action": np.array(actions),
-                "prob": np.array(episode_probabilities)
                 }
 
     def learn(self, env):
@@ -151,18 +153,18 @@ class KPCNNLearner(Learner):
 
         iteration = 0  # amount of batches processed
         episode_nr = 0
-        episode_lengths = np.zeros(self.config['batch_size'])
-        episode_rewards = np.zeros(self.config['batch_size'])
+        episode_lengths = np.zeros(self.config["batch_size"])
+        episode_rewards = np.zeros(self.config["batch_size"])
         mean_rewards = []
         while True:  # Keep executing episodes
             trajectory = self.get_trajectory(env, self.config["episode_max_length"])
 
-            episode_rewards[episode_nr % self.config['batch_size']] = sum(trajectory['reward'])
-            episode_lengths[episode_nr % self.config['batch_size']] = len(trajectory['reward'])
+            episode_rewards[episode_nr % self.config["batch_size"]] = sum(trajectory["reward"])
+            episode_lengths[episode_nr % self.config["batch_size"]] = len(trajectory["reward"])
             episode_nr += 1
-            action_taken = (np.arange(self.nA) == trajectory['action'][:, None]).astype(np.float32)  # one-hot encoding
+            action_taken = (np.arange(self.nA) == trajectory["action"][:, None]).astype(np.float32)  # one-hot encoding
 
-            discounted_episode_rewards = discount_rewards(trajectory['reward'], self.config['gamma'])
+            discounted_episode_rewards = discount_rewards(trajectory["reward"], self.config["gamma"])
             # standardize
             discounted_episode_rewards -= np.mean(discounted_episode_rewards)
             std = np.std(discounted_episode_rewards)
@@ -170,19 +172,24 @@ class KPCNNLearner(Learner):
             discounted_episode_rewards /= std
             feedback = np.reshape(np.repeat(discounted_episode_rewards, self.nA), (len(discounted_episode_rewards), self.nA))
 
-            self.session.run([self.accumulate_grads], feed_dict={self.state: trajectory["state"], self.action_taken: action_taken, self.feedback: feedback})
-            if episode_nr % self.config['batch_size'] == 0:  # batch is done
+            self.session.run([self.accumulate_grads], feed_dict={self.states: trajectory["state"], self.action_taken: action_taken, self.feedback: feedback})
+            if episode_nr % self.config["batch_size"] == 0:  # batch is done
                 iteration += 1
                 self.session.run([self.apply_gradients])
                 self.session.run([self.reset_accumulative_grads])
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, episode_nr)
                 mean_rewards.append(episode_rewards.mean())
-                if episode_nr % self.config['draw_frequency'] == 0:
+                if episode_nr % self.config["draw_frequency"] == 0:
                     reporter.draw_rewards(mean_rewards)
+        if self.config["save_model"]:
+            tf.add_to_collection("action", self.action)
+            tf.add_to_collection("states", self.states)
+            self.saver.save(self.session, self.monitor_dir + "/model")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
     try:
@@ -191,7 +198,7 @@ def main():
         sys.exit()
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = KPCNNLearner(env, ProbabilisticCategoricalActionSelection(), episode_max_length=env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'))
+        agent = KPCNNLearner(env, ProbabilisticCategoricalActionSelection(), monitor_path, save_model=args.save_model)
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:

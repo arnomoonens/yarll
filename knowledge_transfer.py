@@ -9,12 +9,10 @@ import logging
 import argparse
 
 import gym
-from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
-from utils import discount_rewards
-from ActionSelection import ProbabilisticCategoricalActionSelection
+from utils import discount_rewards, save_config
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
@@ -155,12 +153,13 @@ class KnowledgeTransferLearner(Learner):
             # Apply accumulated gradient after all the gradients of each task are summed
             self.session.run([self.apply_gradients])
 
-                # self.writer.add_summary(result[0], iteration)
-                # self.writer.flush()
+            # self.writer.add_summary(result[0], iteration)
+            # self.writer.flush()
+
         if self.config["save_model"]:
             if not os.path.exists(self.monitor_dir):
                 os.makedirs(self.monitor_dir)
-            self.saver.save(self.session, self.monitor_dir + "/model")
+            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
@@ -191,6 +190,8 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     if args.environment != "CartPole-v0":
         raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
     envs = make_envs(args.environment)
@@ -198,8 +199,8 @@ def main():
         agent = KnowledgeTransferLearner(envs, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
+    save_config(args.monitor_path, agent.config, envs)
     try:
-        # agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 
 import sys
+import os
 import numpy as np
 import tensorflow as tf
 import logging
@@ -15,7 +16,7 @@ from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
-from utils import discount_rewards
+from utils import discount_rewards, save_config
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_gradients_op
 
@@ -140,7 +141,7 @@ class A3CThread(Thread):
         self.build_networks()
 
         # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(self.master.monitor_dir + "/thread" + str(self.thread_id), self.master.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "thread", str(self.thread_id)), self.master.session.graph)
 
         self.actor_sync_net = sync_gradients_op(master.shared_actor_net, self.actor_net.vars, self.thread_id)
         self.actor_create_ag = create_accumulative_gradients_op(self.actor_net.vars, self.thread_id)
@@ -339,7 +340,7 @@ class A3CLearner(Learner):
         for job in self.jobs:
             job.join()
         if self.config["save_model"]:
-            self.saver.save(self.session, self.monitor_dir + "/model")
+            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
 class A3CLearnerDiscrete(A3CLearner):
     """A3CLearner for a discrete action space"""
@@ -369,6 +370,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("--monitor", action="store_true", default=False, help="Track performance of a single thread using gym monitor.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved.")
+# parser.add_argument("--iterations", default=5e5, type=float, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
@@ -376,6 +378,8 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         agent = A3CLearnerDiscrete(env, ProbabilisticCategoricalActionSelection(), args.monitor, args.monitor_path, save_model=args.save_model)
@@ -383,6 +387,7 @@ def main():
         agent = A3CLearnerContinuous(env, ContinuousActionSelection(), args.monitor, args.monitor_path, save_model=args.save_model)
     else:
         raise NotImplementedError
+    save_config(args.monitor_path, agent.config, [env])
     try:
         agent.learn()
     except KeyboardInterrupt:

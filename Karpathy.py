@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 
 import sys
+import os
 import numpy as np
 import logging
 import argparse
@@ -167,9 +168,10 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        # action_selection = ProbabilisticCategoricalActionSelection()
         agent = KPLearner(env, episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"))
     elif isinstance(env.action_space, Box):
         raise NotImplementedError

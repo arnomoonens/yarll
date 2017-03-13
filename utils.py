@@ -3,6 +3,8 @@
 
 from scipy import signal
 import numpy as np
+from os import path
+import json
 
 def discount_rewards(x, gamma):
     """
@@ -26,3 +28,10 @@ def preprocess_image(img):
     img = img[35:195]  # crop
     img = img[::2, ::2]  # downsample by factor of 2
     return (rgb2gray(img) / 256.0)[:, :, None]
+
+def save_config(directory, config, envs):
+    """Save the configuration of an agent to a file."""
+    envs = [env.spec.id for env in envs]
+    config["envs"] = envs
+    with open(path.join(directory, "config.json"), "w") as outfile:
+        json.dump(config, outfile)

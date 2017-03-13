@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
 import sys
+import os
 import argparse
 
 import gym
 from gym import wrappers
-from gym.spaces import Discrete
 
 from Policies.EGreedy import EGreedy
 from Learners.Sarsa import Sarsa
@@ -70,6 +70,8 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     # env = gym.make(args.environment)
     env = gym.make("MountainCar-v0")
     # if isinstance(env.action_space, Discrete):

@@ -8,15 +8,13 @@ import tensorflow as tf
 import logging
 import argparse
 from threading import Thread
-import multiprocessing
 import signal
 
 import gym
-from gym import wrappers
-from gym.spaces import Discrete, Box
+from gym.spaces import Discrete
 
 from Learner import Learner
-from utils import discount_rewards
+from utils import discount_rewards, save_config
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from knowledge_transfer import TaskLearner
@@ -35,7 +33,7 @@ class AKTThread(Thread):
         self.task_learner = TaskLearner(env, self.action, self, **self.master.config)
 
         # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(self.master.monitor_dir + "/thread" + str(self.thread_id), self.master.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "thread", str(self.thread_id)), self.master.session.graph)
 
     def build_networks(self):
         self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
@@ -89,9 +87,9 @@ class AKTThread(Thread):
             print("Task:", self.thread_id)
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
             results = self.master.session.run([self.master.summary_op], feed_dict={
-                            self.master.loss: results[0],
-                            self.master.reward: np.mean(episode_rewards),
-                            self.master.episode_length: np.mean(episode_lengths)
+                self.master.loss: results[0],
+                self.master.reward: np.mean(episode_rewards),
+                self.master.episode_length: np.mean(episode_lengths)
             })
             self.writer.add_summary(results[0], iteration)
             self.writer.flush()
@@ -121,14 +119,14 @@ class AKTThread(Thread):
             feedback = discounted_episode_rewards
 
             results = self.master.session.run([self.loss, self.add_accum_grad], feed_dict={
-                             self.master.states: trajectory["state"],
-                             self.master.action_taken: action_taken,
-                             self.master.advantage: feedback
+                self.master.states: trajectory["state"],
+                self.master.action_taken: action_taken,
+                self.master.advantage: feedback
             })
             results = self.master.session.run([self.master.summary_op], feed_dict={
-                            self.master.loss: results[0],
-                            self.master.reward: reward,
-                            self.master.episode_length: trajectory["steps"]
+                self.master.loss: results[0],
+                self.master.reward: reward,
+                self.master.episode_length: trajectory["steps"]
             })
             self.writer.add_summary(results[0], iteration)
             self.writer.flush()
@@ -197,7 +195,7 @@ class AsyncKnowledgeTransferLearner(Learner):
             self.saver = tf.train.Saver()
 
     def build_networks(self):
-        self.states= tf.placeholder(tf.float32, name="states")
+        self.states = tf.placeholder(tf.float32, name="states")
         self.action_taken = tf.placeholder(tf.float32, name="action_taken")
         self.advantage = tf.placeholder(tf.float32, name="advantage")
 
@@ -224,9 +222,7 @@ class AsyncKnowledgeTransferLearner(Learner):
             job.join()
 
         if self.config["save_model"]:
-            if not os.path.exists(self.monitor_dir):
-                os.makedirs(self.monitor_dir)
-            self.saver.save(self.session, self.monitor_dir + "/model")
+            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
     def make_thread(self, env, thread_id):
         return AKTThread(self, env, thread_id)
@@ -260,6 +256,8 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     if args.environment != "CartPole-v0":
         raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
     envs = make_envs(args.environment)
@@ -267,8 +265,8 @@ def main():
         agent = AsyncKnowledgeTransferLearner(envs, args.learning_method, args.monitor_path, save_model=args.save_model)
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
+    save_config(args.monitor_path, agent.config, envs)
     try:
-        # agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()
     except KeyboardInterrupt:
         pass

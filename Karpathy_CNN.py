@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 
 import sys
+import os
 import numpy as np
 import tensorflow as tf
 import logging
@@ -13,7 +14,7 @@ from gym.spaces import Discrete, Box
 # import gym_ple
 
 from Learner import Learner
-from utils import discount_rewards, preprocess_image
+from utils import discount_rewards, preprocess_image, save_config
 from Reporter import Reporter
 from ActionSelection import ProbabilisticCategoricalActionSelection
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
@@ -184,7 +185,7 @@ class KPCNNLearner(Learner):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver.save(self.session, self.monitor_dir + "/model")
+            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
@@ -196,6 +197,8 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         agent = KPCNNLearner(env, ProbabilisticCategoricalActionSelection(), monitor_path, save_model=args.save_model)
@@ -203,6 +206,7 @@ def main():
         raise NotImplementedError
     else:
         raise NotImplementedError
+    save_config(args.monitor_path, agent.config, [env])
     try:
         env = wrappers.Monitor(env, args.monitor_path, force=True)
         agent.learn(env)

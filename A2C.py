@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 
 import sys
+import os
 import numpy as np
 import tensorflow as tf
 import logging
@@ -12,7 +13,7 @@ from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Learner import Learner
-from utils import discount_rewards
+from utils import discount_rewards, save_config
 from Reporter import Reporter
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 
@@ -53,7 +54,7 @@ class A2C(Learner):
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_actor_loss, summary_critic_loss, summary_rewards, summary_episode_lengths])
-        self.writer = tf.summary.FileWriter(self.monitor_dir + "/summaries", self.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "summaries"), self.session.graph)
         return
 
     def get_critic_value(self, state):
@@ -84,15 +85,15 @@ class A2C(Learner):
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
 
             results = self.session.run([self.summary_op, self.critic_train, self.actor_train], feed_dict={
-                                    self.critic_state_in: all_state,
-                                    self.critic_target: returns,
-                                    self.states: all_state,
-                                    self.actions_taken: all_action,
-                                    self.critic_feedback: qw_new,
-                                    self.critic_rewards: returns,
-                                    self.rewards: np.mean(episode_rewards),
-                                    self.episode_lengths: np.mean(episode_lengths)
-                                    })
+                self.critic_state_in: all_state,
+                self.critic_target: returns,
+                self.states: all_state,
+                self.actions_taken: all_action,
+                self.critic_feedback: qw_new,
+                self.critic_rewards: returns,
+                self.rewards: np.mean(episode_rewards),
+                self.episode_lengths: np.mean(episode_lengths)
+            })
             self.writer.add_summary(results[0], iteration)
             self.writer.flush()
 
@@ -100,7 +101,7 @@ class A2C(Learner):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver.save(self.session, self.monitor_dir + "/model")
+            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
 class A2CDiscrete(A2C):
     """A2C learner for a discrete action space"""
@@ -238,22 +239,22 @@ class A2CContinuous(A2C):
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
 
             results = self.session.run([self.summary_op, self.critic_train, self.actor_train], feed_dict={
-                                    self.critic_state_in: all_state,
-                                    self.critic_target: returns,
-                                    self.states: all_state,
-                                    self.actions_taken: all_action,
-                                    self.critic_feedback: qw_new,
-                                    self.critic_rewards: returns,
-                                    self.rewards: np.mean(episode_rewards),
-                                    self.episode_lengths: np.mean(episode_lengths)
-                                    })
+                self.critic_state_in: all_state,
+                self.critic_target: returns,
+                self.states: all_state,
+                self.actions_taken: all_action,
+                self.critic_feedback: qw_new,
+                self.critic_rewards: returns,
+                self.rewards: np.mean(episode_rewards),
+                self.episode_lengths: np.mean(episode_lengths)
+            })
             self.writer.add_summary(results[0], iteration)
             self.writer.flush()
 
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
 
         if self.config["save_model"]:
-            self.saver.save(self.session, self.monitor_dir + "/model")
+            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
@@ -266,6 +267,8 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
@@ -275,6 +278,7 @@ def main():
         agent = A2CContinuous(env, action_selection, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
     else:
         raise NotImplementedError
+    save_config(args.monitor_path, agent.config, [env])
     try:
         agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()

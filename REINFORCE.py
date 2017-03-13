@@ -9,6 +9,7 @@
 
 import numpy as np
 import sys
+import os
 import argparse
 
 import tensorflow as tf
@@ -19,7 +20,7 @@ from gym.spaces import Discrete, Box
 
 from Learner import Learner
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
-from utils import discount_rewards, preprocess_image
+from utils import discount_rewards, preprocess_image, save_config
 from Reporter import Reporter
 
 class REINFORCELearner(Learner):
@@ -53,7 +54,7 @@ class REINFORCELearner(Learner):
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
-        self.writer = tf.summary.FileWriter(self.monitor_dir + "/summaries", self.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_dir + "summaries"), self.session.graph)
 
     def choose_action(self, state):
         """Choose an action."""
@@ -84,18 +85,18 @@ class REINFORCELearner(Learner):
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
             result = self.session.run([self.summary_op, self.train], feed_dict={
-                                   self.states: all_state,
-                                   self.a_n: all_action,
-                                   self.adv_n: all_adv,
-                                   self.episode_lengths: np.mean(episode_lengths),
-                                   self.rewards: np.mean(episode_rewards)
-                                   })
+                self.states: all_state,
+                self.a_n: all_action,
+                self.adv_n: all_adv,
+                self.episode_lengths: np.mean(episode_lengths),
+                self.rewards: np.mean(episode_rewards)
+            })
             self.writer.add_summary(result[0], iteration)
             self.writer.flush()
 
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         if self.config["save_model"]:
-            self.saver.save(self.session, self.monitor_dir + "/model")
+            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
 class REINFORCELearnerDiscrete(REINFORCELearner):
 
@@ -151,7 +152,7 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
         L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
-                                 sequence_length=n_states, dtype=tf.float32)
+                                          sequence_length=n_states, dtype=tf.float32)
         W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], self.nA]), name='W1')
         b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
         # Action probabilities
@@ -238,7 +239,7 @@ class REINFORCELearnerContinuous(REINFORCELearner):
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
         L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
-                                 sequence_length=n_states, dtype=tf.float32)
+                                          sequence_length=n_states, dtype=tf.float32)
 
         L1 = L1[0]
 
@@ -347,6 +348,8 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
+    if not os.path.exists(args.monitor_path):
+        os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     rank = len(env.observation_space.shape)  # Observation space rank
     if isinstance(env.action_space, Discrete):
@@ -363,6 +366,7 @@ def main():
             raise NotImplementedError
     else:
         raise NotImplementedError
+    save_config(args.monitor_path, agent.config, [env])
     try:
         agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
         agent.learn()

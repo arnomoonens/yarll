@@ -8,11 +8,11 @@ import tensorflow as tf
 import logging
 import argparse
 
-import gym
-from gym.spaces import Discrete, Box
+from gym.spaces import Discrete
 
 from Learner import Learner
 from utils import discount_rewards, save_config
+from CartPole import make_predef_CartPole_envs, make_random_CartPole_envs
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
@@ -166,24 +166,7 @@ parser.add_argument("environment", metavar="env", type=str, help="Gym environmen
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
-
-def make_envs(env_name):
-    """Make variations of the same game."""
-    envs = []
-    envs.append(gym.make(env_name))  # First one has the standard behaviour
-    env = gym.make(env_name)
-    env.length = 0.25  # 5 times longer
-    env.masspole = 0.5  # 5 times heavier
-    env.total_mass = (env.masspole + env.masscart)  # Recalculate
-    env.polemass_length = (env.masspole * env.length)  # Recalculate
-    envs.append(env)
-    env = gym.make(env_name)
-    env.length = 0.025  # 2 times shorter
-    env.masspole = 0.05  # 2 times lighter
-    env.total_mass = (env.masspole + env.masscart)  # Recalculate
-    env.polemass_length = (env.masspole * env.length)  # Recalculate
-    envs.append(env)
-    return envs
+parser.add_argument("--random_envs", type=int, help="Number of environments with random parameters to generate.")
 
 def main():
     try:
@@ -194,7 +177,7 @@ def main():
         os.makedirs(args.monitor_path)
     if args.environment != "CartPole-v0":
         raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
-    envs = make_envs(args.environment)
+    envs = make_random_CartPole_envs(args.random_envs) if args.random_envs else make_predef_CartPole_envs()
     if isinstance(envs[0].action_space, Discrete):
         agent = KnowledgeTransferLearner(envs, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
     else:

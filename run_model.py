@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
+import sys
 import tensorflow as tf
 import argparse
 import gym
@@ -17,8 +18,8 @@ class ModelRunner(object):
         self.model_directory = model_directory
         self.save_directory = save_directory
         self.config = dict(
-                           episode_max_length=self.env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
-                           repeat_n_actions=1
+            episode_max_length=self.env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
+            repeat_n_actions=1
         )
         self.config.update(usercfg)
 
@@ -39,9 +40,6 @@ class ModelRunner(object):
         Return dictionary of results
         """
         state = self.env.reset()
-        states = []
-        actions = []
-        rewards = []
         for i in range(self.config["episode_max_length"]):
             action = self.choose_action(state)
             for _ in range(self.config["repeat_n_actions"]):
@@ -73,7 +71,7 @@ def main():
     env = gym.make(args.environment)
     runner = ModelRunner(env, args.model_directory, args.save_directory, n_iter=args.iterations)
     try:
-        runner.env = wrappers.Monitor(runner.env, args.save_directory, force=True)
+        runner.env = wrappers.Monitor(runner.env, args.save_directory, video_callable=False, force=True)
         runner.run()
     except KeyboardInterrupt:
         pass

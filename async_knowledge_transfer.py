@@ -101,7 +101,7 @@ class AKTThread(Thread):
         self.master.session.run([self.master.reset_accum_grads])
 
         iteration = 0
-        while not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
+        while iteration < config['n_iter'] and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
             iteration += 1
             trajectory = self.task_learner.get_trajectory()
             reward = sum(trajectory["reward"])
@@ -144,7 +144,7 @@ class AsyncKnowledgeTransferLearner(Learner):
             timesteps_per_batch=2000,
             trajectories_per_batch=10,
             batch_update="timesteps",
-            n_iter=400,
+            n_iter=200,
             gamma=0.99,
             learning_rate=0.005,
             n_hidden_units=20,
@@ -228,6 +228,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--learning_method", metavar="learning_method", type=str, default="REINFORCE", choices=["REINFORCE", "Karpathy"])
+parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run each task.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 parser.add_argument("--random_envs", type=int, help="Number of environments with random parameters to generate.")
 
@@ -242,7 +243,7 @@ def main():
         raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
     envs = make_random_CartPole_envs(args.random_envs) if args.random_envs else make_predef_CartPole_envs()
     if isinstance(envs[0].action_space, Discrete):
-        agent = AsyncKnowledgeTransferLearner(envs, args.learning_method, args.monitor_path, save_model=args.save_model)
+        agent = AsyncKnowledgeTransferLearner(envs, args.learning_method, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
     save_config(args.monitor_path, agent.config, envs)

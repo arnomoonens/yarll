@@ -82,15 +82,25 @@ class KnowledgeTransferLearner(Learner):
         net_vars = self.shared_vars + sparse_representations
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
 
-        # self.writers = []
+        self.writers = []
         self.losses = []
+
+        self.loss = tf.placeholder("float", name="loss")
+        self.rewards = tf.placeholder("float", name="Rewards")
+        self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
+        summary_loss = tf.summary.scalar("Loss", self.loss)
+        summary_rewards = tf.summary.scalar("Rewards", self.rewards)
+        summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
+        self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
+
         for i, probabilities in enumerate(self.probs_tensors):
             good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
             # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
             loss = -tf.reduce_sum(eligibility)
             self.losses.append(loss)
-            # writer = tf.summary.FileWriter(self.monitor_dir + "/task" + str(i), self.session.graph)
+            writer = tf.summary.FileWriter(self.monitor_dir + "/task" + str(i), self.session.graph)
+            self.writers.append(writer)
 
         # An add op for every task & its loss
         # add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier)
@@ -135,26 +145,24 @@ class KnowledgeTransferLearner(Learner):
                 # Do policy gradient update step
                 episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
                 episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-                self.session.run([self.add_accum_grads[i]], feed_dict={
+                results = self.session.run([self.losses[i], self.add_accum_grads[i]], feed_dict={
                     self.states: all_state,
                     self.action_taken: all_action,
                     self.advantage: all_adv
                 })
-                # summary = self.session.run([self.master.summary_op], feed_dict={
-                #     self.reward: reward
-                #     # self.master.episode_length: trajectory["steps"]
-                # })
+                summary = self.session.run([self.summary_op], feed_dict={
+                    self.loss: results[0],
+                    self.rewards: np.mean(episode_rewards),
+                    self.episode_lengths: np.mean(episode_lengths)
+                })
 
-                # self.writer.add_summary(summary[0], iteration)
-                # self.writer.flush()
+                self.writers[i].add_summary(summary[0], iteration)
+                self.writers[i].flush()
                 print("Task:", i)
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories[i])
 
             # Apply accumulated gradient after all the gradients of each task are summed
             self.session.run([self.apply_gradients])
-
-            # self.writer.add_summary(result[0], iteration)
-            # self.writer.flush()
 
         if self.config["save_model"]:
             if not os.path.exists(self.monitor_dir):

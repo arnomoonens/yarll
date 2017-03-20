@@ -54,7 +54,7 @@ class REINFORCELearner(Learner):
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
-        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_dir + "summaries"), self.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "task0"), self.session.graph)
 
     def choose_action(self, state):
         """Choose an action."""

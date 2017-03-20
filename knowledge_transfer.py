@@ -99,7 +99,7 @@ class KnowledgeTransferLearner(Learner):
             # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
             loss = -tf.reduce_sum(eligibility)
             self.losses.append(loss)
-            writer = tf.summary.FileWriter(self.monitor_dir + "/task" + str(i), self.session.graph)
+            writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "task" + str(i)), self.session.graph)
             self.writers.append(writer)
 
         # An add op for every task & its loss

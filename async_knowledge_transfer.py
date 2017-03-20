@@ -21,10 +21,10 @@ from knowledge_transfer import TaskLearner
 
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
-    def __init__(self, master, env, thread_id):
+    def __init__(self, master, env, task_id):
         super(AKTThread, self).__init__()
         self.master = master
-        self.thread_id = thread_id
+        self.task_id = task_id
         self.add_accum_grad = None  # To be filled in later
 
         self.build_networks()
@@ -32,8 +32,8 @@ class AKTThread(Thread):
         self.session = self.master.session
         self.task_learner = TaskLearner(env, self.action, self, **self.master.config)
 
-        # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "thread", str(self.thread_id)), self.master.session.graph)
+        # Write the summary of each task in a different directory
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "task", str(self.task_id)), self.master.session.graph)
 
     def build_networks(self):
         self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
@@ -84,7 +84,7 @@ class AKTThread(Thread):
                 self.master.action_taken: all_action,
                 self.master.advantage: all_adv
             })
-            print("Task:", self.thread_id)
+            print("Task:", self.task_id)
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
             results = self.master.session.run([self.master.summary_op], feed_dict={
                 self.master.loss: results[0],
@@ -179,7 +179,7 @@ class AsyncKnowledgeTransferLearner(Learner):
                 self.shared_vars + [job.sparse_representation],
                 self.accum_grads,
                 job.loss,
-                job.thread_id)
+                job.task_id)
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.accum_grads, net_vars))
         self.reset_accum_grads = reset_accumulative_gradients_op(net_vars, self.accum_grads, 1)
 
@@ -221,8 +221,8 @@ class AsyncKnowledgeTransferLearner(Learner):
         if self.config["save_model"]:
             self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
-    def make_thread(self, env, thread_id):
-        return AKTThread(self, env, thread_id)
+    def make_thread(self, env, task_id):
+        return AKTThread(self, env, task_id)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")

@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
+import os
 import sys
 import tensorflow as tf
 import argparse
@@ -24,8 +25,8 @@ class ModelRunner(object):
         self.config.update(usercfg)
 
         self.session = tf.Session()
-        self.saver = tf.train.import_meta_graph(self.model_directory + "/model.meta")
-        self.saver.restore(self.session, self.model_directory + "/model")
+        self.saver = tf.train.import_meta_graph(os.path.join(self.model_directory, "model.meta"))
+        self.saver.restore(self.session, os.path.join(self.model_directory, "model"))
 
         self.action = tf.get_collection("action")[0]
         self.states = tf.get_collection("states")[0]

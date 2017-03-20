@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
+import os
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
-import sys
 import json
 import argparse
+import re
+from tensorflow.python.summary.event_multiplexer import EventMultiplexer
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy?rq=1
 def moving_average(a, n):
@@ -14,6 +17,7 @@ def moving_average(a, n):
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
 
+# Source: https://github.com/tensorflow/tensorflow/blob/d413f62fba038d820b775d95ddd518fb6f43d3ed/tensorflow/tensorboard/components/vz_line_chart/vz-line-chart.ts#L432
 def exponential_smoothing(a, weight):
     factor = (pow(1000, weight) - 1) / 999
     length = len(a)
@@ -31,17 +35,20 @@ def exponential_smoothing(a, weight):
             result.append(np.mean(list(filter(lambda x: x != np.inf, a[start:end]))))
     return result
 
+def create_smoother(f, *args):
+    return lambda x: f(x, *args)
 
-def main(stats_path, n, xmax):
+def plot_tf_monitor_stats(stats_path, xmax=None, smoothing_function=None):
     f = open(stats_path)
     contents = json.load(f)
-
-    averaged_episode_rewards = moving_average(contents["episode_rewards"], n)
+    data = contents["episode_rewards"]
+    if smoothing_function:
+        data = smoothing_function(data)
     fig = plt.figure()
-    plt.plot(range(len(averaged_episode_rewards)), averaged_episode_rewards)
+    plt.plot(range(len(data)), data)
     plt.xlim(xmax=xmax)
-    min_aer = min(averaged_episode_rewards)
-    max_aer = max(averaged_episode_rewards)
+    min_aer = min(data)
+    max_aer = max(filter(lambda x: x != np.inf, data))
     plt.ylim(ymin=min(0, min_aer), ymax=max(0, max_aer + 0.1 * max_aer))
     plt.xlabel("Episode")
     plt.ylabel("Total reward")
@@ -49,15 +56,62 @@ def main(stats_path, n, xmax):
     fig.canvas.set_window_title("Total reward per episode")
 
     fig = plt.figure()
-    averaged_episode_lengths = moving_average(contents["episode_lengths"], n)
-    plt.plot(range(len(averaged_episode_lengths)), averaged_episode_lengths)
+    data = contents["episode_lengths"]
+    if smoothing_function:
+        data = smoothing_function(data)
+    plt.plot(range(len(data)), data)
     plt.xlim(xmax=xmax)
-    max_ael = max(averaged_episode_lengths)
+    max_ael = max(filter(lambda x: x != np.inf, data))
     plt.ylim(ymin=0, ymax=(max_ael + 0.1 * max_ael))
     plt.xlabel("Episode")
     plt.ylabel("Length")
     plt.title("Length per episode")
     fig.canvas.set_window_title("Length per episode")
+    plt.show()
+
+def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
+    em = EventMultiplexer().AddRunsFromDirectory(summaries_dir)
+    em.Reload()
+    runs = list(em.Runs().keys())
+    scalars = em.Runs()[runs[0]]["scalars"]  # Assumes that the scalars of every run are the same
+
+    pattern = re.compile("(task\d+)$")
+    data = {}
+    for scalar in scalars:
+        scalar_data = {}
+        for run in runs:
+            task = pattern.search(run).group()
+            if task in scalar_data:
+                scalar_data[task].append([x.value for x in em.Scalars(run, scalar)])
+            else:
+                scalar_data[task] = [[x.value for x in em.Scalars(run, scalar)]]
+        data[scalar] = scalar_data
+
+    for scalar, tasks in data.items():
+        fig = plt.figure()
+        min_y = np.inf
+        max_y = -np.inf
+        for task, scalar_task_data in tasks.items():
+            mean = np.mean(scalar_task_data, axis=0)
+            if smoothing_function:
+                mean = smoothing_function(mean)
+            # percentiles = np.percentile(scalar_task_data, [25, 75], axis=0)
+            std = np.std(scalar_task_data, axis=0)
+            std = std[len(std) - len(mean):]
+            error_min, error_max = mean - std, mean + std
+            x = range(len(mean))
+            plt.plot(x, mean, label=task)
+            plt.legend()
+            plt.fill_between(x, error_min, error_max, alpha=0.3)
+            min_y = min(min_y, min(error_min))
+            max_y = max(max_y, max(filter(lambda x: x != np.inf, error_max)))
+        plt.xlim(xmax=xmax)
+        print(min_y, max_y)
+        plt.ylim(ymin=min(0, min_y), ymax=max(0, max_y + 0.1 * max_y))
+        plt.xlabel("Episode")
+        plt.ylabel(scalar)
+        plt.title(scalar + " per episode")
+        fig.canvas.set_window_title(scalar + " per episode")
     plt.show()
 
 def ge_1(value):
@@ -67,14 +121,33 @@ def ge_1(value):
         raise argparse.ArgumentTypeError("%s must be an integer of at least 1." % value)
     return ivalue
 
+def exp_smoothing_weight_test(value):
+    """Require that the weight for exponential smoothing is a weight between 0 and 1"""
+    fvalue = float(value)
+    if fvalue < 0 or fvalue > 1:
+        raise argparse.ArgumentTypeError("%s must be a float between 0 and 1" % value)
+    return fvalue
+
 parser = argparse.ArgumentParser()
-parser.add_argument("stats_path", metavar="stats", type=str, help="Path to the stats JSON file.")
-parser.add_argument("running_mean_length", metavar="rml", type=ge_1, help="Running mean length")
+parser.add_argument("stats_path", metavar="stats", type=str, help="Path to the Tensorflow monitor stats.json file or summaries directory.")
 parser.add_argument("--xmax", type=ge_1, default=None, help="Maximum episode for which to show results.")
+parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=None, help="Use exponential smoothing with a weight 0<=w<=1.")
+parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a moving average with a window w>0")
 
 if __name__ == "__main__":
     try:
         args = parser.parse_args()
     except:
         sys.exit()
-    main(args.stats_path, args.running_mean_length, args.xmax)
+    assert not(not(args.exp_smoothing is None) and not(args.moving_average is None)), "Maximally 1 smoothing technique can be used"
+    smoothing_technique = None
+    if not(args.exp_smoothing is None):
+        smoothing_technique = create_smoother(exponential_smoothing, args.exp_smoothing)  # args.exp_smoothing holds the weight
+    elif not (args.moving_average is None):
+        smoothing_technique = create_smoother(moving_average, args.moving_average)  # args.moving_average holds the window
+    if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
+        plot_tf_monitor_stats(args.stats_path, args.xmax, smoothing_technique)
+    elif os.path.isdir(args.stats_path):
+        plot_tf_scalar_summaries(args.stats_path, args.xmax, smoothing_technique)
+    else:
+        raise NotImplementedError("Only a Tensorflow monitor stats.json file or summaries directory is allowed.")

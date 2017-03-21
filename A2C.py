@@ -259,6 +259,8 @@ class A2CContinuous(A2C):
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
+parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
@@ -270,17 +272,23 @@ def main():
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
+    shared_args = {
+        "monitor_dir": args.monitor_path,
+        "n_iter": args.iterations,
+        "save_model": args.save_model,
+        "learning_rate": args.learning_rate
+    }
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
-        agent = A2CDiscrete(env, action_selection, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
+        agent = A2CDiscrete(env, action_selection, **shared_args)
     elif isinstance(env.action_space, Box):
         action_selection = ContinuousActionSelection()
-        agent = A2CContinuous(env, action_selection, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
+        agent = A2CContinuous(env, action_selection, **shared_args)
     else:
         raise NotImplementedError
     save_config(args.monitor_path, agent.config, [env])
     try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
         agent.learn()
     except KeyboardInterrupt:
         pass

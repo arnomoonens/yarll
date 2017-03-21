@@ -162,6 +162,8 @@ class KPLearner(Learner):
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
+parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 
 def main():
     try:
@@ -172,13 +174,17 @@ def main():
         os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = KPLearner(env, episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"))
+        agent = KPLearner(
+            env,
+            episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
+            learning_rate=args.learning_rate
+        )
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:
         raise NotImplementedError
     try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
         agent.learn()
     except KeyboardInterrupt:
         pass

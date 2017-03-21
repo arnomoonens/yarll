@@ -44,6 +44,10 @@ class REINFORCELearner(Learner):
         ))
         self.config.update(usercfg)
         self.build_network()
+        init = tf.global_variables_initializer()
+        # Launch the graph.
+        self.session = tf.Session()
+        self.session.run(init)
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
@@ -84,14 +88,14 @@ class REINFORCELearner(Learner):
             # Do policy gradient update step
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            result = self.session.run([self.summary_op, self.train], feed_dict={
+            summary, _ = self.session.run([self.summary_op, self.train], feed_dict={
                 self.states: all_state,
                 self.a_n: all_action,
                 self.adv_n: all_adv,
                 self.episode_lengths: np.mean(episode_lengths),
                 self.rewards: np.mean(episode_rewards)
             })
-            self.writer.add_summary(result[0], iteration)
+            self.writer.add_summary(summary, iteration)
             self.writer.flush()
 
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
@@ -134,12 +138,6 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(self.loss, name="train")
 
-        init = tf.global_variables_initializer()
-
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
-
     def build_network_rnn(self):
         self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
         # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
@@ -166,12 +164,6 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         self.summary_loss = loss
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
-
-        init = tf.global_variables_initializer()
-
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
 
 class REINFORCELearnerContinuous(REINFORCELearner):
     def __init__(self, env, action_selection, rnn, monitor_dir, **usercfg):
@@ -221,12 +213,6 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
         self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
-        init = tf.global_variables_initializer()
-
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
-
     def build_network_rnn(self):
         self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
         # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
@@ -264,12 +250,6 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
         self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
-
-        init = tf.global_variables_initializer()
-
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
 
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
@@ -330,15 +310,11 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
 
-        init = tf.global_variables_initializer()
-
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
-
 parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved.")
+parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
+parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--rnn", action="store_true", default=False, help="Use a Recurrent Neural Network (only for envs with a state space of rank 1).")
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
@@ -352,23 +328,29 @@ def main():
         os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     rank = len(env.observation_space.shape)  # Observation space rank
+    shared_args = {
+        "n_iter": args.iterations,
+        "monitor_dir": args.monitor_path,
+        "save_model": args.save_model,
+        "learning_rate": args.learning_rate
+    }
     if isinstance(env.action_space, Discrete):
         action_selection = ProbabilisticCategoricalActionSelection()
         if rank == 1:
-            agent = REINFORCELearnerDiscrete(env, action_selection, args.rnn, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
+            agent = REINFORCELearnerDiscrete(env, action_selection, args.rnn, **shared_args)
         else:
-            agent = REINFORCELearnerDiscreteCNN(env, action_selection, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
+            agent = REINFORCELearnerDiscreteCNN(env, action_selection, **shared_args)
     elif isinstance(env.action_space, Box):
         action_selection = ContinuousActionSelection()
         if rank == 1:
-            agent = REINFORCELearnerContinuous(env, action_selection, args.rnn, args.monitor_path, n_iter=args.iterations, save_model=args.save_model)
+            agent = REINFORCELearnerContinuous(env, action_selection, args.rnn, **shared_args)
         else:
             raise NotImplementedError
     else:
         raise NotImplementedError
     save_config(args.monitor_path, agent.config, [env])
     try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
         agent.learn()
     except KeyboardInterrupt:
         pass

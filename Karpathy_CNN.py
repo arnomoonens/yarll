@@ -38,15 +38,17 @@ class KPCNNLearner(Learner):
         self.action_selection = action_selection
         self.monitor_dir = monitor_dir
         # Default configuration. Can be overwritten using keyword arguments.
-        self.config.update(dict(
-            # timesteps_per_batch=10000,
-            # n_iter=100,
-            n_hidden_units=200,
-            gamma=0.99,
-            learning_rate=1e-3,
-            batch_size=10,  # Amount of episodes after which to adapt gradients
-            decay_rate=0.99,  # Used for RMSProp
-            draw_frequency=50  # Draw a plot every 50 episodes
+        self.config.update(
+            dict(
+                # timesteps_per_batch=10000,
+                # n_iter=100,
+                n_hidden_units=200,
+                gamma=0.99,
+                learning_rate=1e-3,
+                batch_size=10,  # Amount of episodes after which to adapt gradients
+                decay_rate=0.99,  # Used for RMSProp
+                draw_frequency=50  # Draw a plot every 50 episodes
+            )
         )
         self.config.update(usercfg)
         self.build_network()
@@ -128,7 +130,6 @@ class KPCNNLearner(Learner):
         states = []
         actions = []
         rewards = []
-        episode_probabilities = []
         for _ in range(episode_max_length):
             delta = state - prev_state
             action = self.choose_action(delta)
@@ -191,6 +192,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
+parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
+parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate used when optimizing weights.")
 
 def main():
     try:
@@ -201,14 +204,20 @@ def main():
         os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
     if isinstance(env.action_space, Discrete):
-        agent = KPCNNLearner(env, ProbabilisticCategoricalActionSelection(), monitor_path, save_model=args.save_model)
+        agent = KPCNNLearner(
+            env,
+            ProbabilisticCategoricalActionSelection(),
+            args.monitor_path,
+            save_model=args.save_model,
+            learning_rate=args.learning_rate
+        )
     elif isinstance(env.action_space, Box):
         raise NotImplementedError
     else:
         raise NotImplementedError
     save_config(args.monitor_path, agent.config, [env])
     try:
-        env = wrappers.Monitor(env, args.monitor_path, force=True)
+        env = wrappers.Monitor(env, args.monitor_path, force=True, video_callable=(None if args.video else False))
         agent.learn(env)
     except KeyboardInterrupt:
         pass

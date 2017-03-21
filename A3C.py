@@ -135,7 +135,7 @@ class A3CThread(Thread):
         self.env = gym.make(master.env_name)
         self.master = master
         if thread_id == 0 and self.master.monitor:
-            self.env = wrappers.Monitor(self.env, master.monitor_dir, force=True)
+            self.env = wrappers.Monitor(self.env, master.monitor_dir, force=True, video_callable=(None if self.master.video else False))
 
         # Build actor and critic networks
         self.build_networks()
@@ -269,7 +269,7 @@ class A3CThreadContinuous(A3CThread):
 
 class A3CLearner(Learner):
     """Asynchronous Advantage Actor Critic learner."""
-    def __init__(self, env, action_selection, monitor, monitor_dir, **usercfg):
+    def __init__(self, env, action_selection, monitor, monitor_dir, video=True, **usercfg):
         super(A3CLearner, self).__init__(env)
         self.env = env
         self.shared_counter = 0
@@ -278,6 +278,7 @@ class A3CLearner(Learner):
         self.env_name = env.spec.id
         self.monitor = monitor
         self.monitor_dir = monitor_dir
+        self.video = video
 
         self.config.update(dict(
             gamma=0.99,
@@ -381,10 +382,18 @@ def main():
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     env = gym.make(args.environment)
+    shared_args = {
+        "monitor": args.monitor,
+        "video": args.video,
+        "monitor_dir": args.monitor_path,
+        # "n_iter": args.iterations,
+        "save_model": args.save_model,
+        "learning_rate": args.learning_rate
+    }
     if isinstance(env.action_space, Discrete):
-        agent = A3CLearnerDiscrete(env, ProbabilisticCategoricalActionSelection(), args.monitor, args.monitor_path, save_model=args.save_model)
+        agent = A3CLearnerDiscrete(env, ProbabilisticCategoricalActionSelection(), **shared_args)
     elif isinstance(env.action_space, Box):
-        agent = A3CLearnerContinuous(env, ContinuousActionSelection(), args.monitor, args.monitor_path, save_model=args.save_model)
+        agent = A3CLearnerContinuous(env, ContinuousActionSelection(), **shared_args)
     else:
         raise NotImplementedError
     save_config(args.monitor_path, agent.config, [env])

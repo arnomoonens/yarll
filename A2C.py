@@ -8,7 +8,6 @@ import tensorflow as tf
 import logging
 import argparse
 
-import gym
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
@@ -16,6 +15,7 @@ from Learner import Learner
 from utils import discount_rewards, save_config
 from Reporter import Reporter
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
+from Environment import Environment
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -43,6 +43,10 @@ class A2C(Learner):
         ))
         self.config.update(usercfg)
         self.build_networks()
+        init = tf.global_variables_initializer()
+        # Launch the graph.
+        self.session = tf.Session()
+        self.session.run(init)
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
@@ -151,12 +155,6 @@ class A2CDiscrete(A2C):
         critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
         self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
 
-        init = tf.global_variables_initializer()
-
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
-
 class A2CContinuous(A2C):
     """Advantage Actor Critic for continuous action spaces."""
     def __init__(self, env, action_selection, monitor_dir, **usercfg):
@@ -214,12 +212,6 @@ class A2CContinuous(A2C):
         critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
         self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
 
-        init = tf.global_variables_initializer()
-
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
-
     def learn(self):
         """Run learning algorithm"""
         reporter = Reporter()
@@ -271,7 +263,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = gym.make(args.environment)
+    env = Environment(args.environment)
     shared_args = {
         "monitor_dir": args.monitor_path,
         "n_iter": args.iterations,
@@ -286,7 +278,7 @@ def main():
         agent = A2CContinuous(env, action_selection, **shared_args)
     else:
         raise NotImplementedError
-    save_config(args.monitor_path, agent.config, [env])
+    save_config(args.monitor_path, agent.config, [env.to_dict()])
     try:
         agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
         agent.learn()

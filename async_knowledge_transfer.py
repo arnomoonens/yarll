@@ -14,7 +14,7 @@ from gym.spaces import Discrete
 
 from Learner import Learner
 from utils import discount_rewards, save_config
-from CartPole import make_predef_CartPole_envs, make_random_CartPole_envs
+from Environment.CartPole import make_predef_CartPole_envs, make_random_CartPole_envs
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from knowledge_transfer import TaskLearner
@@ -33,7 +33,7 @@ class AKTThread(Thread):
         self.task_learner = TaskLearner(env, self.action, self, **self.master.config)
 
         # Write the summary of each task in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "task", str(self.task_id)), self.master.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "task" + str(self.task_id)), self.master.session.graph)
 
     def build_networks(self):
         self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
@@ -254,7 +254,7 @@ def main():
         )
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
-    save_config(args.monitor_path, agent.config, envs)
+    save_config(args.monitor_path, agent.config, [env.to_dict() for env in envs])
     try:
         agent.learn()
     except KeyboardInterrupt:

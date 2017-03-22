@@ -89,8 +89,8 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
 
     for scalar, tasks in data.items():
         fig = plt.figure()
-        min_y = np.inf
-        max_y = -np.inf
+        # min_y = np.inf
+        # max_y = -np.inf
         for task, scalar_task_data in tasks.items():
             mean = np.mean(scalar_task_data, axis=0)
             if smoothing_function:
@@ -98,16 +98,15 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
             # percentiles = np.percentile(scalar_task_data, [25, 75], axis=0)
             std = np.std(scalar_task_data, axis=0)
             std = std[len(std) - len(mean):]
-            error_min, error_max = mean - std, mean + std
+            # error_min, error_max = mean - std, mean + std
             x = range(len(mean))
             plt.plot(x, mean, label=task)
             plt.legend()
-            plt.fill_between(x, error_min, error_max, alpha=0.3)
-            min_y = min(min_y, min(error_min))
-            max_y = max(max_y, max(filter(lambda x: x != np.inf, error_max)))
+            # plt.fill_between(x, error_min, error_max, alpha=0.3)
+            # min_y = min(min_y, min(error_min))
+            # max_y = max(max_y, max(filter(lambda x: x != np.inf, error_max)))
         plt.xlim(xmax=xmax)
-        print(min_y, max_y)
-        plt.ylim(ymin=min(0, min_y), ymax=max(0, max_y + 0.1 * max_y))
+        # plt.ylim(ymin=min(0, min_y), ymax=max(0, max_y + 0.1 * max_y))
         plt.xlabel("Episode")
         plt.ylabel(scalar)
         plt.title(scalar + " per episode")

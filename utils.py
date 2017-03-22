@@ -31,7 +31,6 @@ def preprocess_image(img):
 
 def save_config(directory, config, envs):
     """Save the configuration of an agent to a file."""
-    envs = [env.spec.id for env in envs]
     config["envs"] = envs
     with open(path.join(directory, "config.json"), "w") as outfile:
         json.dump(config, outfile)

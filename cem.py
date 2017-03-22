@@ -7,10 +7,10 @@ import sys
 import argparse
 
 import numpy as np
-import gym
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
+from Environment import Environment
 from Learner import Learner
 
 # ================================================================
@@ -61,11 +61,11 @@ class CEMLearner(Learner):
     def __init__(self, env, **usercfg):
         super(CEMLearner, self).__init__(env, **usercfg)
         self.config = dict(
-                                num_steps = 500,  # maximum length of episode
-                                n_iter = 100,  # number of iterations of CEM
-                                batch_size = 25,  # number of samples per batch
-                                elite_frac = 0.2  # fraction of samples used as elite set
-                            )
+            num_steps=500,  # maximum length of episode
+            n_iter=100,  # number of iterations of CEM
+            batch_size=25,  # number of samples per batch
+            elite_frac=0.2  # fraction of samples used as elite set
+        )
         if isinstance(env.action_space, Discrete):
             self.dim_theta = (env.observation_space.shape[0] + 1) * env.action_space.n
         elif isinstance(env.action_space, Box):
@@ -124,7 +124,7 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
-    env = gym.make(args.environment)
+    env = Environment(args.environment)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
         agent = CEMLearner(env, episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"))

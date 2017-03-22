@@ -4,13 +4,13 @@ import sys
 import os
 import argparse
 
-import gym
 from gym import wrappers
 
 from Policies.EGreedy import EGreedy
 from Learners.Sarsa import Sarsa
 from Traces.EligibilityTraces import EligibilityTraces
 from FunctionApproximation.TileCoding import TileCoding
+from Environment import Environment
 
 # def draw_3d(tile_starts):
 #     states = []
@@ -72,8 +72,8 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    # env = gym.make(args.environment)
-    env = gym.make("MountainCar-v0")
+    # env = Environment(args.environment)
+    env = Environment("MountainCar-v0")
     # if isinstance(env.action_space, Discrete):
     #     agent = SarsaFALearner(env)
     # else:

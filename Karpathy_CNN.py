@@ -8,11 +8,11 @@ import tensorflow as tf
 import logging
 import argparse
 
-import gym
 from gym import wrappers
 from gym.spaces import Discrete, Box
 # import gym_ple
 
+from Environment import Environment
 from Learner import Learner
 from utils import discount_rewards, preprocess_image, save_config
 from Reporter import Reporter
@@ -202,7 +202,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = gym.make(args.environment)
+    env = Environment(args.environment)
     if isinstance(env.action_space, Discrete):
         agent = KPCNNLearner(
             env,
@@ -215,7 +215,7 @@ def main():
         raise NotImplementedError
     else:
         raise NotImplementedError
-    save_config(args.monitor_path, agent.config, [env])
+    save_config(args.monitor_path, agent.config, [env.to_dict()])
     try:
         env = wrappers.Monitor(env, args.monitor_path, force=True, video_callable=(None if args.video else False))
         agent.learn(env)

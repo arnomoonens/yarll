@@ -7,10 +7,10 @@ import numpy as np
 import logging
 import argparse
 
-import gym
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
+from Environment import Environment
 from Learner import Learner
 from utils import discount_rewards
 from Reporter import Reporter
@@ -172,7 +172,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = gym.make(args.environment)
+    env = Environment(args.environment)
     if isinstance(env.action_space, Discrete):
         agent = KPLearner(
             env,

@@ -12,7 +12,7 @@ from gym.spaces import Discrete
 
 from Learner import Learner
 from utils import discount_rewards, save_config
-from CartPole import make_predef_CartPole_envs, make_random_CartPole_envs
+from Environment.CartPole import make_predef_CartPole_envs, make_random_CartPole_envs
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
@@ -196,7 +196,7 @@ def main():
         )
     else:
         raise NotImplementedError("Only environments with a discrete action space are supported right now.")
-    save_config(args.monitor_path, agent.config, envs)
+    save_config(args.monitor_path, agent.config, [env.to_dict() for env in envs])
     try:
         agent.learn()
     except KeyboardInterrupt:

@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-# Make CartPole environments
-
 import numpy as np
 
-from Environment.Environment import Environment
+from Environment import Environment
 
 class CartPole(Environment):
     """Cartpole-v0 environment wrapper."""
@@ -33,15 +31,11 @@ class CartPole(Environment):
             "masspole": self.env.masspole
         }
 
-def make_predef_CartPole_envs():
-    """Make (3) predefined variations of the same game."""
-    envs = []
-    envs.append(CartPole())  # First one has the standard behaviour
-    envs.append(CartPole(0.25, 0.5))  # 5 times longer, 5 times heavier
-    envs.append(CartPole(0.025, 0.05))
-    return envs
+def make_CartPole_envs(descriptions):
+    """Make CartPole enviornments using a list of descriptions."""
+    return [CartPole(d.get("length", None), d.get("masspole", None)) for d in descriptions]
 
-def make_random_CartPole_envs(n_envs):
+def generate_random_CartPole_envs(n_envs):
     """Make n_envs random variations of the same game."""
     length_low = 0.01
     length_high = 5.0
@@ -51,5 +45,5 @@ def make_random_CartPole_envs(n_envs):
     for i in range(n_envs):
         length = np.random.uniform(length_low, length_high)
         masspole = np.random.uniform(masspole_low, masspole_high)
-        envs.append(CartPole(length, masspole))
+        envs.append({"name": "CartPole-v0", "length": length, "masspole": masspole})
     return envs

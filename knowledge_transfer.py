@@ -11,10 +11,11 @@ import argparse
 from gym.spaces import Discrete
 
 from Learner import Learner
-from utils import discount_rewards, save_config
-from Environment.CartPole import make_predef_CartPole_envs, make_random_CartPole_envs
+from utils import discount_rewards, save_config, json_to_dict
+from Environment.CartPole import make_CartPole_envs, generate_random_CartPole_envs
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
+from Exceptions import WrongArgumentsException
 
 class TaskLearner(Learner):
     """Learner for a specific environment and with its own action selection."""
@@ -170,12 +171,12 @@ class KnowledgeTransferLearner(Learner):
             self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
 parser = argparse.ArgumentParser()
-parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--environments", metavar="envs", type=str, help="Json file with Gym environments to execute the experiment on.")
+parser.add_argument("--random_envs", type=int, help="Number of CartPole-v0 environments with random parameters to generate.")
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
-parser.add_argument("--random_envs", type=int, help="Number of environments with random parameters to generate.")
 
 def main():
     try:
@@ -184,9 +185,16 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    if args.environment != "CartPole-v0":
+    if args.environments and args.random_envs:
+        raise WrongArgumentsException("Only supply either an environments file or a number of random environments.")
+    elif args.environments:
+        envs = make_CartPole_envs(json_to_dict(args.environments))
+    elif args.random_envs:
+        envs = make_CartPole_envs(generate_random_CartPole_envs(args.random_envs))
+    else:
+        raise WrongArgumentsException("Please supply an environments file or a number of random environments.")
+    if any(map(lambda env: env.name != "CartPole-v0", envs)):
         raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
-    envs = make_random_CartPole_envs(args.random_envs) if args.random_envs else make_predef_CartPole_envs()
     if isinstance(envs[0].action_space, Discrete):
         agent = KnowledgeTransferLearner(
             envs, args.monitor_path,

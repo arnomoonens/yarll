@@ -93,3 +93,5 @@ ENV/
 /DeepRL.sublime-project
 
 /DeepRL.sublime-workspace
+
+Environment/*.json

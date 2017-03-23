@@ -142,11 +142,13 @@ class AsyncKnowledgeTransferLearner(Learner):
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
         self.config.update(dict(
-            timesteps_per_batch=2000,
+            timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=200,
-            gamma=0.99,
+            gamma=0.99,  # Discount past rewards by a percentage
+            decay=0.9,  # Decay of RMSProp optimizer
+            epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.005,
             n_hidden_units=20,
             repeat_n_actions=1,
@@ -164,12 +166,12 @@ class AsyncKnowledgeTransferLearner(Learner):
         self.build_networks()
 
         self.loss = tf.placeholder("float", name="loss")
-        loss_summary = tf.summary.scalar("Loss", self.loss)
+        summary_loss = tf.summary.scalar("Loss", self.loss)
         self.reward = tf.placeholder("float", name="reward")
-        reward_summary = tf.summary.scalar("Reward", self.reward)
+        summary_rewards = tf.summary.scalar("Reward", self.reward)
         self.episode_length = tf.placeholder("float", name="episode_length")
-        episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length)
-        self.summary_op = tf.summary.merge([loss_summary, reward_summary, episode_length_summary])
+        summary_episode_lengths = tf.summary.scalar("Episode_length", self.episode_length)
+        self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
         self.jobs = [self.make_thread(env, i) for i, env in enumerate(self.envs)]
 
@@ -205,7 +207,7 @@ class AsyncKnowledgeTransferLearner(Learner):
 
         self.shared_vars = [W0, b0, self.knowledge_base]
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
     def signal_handler(self, signal, frame):
         """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""

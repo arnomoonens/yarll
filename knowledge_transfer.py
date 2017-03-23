@@ -5,7 +5,6 @@ import sys
 import os
 import numpy as np
 import tensorflow as tf
-import logging
 import argparse
 
 from gym.spaces import Discrete
@@ -37,11 +36,13 @@ class KnowledgeTransferLearner(Learner):
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
         self.config.update(dict(
-            timesteps_per_batch=2000,
+            timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=400,
-            gamma=0.99,
+            gamma=0.99,  # Discount past rewards by a percentage
+            decay=0.9,  # Decay of RMSProp optimizer
+            epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.005,
             n_hidden_units=20,
             repeat_n_actions=1,
@@ -79,7 +80,7 @@ class KnowledgeTransferLearner(Learner):
 
         self.action_tensors = [tf.squeeze(tf.multinomial(tf.log(probs), 1)) for probs in self.probs_tensors]
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
         net_vars = self.shared_vars + sparse_representations
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
 
@@ -87,10 +88,10 @@ class KnowledgeTransferLearner(Learner):
         self.losses = []
 
         self.loss = tf.placeholder("float", name="loss")
-        self.rewards = tf.placeholder("float", name="Rewards")
-        self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
         summary_loss = tf.summary.scalar("Loss", self.loss)
+        self.rewards = tf.placeholder("float", name="Rewards")
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
+        self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 

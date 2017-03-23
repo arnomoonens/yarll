@@ -30,7 +30,7 @@ class A2C(Learner):
         self.monitor_dir = monitor_dir
 
         self.config.update(dict(
-            timesteps_per_batch=2000,
+            timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=400,
@@ -150,7 +150,6 @@ class A2CDiscrete(A2C):
         critic_b1 = tf.Variable(tf.zeros([1]), name='b1')
         self.critic_value = tf.matmul(critic_L1, critic_W1) + critic_b1[None, :]
         critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_value))
-        # critic_loss = tf.Print(critic_loss, [critic_loss], message='Critic loss=')
         self.summary_critic_loss = critic_loss
         critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
         self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())

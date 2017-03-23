@@ -126,9 +126,12 @@ class KnowledgeTransferLearner(Learner):
         reporter = Reporter()
         config = self.config
         total_n_trajectories = np.zeros(len(self.envs))
+        n_tasks = len(self.task_learners) - 1
         for iteration in range(config["n_iter"]):
+            if iteration == 100:
+                n_tasks += 1
             self.session.run([self.reset_accum_grads])
-            for i, learner in enumerate(self.task_learners):
+            for i, learner in enumerate(self.task_learners[:n_tasks]):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectories = learner.get_trajectories()
                 total_n_trajectories[i] += len(trajectories)

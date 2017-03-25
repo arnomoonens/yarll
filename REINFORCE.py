@@ -21,7 +21,7 @@ from Learner import Learner
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 from utils import discount_rewards, preprocess_image, save_config
 from Reporter import Reporter
-from Environment import Environment
+from Environment.registration import make_environment
 
 class REINFORCELearner(Learner):
     """
@@ -328,7 +328,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     rank = len(env.observation_space.shape)  # Observation space rank
     shared_args = {
         "n_iter": args.iterations,

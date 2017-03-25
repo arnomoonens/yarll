@@ -10,7 +10,7 @@ import numpy as np
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
-from Environment import Environment
+from Environment.registration import make_environment
 from Learner import Learner
 
 # ================================================================
@@ -124,7 +124,7 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()
         agent = CEMLearner(env, episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"))

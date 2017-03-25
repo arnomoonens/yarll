@@ -12,7 +12,7 @@ from gym import wrappers
 from gym.spaces import Discrete, Box
 # import gym_ple
 
-from Environment import Environment
+from Environment.registration import make_environment
 from Learner import Learner
 from utils import discount_rewards, preprocess_image, save_config
 from Reporter import Reporter
@@ -205,7 +205,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     if isinstance(env.action_space, Discrete):
         agent = KPCNNLearner(
             env,

@@ -15,7 +15,7 @@ from Learner import Learner
 from utils import discount_rewards, save_config
 from Reporter import Reporter
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
-from Environment import Environment
+from Environment.registration import make_environment
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -262,7 +262,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     shared_args = {
         "monitor_dir": args.monitor_path,
         "n_iter": args.iterations,

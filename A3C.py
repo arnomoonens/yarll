@@ -14,7 +14,7 @@ import signal
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
-from Environment import Environment
+from Environment.registration import make_environment
 from Learner import Learner
 from utils import discount_rewards, save_config
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
@@ -132,7 +132,7 @@ class A3CThread(Thread):
     def __init__(self, master, thread_id):
         super(A3CThread, self).__init__(name=thread_id)
         self.thread_id = thread_id
-        self.env = Environment(master.env_name)
+        self.env = make_environment(master.env_name)
         self.master = master
         if thread_id == 0 and self.master.monitor:
             self.env = wrappers.Monitor(self.env, master.monitor_dir, force=True, video_callable=(None if self.master.video else False))
@@ -386,7 +386,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     shared_args = {
         "monitor": args.monitor,
         "video": args.video,

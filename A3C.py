@@ -14,7 +14,7 @@ import signal
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
-from Environment import Environment
+from Environment.registration import make_environment
 from Learner import Learner
 from utils import discount_rewards, save_config
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
@@ -71,7 +71,7 @@ class ActorNetworkContinuous(object):
 
         with tf.variable_scope("%s_actor" % scope):
             self.states = tf.placeholder("float", [None, self.state_shape], name="states")
-            self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")  # Not used (yet?)
+            self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")  # Advantage
             self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
 
@@ -132,7 +132,7 @@ class A3CThread(Thread):
     def __init__(self, master, thread_id):
         super(A3CThread, self).__init__(name=thread_id)
         self.thread_id = thread_id
-        self.env = Environment(master.env_name)
+        self.env = make_environment(master.env_name)
         self.master = master
         if thread_id == 0 and self.master.monitor:
             self.env = wrappers.Monitor(self.env, master.monitor_dir, force=True, video_callable=(None if self.master.video else False))
@@ -141,7 +141,7 @@ class A3CThread(Thread):
         self.build_networks()
 
         # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "thread", str(self.thread_id)), self.master.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "thread" + str(self.thread_id)), self.master.session.graph)
 
         self.actor_sync_net = sync_gradients_op(master.shared_actor_net, self.actor_net.vars, self.thread_id)
         self.actor_create_ag = create_accumulative_gradients_op(self.actor_net.vars, self.thread_id)
@@ -281,7 +281,9 @@ class A3CLearner(Learner):
         self.video = video
 
         self.config.update(dict(
-            gamma=0.99,
+            gamma=0.99,  # Discount past rewards by a percentage
+            decay=0.9,  # Decay of RMSProp optimizer
+            epsilon=1e-9,  # Epsilon of RMSProp optimizer
             actor_learning_rate=0.01,
             critic_learning_rate=0.05,
             actor_n_hidden=20,
@@ -300,8 +302,8 @@ class A3CLearner(Learner):
             tf.add_to_collection("states", self.shared_actor_net.states)
             self.saver = tf.train.Saver()
 
-        self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["actor_learning_rate"], decay=0.9, epsilon=1e-9)
-        self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["critic_learning_rate"], decay=0.9, epsilon=1e-9)
+        self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["actor_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+        self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["critic_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
         self.global_step = tf.get_variable("global_step", [], initializer=tf.constant_initializer(0), trainable=False)
 
@@ -384,7 +386,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     shared_args = {
         "monitor": args.monitor,
         "video": args.video,

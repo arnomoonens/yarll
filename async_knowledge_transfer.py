@@ -14,7 +14,7 @@ from gym.spaces import Discrete
 
 from Learner import Learner
 from utils import discount_rewards, save_config, json_to_dict
-from Environment.CartPole import make_CartPole_envs, generate_random_CartPole_envs
+from Environment.registration import make_environments, make_random_environments
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from knowledge_transfer import TaskLearner
@@ -142,11 +142,13 @@ class AsyncKnowledgeTransferLearner(Learner):
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
         self.config.update(dict(
-            timesteps_per_batch=2000,
+            timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=200,
-            gamma=0.99,
+            gamma=0.99,  # Discount past rewards by a percentage
+            decay=0.9,  # Decay of RMSProp optimizer
+            epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.005,
             n_hidden_units=20,
             repeat_n_actions=1,
@@ -164,12 +166,12 @@ class AsyncKnowledgeTransferLearner(Learner):
         self.build_networks()
 
         self.loss = tf.placeholder("float", name="loss")
-        loss_summary = tf.summary.scalar("Loss", self.loss)
+        summary_loss = tf.summary.scalar("Loss", self.loss)
         self.reward = tf.placeholder("float", name="reward")
-        reward_summary = tf.summary.scalar("Reward", self.reward)
+        summary_rewards = tf.summary.scalar("Reward", self.reward)
         self.episode_length = tf.placeholder("float", name="episode_length")
-        episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length)
-        self.summary_op = tf.summary.merge([loss_summary, reward_summary, episode_length_summary])
+        summary_episode_lengths = tf.summary.scalar("Episode_length", self.episode_length)
+        self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
         self.jobs = [self.make_thread(env, i) for i, env in enumerate(self.envs)]
 
@@ -205,7 +207,7 @@ class AsyncKnowledgeTransferLearner(Learner):
 
         self.shared_vars = [W0, b0, self.knowledge_base]
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
     def signal_handler(self, signal, frame):
         """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""
@@ -230,6 +232,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--environments", metavar="envs", type=str, help="Json file with Gym environments to execute the experiment on.")
 parser.add_argument("--random_envs", type=int, help="Number of CartPole-v0 environments with random parameters to generate.")
+parser.add_argument("--env_name", type=str, help="Name of the environment type for which to generate random instances.")
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--learning_method", metavar="learning_method", type=str, default="REINFORCE", choices=["REINFORCE", "Karpathy"])
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run each task.")
@@ -245,13 +248,13 @@ def main():
     if args.environments and args.random_envs:
         raise WrongArgumentsException("Only supply either an environments file or a number of random environments.")
     elif args.environments:
-        envs = make_CartPole_envs(json_to_dict(args.environments))
+        envs = make_environments(json_to_dict(args.environments))
     elif args.random_envs:
-        envs = make_CartPole_envs(generate_random_CartPole_envs(args.random_envs))
+        if args.env_name is None:
+            raise WrongArgumentsException("A name of the environment type for which to generate random instances must be provided.")
+        envs = make_random_environments(args.env_name, args.random_envs)
     else:
         raise WrongArgumentsException("Please supply an environments file or a number of random environments.")
-    if any(map(lambda env: env.name != "CartPole-v0", envs)):
-        raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
     if isinstance(envs[0].action_space, Discrete):
         agent = AsyncKnowledgeTransferLearner(
             envs,

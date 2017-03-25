@@ -7,7 +7,7 @@ import argparse
 import tensorflow as tf
 from gym import wrappers
 
-from Environment import Environment
+from Environment.registration import make_environment
 
 class ModelRunner(object):
     """
@@ -70,7 +70,7 @@ def main():
         args = parser.parse_args()
     except:
         sys.exit()
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     runner = ModelRunner(env, args.model_directory, args.save_directory, n_iter=args.iterations)
     try:
         runner.env = wrappers.Monitor(runner.env, args.save_directory, video_callable=False, force=True)

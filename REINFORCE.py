@@ -13,7 +13,6 @@ import os
 import argparse
 
 import tensorflow as tf
-import gym
 from gym import wrappers
 from gym.spaces import Discrete, Box
 # import gym_ple
@@ -22,7 +21,7 @@ from Learner import Learner
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 from utils import discount_rewards, preprocess_image, save_config
 from Reporter import Reporter
-from Environment import Environment
+from Environment.registration import make_environment
 
 class REINFORCELearner(Learner):
     """
@@ -37,7 +36,9 @@ class REINFORCELearner(Learner):
             batch_update="timesteps",
             timesteps_per_batch=10000,
             n_iter=100,
-            gamma=1.0,
+            gamma=0.99,  # Discount past rewards by a percentage
+            decay=0.9,  # Decay of RMSProp optimizer
+            epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.05,
             n_hidden_units=20,
             repeat_n_actions=1,
@@ -136,7 +137,7 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         eligibility = tf.log(good_probabilities) * self.adv_n
         self.loss = -tf.reduce_sum(eligibility, name="loss")
         self.summary_loss = self.loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
         self.train = optimizer.minimize(self.loss, name="train")
 
     def build_network_rnn(self):
@@ -327,7 +328,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     rank = len(env.observation_space.shape)  # Observation space rank
     shared_args = {
         "n_iter": args.iterations,

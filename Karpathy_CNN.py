@@ -12,7 +12,7 @@ from gym import wrappers
 from gym.spaces import Discrete, Box
 # import gym_ple
 
-from Environment import Environment
+from Environment.registration import make_environment
 from Learner import Learner
 from utils import discount_rewards, preprocess_image, save_config
 from Reporter import Reporter
@@ -43,10 +43,11 @@ class KPCNNLearner(Learner):
                 # timesteps_per_batch=10000,
                 # n_iter=100,
                 n_hidden_units=200,
-                gamma=0.99,
                 learning_rate=1e-3,
                 batch_size=10,  # Amount of episodes after which to adapt gradients
-                decay_rate=0.99,  # Used for RMSProp
+                gamma=0.99,  # Discount past rewards by a percentage
+                decay=0.99,  # Decay of RMSProp optimizer
+                epsilon=1e-9,  # Epsilon of RMSProp optimizer
                 draw_frequency=50  # Draw a plot every 50 episodes
             )
         )
@@ -107,7 +108,8 @@ class KPCNNLearner(Learner):
         self.accumulate_grads = add_accumulative_gradients_op(self.vars, self.create_accumulative_grads, loss)
         self.reset_accumulative_grads = reset_accumulative_gradients_op(self.vars, self.create_accumulative_grads)
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay_rate"], epsilon=1e-9)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.create_accumulative_grads, self.vars))
 
         init = tf.global_variables_initializer()
@@ -143,10 +145,11 @@ class KPCNNLearner(Learner):
                 break
             if render:
                 env.render()
-        return {"reward": np.array(rewards),
-                "state": np.array(states),
-                "action": np.array(actions),
-                }
+        return {
+            "reward": np.array(rewards),
+            "state": np.array(states),
+            "action": np.array(actions),
+        }
 
     def learn(self, env):
         reporter = Reporter()
@@ -202,7 +205,7 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    env = Environment(args.environment)
+    env = make_environment(args.environment)
     if isinstance(env.action_space, Discrete):
         agent = KPCNNLearner(
             env,

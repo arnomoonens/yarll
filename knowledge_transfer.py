@@ -5,14 +5,13 @@ import sys
 import os
 import numpy as np
 import tensorflow as tf
-import logging
 import argparse
 
 from gym.spaces import Discrete
 
 from Learner import Learner
 from utils import discount_rewards, save_config, json_to_dict
-from Environment.CartPole import make_CartPole_envs, generate_random_CartPole_envs
+from Environment.registration import make_environments, make_random_environments
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from Exceptions import WrongArgumentsException
@@ -37,11 +36,13 @@ class KnowledgeTransferLearner(Learner):
         self.monitor_dir = monitor_dir
         self.nA = envs[0].action_space.n
         self.config.update(dict(
-            timesteps_per_batch=2000,
+            timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=400,
-            gamma=0.99,
+            gamma=0.99,  # Discount past rewards by a percentage
+            decay=0.9,  # Decay of RMSProp optimizer
+            epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.005,
             n_hidden_units=20,
             repeat_n_actions=1,
@@ -79,7 +80,7 @@ class KnowledgeTransferLearner(Learner):
 
         self.action_tensors = [tf.squeeze(tf.multinomial(tf.log(probs), 1)) for probs in self.probs_tensors]
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
         net_vars = self.shared_vars + sparse_representations
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
 
@@ -87,10 +88,10 @@ class KnowledgeTransferLearner(Learner):
         self.losses = []
 
         self.loss = tf.placeholder("float", name="loss")
-        self.rewards = tf.placeholder("float", name="Rewards")
-        self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
         summary_loss = tf.summary.scalar("Loss", self.loss)
+        self.rewards = tf.placeholder("float", name="Rewards")
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
+        self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
@@ -176,7 +177,8 @@ class KnowledgeTransferLearner(Learner):
 parser = argparse.ArgumentParser()
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--environments", metavar="envs", type=str, help="Json file with Gym environments to execute the experiment on.")
-parser.add_argument("--random_envs", type=int, help="Number of CartPole-v0 environments with random parameters to generate.")
+parser.add_argument("--random_envs", type=int, help="Number of environments with random parameters to generate.")
+parser.add_argument("--env_name", type=str, help="Name of the environment type for which to generate random instances.")
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
@@ -191,13 +193,13 @@ def main():
     if args.environments and args.random_envs:
         raise WrongArgumentsException("Only supply either an environments file or a number of random environments.")
     elif args.environments:
-        envs = make_CartPole_envs(json_to_dict(args.environments))
+        envs = make_environments(json_to_dict(args.environments))
     elif args.random_envs:
-        envs = make_CartPole_envs(generate_random_CartPole_envs(args.random_envs))
+        if args.env_name is None:
+            raise WrongArgumentsException("A name of the environment type for which to generate random instances must be provided.")
+        envs = make_random_environments(args.env_name, args.random_envs)
     else:
         raise WrongArgumentsException("Please supply an environments file or a number of random environments.")
-    if any(map(lambda env: env.name != "CartPole-v0", envs)):
-        raise NotImplementedError("Only the environment \"CartPole-v0\" is supported right now.")
     if isinstance(envs[0].action_space, Discrete):
         agent = KnowledgeTransferLearner(
             envs, args.monitor_path,

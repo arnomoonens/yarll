@@ -5,9 +5,19 @@ from gym import make, Wrapper
 
 class Environment(Wrapper):
     """Wrapper for a OpenAI Gym environment."""
+
+    changeable_parameters = []
+
     def __init__(self, name):
         super(Environment, self).__init__(make(name))
         self.name = name
 
     def to_dict(self):
-        return {"name": self.name}
+        """
+        Extract the name and other important aspects of the environment.
+        By default, these include the changeable parameters.
+        """
+        d = {"name": self.name}
+        for p in self.changeable_parameters:
+            d[p["name"]] = self.env.env.__getattribute__(p["name"])
+        return d

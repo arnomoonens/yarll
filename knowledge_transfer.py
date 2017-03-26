@@ -9,8 +9,6 @@ import argparse
 
 from gym.spaces import Discrete
 
-import better_exceptions
-
 from Learner import Learner
 from utils import discount_rewards, save_config, json_to_dict
 from Environment.registration import make_environments, make_random_environments
@@ -92,9 +90,6 @@ class KnowledgeTransferLearner(Learner):
         net_vars = self.shared_vars + sparse_representations
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
 
-        self.writers = []
-        self.losses = []
-
         self.loss = tf.placeholder("float", name="loss")
         summary_loss = tf.summary.scalar("Loss", self.loss)
         self.rewards = tf.placeholder("float", name="Rewards")
@@ -103,11 +98,14 @@ class KnowledgeTransferLearner(Learner):
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
+        self.writers = []
+        self.losses = []
+
         for i, probabilities in enumerate(self.probs_tensors):
             good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
             # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
-            loss = -tf.reduce_sum(eligibility)
+            loss = -tf.reduce_sum(eligibility) + tf.nn.l2_loss(sparse_representations[i]) * 0.01
             self.losses.append(loss)
             writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "task" + str(i)), self.session.graph)
             self.writers.append(writer)

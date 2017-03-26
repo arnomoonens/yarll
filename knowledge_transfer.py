@@ -9,6 +9,8 @@ import argparse
 
 from gym.spaces import Discrete
 
+import better_exceptions
+
 from Learner import Learner
 from utils import discount_rewards, save_config, json_to_dict
 from Environment.registration import make_environments, make_random_environments
@@ -69,18 +71,24 @@ class KnowledgeTransferLearner(Learner):
         # Action probabilities
         L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
 
-        knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]))
+        knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]), name="knowledge_base")
 
         self.shared_vars = [W0, b0, knowledge_base]
 
-        # Every task has its own sparse representation
-        sparse_representations = [tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA])) for _ in range(self.n_tasks)]
+        # Every task has its own (sparse) representation
+        sparse_representations = [
+            tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA]), name="sparse%d" % i)
+            for i in range(self.n_tasks)
+        ]
 
         self.probs_tensors = [tf.nn.softmax(tf.matmul(L1, tf.matmul(knowledge_base, s))) for s in sparse_representations]
-
         self.action_tensors = [tf.squeeze(tf.multinomial(tf.log(probs), 1)) for probs in self.probs_tensors]
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+        self.optimizer = tf.train.RMSPropOptimizer(
+            learning_rate=self.config["learning_rate"],
+            decay=self.config["decay"],
+            epsilon=self.config["epsilon"]
+        )
         net_vars = self.shared_vars + sparse_representations
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
 
@@ -107,8 +115,8 @@ class KnowledgeTransferLearner(Learner):
         # An add op for every task & its loss
         # add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier)
         self.add_accum_grads = [add_accumulative_gradients_op(
-            self.shared_vars + [sparse_representations[i]],
-            self.accum_grads,
+            (self.shared_vars if i < 2 else []) + [sparse_representations[i]],
+            self.accum_grads if i < 2 else [self.accum_grads[-1]],
             loss,
             i)
             for i, loss in enumerate(self.losses)]
@@ -129,7 +137,7 @@ class KnowledgeTransferLearner(Learner):
         total_n_trajectories = np.zeros(len(self.envs))
         n_tasks = len(self.task_learners) - 1
         for iteration in range(config["n_iter"]):
-            if iteration == 100:
+            if iteration == 25:
                 n_tasks += 1
             self.session.run([self.reset_accum_grads])
             for i, learner in enumerate(self.task_learners[:n_tasks]):

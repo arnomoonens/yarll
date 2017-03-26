@@ -8,9 +8,11 @@ class Environment(Wrapper):
 
     changeable_parameters = []
 
-    def __init__(self, name):
+    def __init__(self, name, add_at_iteration=0, change_variables="all", **kwargs):
         super(Environment, self).__init__(make(name))
         self.name = name
+        self.add_at_iteration = add_at_iteration
+        self.change_variables = change_variables
 
     def to_dict(self):
         """

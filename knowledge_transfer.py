@@ -11,7 +11,7 @@ from gym.spaces import Discrete
 
 from Learner import Learner
 from utils import discount_rewards, save_config, json_to_dict
-from Environment.registration import make_environments, make_random_environments
+from Environment.registration import make_environments
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from Exceptions import WrongArgumentsException
@@ -49,8 +49,11 @@ class KnowledgeTransferLearner(Learner):
             n_sparse_units=10
         ))
         self.config.update(usercfg)
+
         self.build_networks()
-        self.task_learners = [TaskLearner(envs[i], action, self, **self.config) for i, action in enumerate(self.action_tensors)]
+        self.add_at_iteration = {}  # Dict with which environments to add and use at every step
+        for i, env in enumerate(self.envs):
+            self.add_at_iteration.setdefault(env.add_at_iteration, []).append(TaskLearner(env, self.action_tensors[i], self, **self.config))
         if self.config["save_model"]:
             for action_tensor in self.action_tensors:
                 tf.add_to_collection("action", action_tensor)
@@ -66,8 +69,7 @@ class KnowledgeTransferLearner(Learner):
 
         W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
         b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
+        L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0))
 
         knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]), name="knowledge_base")
 
@@ -113,8 +115,8 @@ class KnowledgeTransferLearner(Learner):
         # An add op for every task & its loss
         # add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier)
         self.add_accum_grads = [add_accumulative_gradients_op(
-            (self.shared_vars if i < 2 else []) + [sparse_representations[i]],
-            self.accum_grads if i < 2 else [self.accum_grads[-1]],
+            (self.shared_vars if self.envs[i].change_variables == "all" else []) + [sparse_representations[i]],
+            self.accum_grads if self.envs[i].change_variables == "all" else [self.accum_grads[-1]],
             loss,
             i)
             for i, loss in enumerate(self.losses)]
@@ -133,12 +135,11 @@ class KnowledgeTransferLearner(Learner):
         reporter = Reporter()
         config = self.config
         total_n_trajectories = np.zeros(len(self.envs))
-        n_tasks = len(self.task_learners) - 1
+        task_learners = []
         for iteration in range(config["n_iter"]):
-            if iteration == 25:
-                n_tasks += 1
+            task_learners += self.add_at_iteration.get(iteration, [])  # Possibly add and use extra tasks in this iteration
             self.session.run([self.reset_accum_grads])
-            for i, learner in enumerate(self.task_learners[:n_tasks]):
+            for i, learner in enumerate(task_learners):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectories = learner.get_trajectories()
                 total_n_trajectories[i] += len(trajectories)
@@ -183,8 +184,6 @@ class KnowledgeTransferLearner(Learner):
 parser = argparse.ArgumentParser()
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--environments", metavar="envs", type=str, help="Json file with Gym environments to execute the experiment on.")
-parser.add_argument("--random_envs", type=int, help="Number of environments with random parameters to generate.")
-parser.add_argument("--env_name", type=str, help="Name of the environment type for which to generate random instances.")
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
@@ -196,16 +195,10 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    if args.environments and args.random_envs:
-        raise WrongArgumentsException("Only supply either an environments file or a number of random environments.")
-    elif args.environments:
+    if args.environments:
         envs = make_environments(json_to_dict(args.environments))
-    elif args.random_envs:
-        if args.env_name is None:
-            raise WrongArgumentsException("A name of the environment type for which to generate random instances must be provided.")
-        envs = make_random_environments(args.env_name, args.random_envs)
     else:
-        raise WrongArgumentsException("Please supply an environments file or a number of random environments.")
+        raise WrongArgumentsException("Please supply an environments file.")
     if isinstance(envs[0].action_space, Discrete):
         agent = KnowledgeTransferLearner(
             envs, args.monitor_path,

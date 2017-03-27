@@ -119,17 +119,23 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
 
     def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, name="states")  # Observation
+        self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], self.nA]), name='W1')
-        b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
-        # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
-        self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name="probs")
+        L1 = tf.contrib.layers.fully_connected(
+            inputs=self.states,
+            num_outputs=self.config["n_hidden_units"],
+            activation_fn=tf.tanh,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
+
+        self.probs = tf.contrib.layers.fully_connected(
+            inputs=L1,
+            num_outputs=self.nA,
+            activation_fn=tf.nn.softmax,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
@@ -153,10 +159,12 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
         L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
                                           sequence_length=n_states, dtype=tf.float32)
-        W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], self.nA]), name='W1')
-        b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
-        # Action probabilities
-        self.probs = tf.nn.softmax(tf.matmul(L1[0], W1) + b1[None, :], name="probs")
+        self.probs = tf.contrib.layers.fully_connected(
+            inputs=L1[0],
+            num_outputs=self.nA,
+            activation_fn=tf.nn.softmax,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
@@ -180,26 +188,37 @@ class REINFORCELearnerContinuous(REINFORCELearner):
 
     def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, name="states")  # Observation
+        self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Continuous action
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
-        mu_W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='mu_W0')
-        mu_b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='mu_b0')
-        mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='mu_W1')
-        mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
-        # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.states, mu_W0) + mu_b0[None, :])
-        mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
-        mu = tf.squeeze(mu)
+        L1 = tf.contrib.layers.fully_connected(
+            inputs=self.states,
+            num_outputs=self.config["n_hidden_units"],
+            activation_fn=tf.tanh,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
-        sigma_W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='sigma_W0')
-        sigma_b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='sigma_b0')
-        sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='sigma_W1')
-        sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
-        # Action probabilities
-        sigma_L1 = tf.tanh(tf.matmul(self.states, sigma_W0) + sigma_b0[None, :])
-        sigma = tf.matmul(sigma_L1, sigma_W1) + sigma_b1[None, :]
+        mu = tf.contrib.layers.fully_connected(
+            inputs=L1,
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
+        mu = tf.squeeze(mu, name="mu")
+
+        sigma_L1 = tf.contrib.layers.fully_connected(
+            inputs=self.states,
+            num_outputs=self.config["n_hidden_units"],
+            activation_fn=tf.tanh,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
+        sigma = tf.contrib.layers.fully_connected(
+            inputs=sigma_L1,
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
         sigma = tf.squeeze(sigma)
         sigma = tf.nn.softplus(sigma) + 1e-5
 
@@ -231,13 +250,20 @@ class REINFORCELearnerContinuous(REINFORCELearner):
 
         L1 = L1[0]
 
-        mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='mu_W1')
-        mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
-        mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
-        mu = tf.squeeze(mu)
-        sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.config["n_hidden_units"], 1]), name='sigma_W1')
-        sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
-        sigma = tf.matmul(L1, sigma_W1) + sigma_b1[None, :]
+        mu = tf.contrib.layers.fully_connected(
+            inputs=L1,
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
+        mu = tf.squeeze(mu, name="mu")
+
+        sigma = tf.contrib.layers.fully_connected(
+            inputs=L1,
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
         sigma = tf.squeeze(sigma)
         sigma = tf.nn.softplus(sigma) + 1e-5
 
@@ -249,7 +275,7 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         loss -= 1e-1 * self.normal_dist.entropy()
         loss = tf.clip_by_value(loss, -1e10, 1e10)
         self.summary_loss = tf.reduce_mean(loss)
-        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+
         optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
         self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
@@ -296,14 +322,20 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
         # Fully connected layer 1
-        self.w3 = tf.Variable(tf.truncated_normal([image_size // 8 * image_size // 8 * depth, self.config["n_hidden_units"]], stddev=0.01))
-        self.b3 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]))
-        self.L3 = tf.nn.relu(tf.matmul(reshape, self.w3) + self.b3)
+        self.L3 = tf.contrib.layers.fully_connected(
+            inputs=reshape,
+            num_outputs=self.config["n_hidden_units"],
+            activation_fn=tf.nn.relu,
+            weights_initializer=tf.random_normal_initializer(stddev=0.01),
+            biases_initializer=tf.zeros_initializer())
 
         # Fully connected layer 2
-        self.w4 = tf.Variable(tf.truncated_normal([self.config["n_hidden_units"], self.nA]))
-        self.b4 = tf.Variable(tf.zeros([self.nA]))
-        self.probs = tf.nn.softmax(tf.matmul(self.L3, self.w4) + self.b4)
+        self.probs = tf.contrib.layers.fully_connected(
+            inputs=self.L3,
+            num_outputs=self.nA,
+            activation_fn=tf.nn.softmax,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n

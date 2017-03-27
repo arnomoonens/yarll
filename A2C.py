@@ -62,7 +62,7 @@ class A2C(Learner):
         return
 
     def get_critic_value(self, state):
-        return self.session.run([self.critic_value], feed_dict={self.critic_state_in: state})[0].flatten()
+        return self.session.run([self.critic_value], feed_dict={self.states: state})[0].flatten()
 
     def choose_action(self, state):
         """Choose an action."""
@@ -89,7 +89,7 @@ class A2C(Learner):
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
 
             results = self.session.run([self.summary_op, self.critic_train, self.actor_train], feed_dict={
-                self.critic_state_in: all_state,
+                self.states: all_state,
                 self.critic_target: returns,
                 self.states: all_state,
                 self.actions_taken: all_action,
@@ -114,19 +114,25 @@ class A2CDiscrete(A2C):
         super(A2CDiscrete, self).__init__(env, action_selection, monitor_dir, **usercfg)
 
     def build_networks(self):
-        self.states = tf.placeholder(tf.float32, name="states")
+        self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
         self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
         self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
         self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
 
         # Actor network
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config["actor_n_hidden"]]), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config["actor_n_hidden"]]), name='b0')
-        L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :], name='L1')
+        L1 = tf.contrib.layers.fully_connected(
+            inputs=self.states,
+            num_outputs=self.config["actor_n_hidden"],
+            activation_fn=tf.tanh,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
-        W1 = tf.Variable(tf.random_normal([self.config["actor_n_hidden"], self.nA]), name='W1')
-        b1 = tf.Variable(tf.zeros([self.nA]), name='b1')
-        self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name="probs")
+        self.probs = tf.contrib.layers.fully_connected(
+            inputs=L1,
+            num_outputs=self.nA,
+            activation_fn=tf.nn.softmax,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
@@ -138,17 +144,23 @@ class A2CDiscrete(A2C):
         self.optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
         self.actor_train = self.optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
-        self.critic_state_in = tf.placeholder("float", [None, self.nO], name="critic_state_in")
         self.critic_target = tf.placeholder("float", name="critic_target")
 
         # Critic network
-        critic_W0 = tf.Variable(tf.random_normal([self.nO, self.config["critic_n_hidden"]]), name='W0')
-        critic_b0 = tf.Variable(tf.zeros([self.config["actor_n_hidden"]]), name='b0')
-        critic_L1 = tf.tanh(tf.matmul(self.critic_state_in, critic_W0) + critic_b0[None, :], name='L1')
+        critic_L1 = tf.contrib.layers.fully_connected(
+            inputs=self.states,
+            num_outputs=self.config["critic_n_hidden"],
+            activation_fn=tf.tanh,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
-        critic_W1 = tf.Variable(tf.random_normal([self.config["actor_n_hidden"], 1]), name='W1')
-        critic_b1 = tf.Variable(tf.zeros([1]), name='b1')
-        self.critic_value = tf.matmul(critic_L1, critic_W1) + critic_b1[None, :]
+        self.critic_value = tf.contrib.layers.fully_connected(
+            inputs=critic_L1,
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
+
         critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_value))
         self.summary_critic_loss = critic_loss
         critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
@@ -194,17 +206,22 @@ class A2CContinuous(A2C):
         self.actor_train = self.optimizer.minimize(
             self.loss, global_step=tf.contrib.framework.get_global_step())
 
-        self.critic_state_in = tf.placeholder("float", [None, self.nO], name="critic_state_in")
         self.critic_target = tf.placeholder("float", name="critic_target")
 
         # Critic network
-        critic_W0 = tf.Variable(tf.zeros([self.nO, self.config["critic_n_hidden"]]), name='W0')
-        critic_b0 = tf.Variable(tf.zeros([self.config["actor_n_hidden"]]), name='b0')
-        critic_L1 = tf.tanh(tf.matmul(self.critic_state_in, critic_W0) + critic_b0[None, :], name='L1')
+        critic_L1 = tf.contrib.layers.fully_connected(
+            inputs=self.states,
+            num_outputs=self.config["critic_n_hidden"],
+            activation_fn=tf.tanh,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
-        critic_W1 = tf.Variable(tf.zeros([self.config["actor_n_hidden"], 1]), name='W1')
-        critic_b1 = tf.Variable(tf.zeros([1]), name='b1')
-        self.critic_value = tf.squeeze(tf.matmul(critic_L1, critic_W1) + critic_b1[None, :])
+        self.critic_value = tf.contrib.layers.fully_connected(
+            inputs=critic_L1,
+            num_outputs=1,
+            activation_fn=None,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
         critic_loss = tf.reduce_mean(tf.squared_difference(self.critic_target, self.critic_value))
         self.summary_critic_loss = critic_loss
@@ -230,7 +247,7 @@ class A2CContinuous(A2C):
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
 
             results = self.session.run([self.summary_op, self.critic_train, self.actor_train], feed_dict={
-                self.critic_state_in: all_state,
+                self.states: all_state,
                 self.critic_target: returns,
                 self.states: all_state,
                 self.actions_taken: all_action,

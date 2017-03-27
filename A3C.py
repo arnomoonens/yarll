@@ -45,11 +45,11 @@ class ActorNetworkDiscrete(object):
 
             W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]), name='W0')
             b0 = tf.Variable(tf.zeros([self.n_hidden]), name='b0')
-            L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :], name='L1')
+            L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name='L1')
 
             W1 = tf.Variable(tf.random_normal([self.n_hidden, n_actions]), name='W1')
             b1 = tf.Variable(tf.zeros([n_actions]), name='b1')
-            self.probs = tf.nn.softmax(tf.matmul(L1, W1) + b1[None, :], name="probs")
+            self.probs = tf.nn.softmax(tf.nn.xw_plus_b(L1, W1, b1), name="probs")
 
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
@@ -80,23 +80,23 @@ class ActorNetworkContinuous(object):
             mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.n_hidden, 1]), name='mu_W1')
             mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
             # Action probabilities
-            L1 = tf.tanh(tf.matmul(self.states, mu_W0) + mu_b0[None, :])
-            mu = tf.matmul(L1, mu_W1) + mu_b1[None, :]
-            mu = tf.squeeze(mu)
+            L1 = tf.tanh(tf.nn.xw_plus_b(self.states, mu_W0, mu_b0))
+            mu = tf.nn.xw_plus_b(L1, mu_W1, mu_b1)
+            mu = tf.squeeze(mu, name="mu")
 
             sigma_W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]) / np.sqrt(self.state_shape), name='sigma_W0')
             sigma_b0 = tf.Variable(tf.zeros([self.n_hidden]), name='sigma_b0')
             sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.n_hidden, 1]), name='sigma_W1')
             sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
             # Action probabilities
-            sigma_L1 = tf.tanh(tf.matmul(self.states, sigma_W0) + sigma_b0[None, :])
-            sigma = tf.matmul(sigma_L1, sigma_W1) + sigma_b1[None, :]
+            sigma_L1 = tf.tanh(tf.nn.xw_plus_b(self.states, sigma_W0, sigma_b0))
+            sigma = tf.nn.xw_plus_b(sigma_L1, sigma_W1, sigma_b1),
             sigma = tf.squeeze(sigma)
             sigma = tf.nn.softplus(sigma) + 1e-5
 
             self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
             self.action = self.normal_dist.sample(1)
-            self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0])
+            self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0], name="action")
             self.loss = -tf.reduce_mean(self.normal_dist.log_prob(self.actions_taken) * self.critic_feedback)
             # Add cross entropy cost to encourage exploration
             self.loss -= 1e-1 * self.normal_dist.entropy()
@@ -118,11 +118,11 @@ class CriticNetwork(object):
 
             W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]), name='W0')
             b0 = tf.Variable(tf.zeros([self.n_hidden]), name='b0')
-            L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :], name='L1')
+            L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name='L1')
 
             W1 = tf.Variable(tf.random_normal([self.n_hidden, 1]), name='W1')
             b1 = tf.Variable(tf.zeros([1]), name='b1')
-            self.value = tf.matmul(L1, W1) + b1[None, :]
+            self.value = tf.nn.xw_plus_b(L1, W1, b1, name="value")
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
             self.summary_loss = self.loss
             self.vars = [W0, b0, W1, b1]

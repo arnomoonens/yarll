@@ -66,8 +66,7 @@ class KnowledgeTransferLearner(Learner):
 
         W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
         b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        # Action probabilities
-        L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
+        L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name="L1")
 
         knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]))
 
@@ -77,7 +76,6 @@ class KnowledgeTransferLearner(Learner):
         sparse_representations = [tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA])) for _ in range(self.n_tasks)]
 
         self.probs_tensors = [tf.nn.softmax(tf.matmul(L1, tf.matmul(knowledge_base, s))) for s in sparse_representations]
-
         self.action_tensors = [tf.squeeze(tf.multinomial(tf.log(probs), 1)) for probs in self.probs_tensors]
 
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
@@ -98,14 +96,12 @@ class KnowledgeTransferLearner(Learner):
         for i, probabilities in enumerate(self.probs_tensors):
             good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
-            # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
             loss = -tf.reduce_sum(eligibility)
             self.losses.append(loss)
             writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "task" + str(i)), self.session.graph)
             self.writers.append(writer)
 
         # An add op for every task & its loss
-        # add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier)
         self.add_accum_grads = [add_accumulative_gradients_op(
             self.shared_vars + [sparse_representations[i]],
             self.accum_grads,

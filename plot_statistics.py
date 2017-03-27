@@ -82,25 +82,32 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
         for run in runs:
             task = pattern.search(run).group()
             if task in scalar_data:
-                scalar_data[task].append([x.value for x in em.Scalars(run, scalar)])
+                scalar_data[task]["values"].append([x.value for x in em.Scalars(run, scalar)])
             else:
-                scalar_data[task] = [[x.value for x in em.Scalars(run, scalar)]]
+                values = []
+                epochs = []
+                for s in em.Scalars(run, scalar):
+                    values.append(s.value)
+                    epochs.append(s.step)
+                scalar_data[task] = {
+                    "epochs": epochs,
+                    "values": [values]
+                }
         data[scalar] = scalar_data
 
     for scalar, tasks in data.items():
         fig = plt.figure()
         # min_y = np.inf
         # max_y = -np.inf
-        for task, scalar_task_data in tasks.items():
-            mean = np.mean(scalar_task_data, axis=0)
+        for task, epochs_values in tasks.items():
+            mean = np.mean(epochs_values["values"], axis=0)
             if smoothing_function:
                 mean = smoothing_function(mean)
-            # percentiles = np.percentile(scalar_task_data, [25, 75], axis=0)
-            std = np.std(scalar_task_data, axis=0)
+            # percentiles = np.percentile(epochs_values["values"], [25, 75], axis=0)
+            std = np.std(epochs_values["values"], axis=0)
             std = std[len(std) - len(mean):]
             # error_min, error_max = mean - std, mean + std
-            x = range(len(mean))
-            plt.plot(x, mean, label=task)
+            plt.plot(epochs_values["epochs"], mean, label=task)
             plt.legend()
             # plt.fill_between(x, error_min, error_max, alpha=0.3)
             # min_y = min(min_y, min(error_min))

@@ -103,11 +103,11 @@ class KnowledgeTransferLearner(Learner):
         self.writers = []
         self.losses = []
 
+        regularizer = tf.contrib.layers.l1_regularizer(.05)
         for i, probabilities in enumerate(self.probs_tensors):
             good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
-            # eligibility = tf.Print(eligibility, [eligibility], first_n=5)
-            loss = -tf.reduce_sum(eligibility) + tf.nn.l2_loss(sparse_representations[i]) * 0.01
+            loss = -tf.reduce_sum(eligibility) + regularizer(sparse_representations[i])
             self.losses.append(loss)
             writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "task" + str(i)), self.session.graph)
             self.writers.append(writer)

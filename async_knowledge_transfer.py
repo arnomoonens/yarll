@@ -201,7 +201,7 @@ class AsyncKnowledgeTransferLearner(Learner):
 
         W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
         b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        self.L1 = tf.tanh(tf.matmul(self.states, W0) + b0[None, :])
+        self.L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name="L1")
 
         self.knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]))
 

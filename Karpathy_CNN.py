@@ -82,14 +82,20 @@ class KPCNNLearner(Learner):
         reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
         # Fully connected layer 1
-        self.w3 = tf.Variable(tf.truncated_normal([image_size // 8 * image_size // 8 * depth, self.config["n_hidden_units"]], stddev=0.01))
-        self.b3 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]))
-        self.L3 = tf.nn.relu(tf.matmul(reshape, self.w3) + self.b3)
+        self.L3 = tf.contrib.layers.fully_connected(
+            inputs=reshape,
+            num_outputs=self.config["n_hidden_units"],
+            activation_fn=tf.nn.relu,
+            weights_initializer=tf.random_normal_initializer(stddev=0.01),
+            biases_initializer=tf.zeros_initializer())
 
         # Fully connected layer 2
-        self.w4 = tf.Variable(tf.truncated_normal([self.config["n_hidden_units"], self.nA]))
-        self.b4 = tf.Variable(tf.zeros([self.nA]))
-        self.probs = tf.nn.softmax(tf.matmul(self.L3, self.w4) + self.b4)
+        self.probs = tf.contrib.layers.fully_connected(
+            inputs=self.L3,
+            num_outputs=self.nA,
+            activation_fn=tf.nn.softmax,
+            weights_initializer=tf.random_normal_initializer(),
+            biases_initializer=tf.zeros_initializer())
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 

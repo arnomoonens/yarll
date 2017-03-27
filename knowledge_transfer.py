@@ -69,7 +69,7 @@ class KnowledgeTransferLearner(Learner):
 
         W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
         b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0))
+        L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name="L1")
 
         knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]), name="knowledge_base")
 
@@ -113,7 +113,6 @@ class KnowledgeTransferLearner(Learner):
             self.writers.append(writer)
 
         # An add op for every task & its loss
-        # add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier)
         self.add_accum_grads = [add_accumulative_gradients_op(
             (self.shared_vars if self.envs[i].change_variables == "all" else []) + [sparse_representations[i]],
             self.accum_grads if self.envs[i].change_variables == "all" else [self.accum_grads[-1]],

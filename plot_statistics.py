@@ -8,6 +8,7 @@ import numpy as np
 import json
 import argparse
 import re
+import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy?rq=1
@@ -75,12 +76,12 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
     runs = list(em.Runs().keys())
     scalars = em.Runs()[runs[0]]["scalars"]  # Assumes that the scalars of every run are the same
 
-    pattern = re.compile("(task\d+)$")
+    pattern = re.compile("task(\d+)$")
     data = {}
     for scalar in scalars:
         scalar_data = {}
         for run in runs:
-            task = pattern.search(run).group()
+            task = int(pattern.search(run).group(1))
             if task in scalar_data:
                 scalar_data[task]["values"].append([x.value for x in em.Scalars(run, scalar)])
             else:
@@ -99,7 +100,7 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
         fig = plt.figure()
         # min_y = np.inf
         # max_y = -np.inf
-        for task, epochs_values in tasks.items():
+        for task, epochs_values in sorted(tasks.items(), key=operator.itemgetter(0)):
             mean = np.mean(epochs_values["values"], axis=0)
             if smoothing_function:
                 mean = smoothing_function(mean)
@@ -107,7 +108,7 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
             std = np.std(epochs_values["values"], axis=0)
             std = std[len(std) - len(mean):]
             # error_min, error_max = mean - std, mean + std
-            plt.plot(epochs_values["epochs"], mean, label=task)
+            plt.plot(epochs_values["epochs"], mean, label="Task " + str(task))
             plt.legend()
             # plt.fill_between(x, error_min, error_max, alpha=0.3)
             # min_y = min(min_y, min(error_min))

@@ -70,7 +70,8 @@ def plot_tf_monitor_stats(stats_path, xmax=None, smoothing_function=None):
     fig.canvas.set_window_title("Length per episode")
     plt.show()
 
-def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
+def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None, x_label="episode"):
+    x_label_upper = x_label[0].upper() + x_label[1:]
     em = EventMultiplexer().AddRunsFromDirectory(summaries_dir)
     em.Reload()
     runs = list(em.Runs().keys())
@@ -115,10 +116,10 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
             # max_y = max(max_y, max(filter(lambda x: x != np.inf, error_max)))
         plt.xlim(xmax=xmax)
         # plt.ylim(ymin=min(0, min_y), ymax=max(0, max_y + 0.1 * max_y))
-        plt.xlabel("Episode")
+        plt.xlabel(x_label_upper)
         plt.ylabel(scalar)
-        plt.title(scalar + " per episode")
-        fig.canvas.set_window_title(scalar + " per episode")
+        plt.title("%s per %s" % (scalar, x_label))
+        fig.canvas.set_window_title("%s per %s" % (scalar, x_label))
     plt.show()
 
 def ge_1(value):
@@ -137,6 +138,7 @@ def exp_smoothing_weight_test(value):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("stats_path", metavar="stats", type=str, help="Path to the Tensorflow monitor stats.json file or summaries directory.")
+parser.add_argument("--x_label", type=str, default="episode", choices=["episode", "epoch"], help="Whether to use episode or epoch as x label.")
 parser.add_argument("--xmax", type=ge_1, default=None, help="Maximum episode for which to show results.")
 parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=None, help="Use exponential smoothing with a weight 0<=w<=1.")
 parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a moving average with a window w>0")
@@ -155,6 +157,6 @@ if __name__ == "__main__":
     if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
         plot_tf_monitor_stats(args.stats_path, args.xmax, smoothing_technique)
     elif os.path.isdir(args.stats_path):
-        plot_tf_scalar_summaries(args.stats_path, args.xmax, smoothing_technique)
+        plot_tf_scalar_summaries(args.stats_path, args.xmax, smoothing_technique, x_label=args.x_label)
     else:
         raise NotImplementedError("Only a Tensorflow monitor stats.json file or summaries directory is allowed.")

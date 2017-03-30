@@ -43,13 +43,21 @@ class ActorNetworkDiscrete(object):
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
             self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
 
-            W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]), name='W0')
-            b0 = tf.Variable(tf.zeros([self.n_hidden]), name='b0')
-            L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name='L1')
+            L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.n_hidden,
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="L1")
 
-            W1 = tf.Variable(tf.random_normal([self.n_hidden, n_actions]), name='W1')
-            b1 = tf.Variable(tf.zeros([n_actions]), name='b1')
-            self.probs = tf.nn.softmax(tf.nn.xw_plus_b(L1, W1, b1), name="probs")
+            self.probs = tf.contrib.layers.fully_connected(
+                inputs=L1,
+                num_outputs=n_actions,
+                activation_fn=tf.nn.softmax,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="probs")
 
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
@@ -57,9 +65,9 @@ class ActorNetworkDiscrete(object):
             # Replace probabilities that are zero with a small value and multiply by advantage:
             eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
-            self.loss = -tf.reduce_mean(eligibility)
+            self.loss = tf.negative(tf.reduce_mean(eligibility), name="loss")
             self.summary_loss = self.loss  # Loss to show as a summary
-            self.vars = [W0, b0, W1, b1]
+            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="%s_actor" % scope)
 
 class ActorNetworkContinuous(object):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
@@ -75,22 +83,38 @@ class ActorNetworkContinuous(object):
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")  # Advantage
             self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
 
-            mu_W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]) / np.sqrt(self.state_shape), name='mu_W0')
-            mu_b0 = tf.Variable(tf.zeros([self.n_hidden]), name='mu_b0')
-            mu_W1 = tf.Variable(1e-4 * tf.random_normal([self.n_hidden, 1]), name='mu_W1')
-            mu_b1 = tf.Variable(tf.zeros([1]), name='mu_b1')
-            # Action probabilities
-            L1 = tf.tanh(tf.nn.xw_plus_b(self.states, mu_W0, mu_b0))
-            mu = tf.nn.xw_plus_b(L1, mu_W1, mu_b1)
+            L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.n_hidden,
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="mu_L1")
+
+            mu = tf.contrib.layers.fully_connected(
+                inputs=L1,
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="mu")
             mu = tf.squeeze(mu, name="mu")
 
-            sigma_W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]) / np.sqrt(self.state_shape), name='sigma_W0')
-            sigma_b0 = tf.Variable(tf.zeros([self.n_hidden]), name='sigma_b0')
-            sigma_W1 = tf.Variable(1e-4 * tf.random_normal([self.n_hidden, 1]), name='sigma_W1')
-            sigma_b1 = tf.Variable(tf.zeros([1]), name='sigma_b1')
-            # Action probabilities
-            sigma_L1 = tf.tanh(tf.nn.xw_plus_b(self.states, sigma_W0, sigma_b0))
-            sigma = tf.nn.xw_plus_b(sigma_L1, sigma_W1, sigma_b1),
+            sigma_L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.n_hidden,
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="sigma_L1")
+
+            sigma = tf.contrib.layers.fully_connected(
+                inputs=sigma_L1,
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="sigma")
             sigma = tf.squeeze(sigma)
             sigma = tf.nn.softplus(sigma) + 1e-5
 
@@ -101,7 +125,7 @@ class ActorNetworkContinuous(object):
             # Add cross entropy cost to encourage exploration
             self.loss -= 1e-1 * self.normal_dist.entropy()
             self.summary_loss = -tf.reduce_mean(self.loss)  # Loss to show as a summary
-            self.vars = [mu_W0, mu_b0, mu_W1, mu_b1, sigma_W0, sigma_b0, sigma_W1, sigma_b1]
+            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="%s_actor" % scope)
 
 
 class CriticNetwork(object):
@@ -116,20 +140,29 @@ class CriticNetwork(object):
             self.states = tf.placeholder("float", [None, self.state_shape], name="states")
             self.target = tf.placeholder("float", name="critic_target")
 
-            W0 = tf.Variable(tf.random_normal([self.state_shape, self.n_hidden]), name='W0')
-            b0 = tf.Variable(tf.zeros([self.n_hidden]), name='b0')
-            L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name='L1')
+            L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.n_hidden,
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="L1")
 
-            W1 = tf.Variable(tf.random_normal([self.n_hidden, 1]), name='W1')
-            b1 = tf.Variable(tf.zeros([1]), name='b1')
-            self.value = tf.nn.xw_plus_b(L1, W1, b1, name="value")
+            self.value = tf.contrib.layers.fully_connected(
+                inputs=L1,
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="value")
+
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
             self.summary_loss = self.loss
-            self.vars = [W0, b0, W1, b1]
+            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="%s_critic" % scope)
 
 class A3CThread(Thread):
     """Single A3C learner thread."""
-    def __init__(self, master, thread_id):
+    def __init__(self, master, thread_id, clip_gradients=True):
         super(A3CThread, self).__init__(name=thread_id)
         self.thread_id = thread_id
         self.env = make_environment(master.env_name)
@@ -153,20 +186,21 @@ class A3CThread(Thread):
         self.critic_add_ag = add_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.critic_net.loss, self.thread_id)
         self.critic_reset_ag = reset_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.thread_id)
 
-        # Clipped gradients
-        gradient_clip_value = self.master.config["gradient_clip_value"]
-        clip_actor_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.actor_create_ag]
-        self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
-            zip(clip_actor_gradients, master.shared_actor_net.vars), global_step=master.global_step)
-        clip_critic_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.critic_create_ag]
-        self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
-            zip(clip_critic_gradients, master.shared_critic_net.vars), global_step=master.global_step)
-
-        # Non-clipped gradients
-        # self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
-        #     zip(self.actor_create_ag, master.shared_actor_net.vars), global_step=master.global_step)
-        # self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
-        #     zip(self.critic_create_ag, master.shared_critic_net.vars), global_step=master.global_step)
+        if clip_gradients:
+            # Clipped gradients
+            gradient_clip_value = self.master.config["gradient_clip_value"]
+            clip_actor_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.actor_create_ag]
+            self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
+                zip(clip_actor_gradients, master.shared_actor_net.vars), global_step=master.global_step)
+            clip_critic_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.critic_create_ag]
+            self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
+                zip(clip_critic_gradients, master.shared_critic_net.vars), global_step=master.global_step)
+        else:
+            # Non-clipped gradients
+            self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
+                zip(self.actor_create_ag, master.shared_actor_net.vars), global_step=master.global_step)
+            self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
+                zip(self.critic_create_ag, master.shared_critic_net.vars), global_step=master.global_step)
 
     def get_critic_value(self, states):
         return self.master.session.run([self.critic_net.value], feed_dict={self.critic_net.states: states})[0].flatten()

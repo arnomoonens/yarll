@@ -37,14 +37,15 @@ class AKTThread(Thread):
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "task" + str(self.task_id)), self.master.session.graph)
 
     def build_networks(self):
-        self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
-        self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
+        with tf.variable_scope("task%s" % self.task_id):
+            self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
+            self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
 
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+            self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.master.advantage
-        self.loss = -tf.reduce_sum(eligibility)
+            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
+            eligibility = tf.log(good_probabilities) * self.master.advantage
+            self.loss = -tf.reduce_sum(eligibility)
 
     def choose_action(self, state):
         """Choose an action."""
@@ -195,19 +196,24 @@ class AsyncKnowledgeTransferLearner(Learner):
             self.saver = tf.train.Saver()
 
     def build_networks(self):
-        self.states = tf.placeholder(tf.float32, name="states")
-        self.action_taken = tf.placeholder(tf.float32, name="action_taken")
-        self.advantage = tf.placeholder(tf.float32, name="advantage")
+        with tf.variable_scope("shared"):
+            self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
+            self.action_taken = tf.placeholder(tf.float32, name="action_taken")
+            self.advantage = tf.placeholder(tf.float32, name="advantage")
 
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        self.L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name="L1")
+            self.L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.config["n_hidden_units"],
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="L1")
 
-        self.knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]))
+            self.knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]), name="knowledge_base")
 
-        self.shared_vars = [W0, b0, self.knowledge_base]
+            self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="shared")
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+            self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
     def signal_handler(self, signal, frame):
         """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""

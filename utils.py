@@ -5,6 +5,7 @@ from scipy import signal
 import numpy as np
 from os import path
 import json
+import argparse
 
 def discount_rewards(x, gamma):
     """
@@ -39,3 +40,10 @@ def json_to_dict(filename):
     """Load a json file as a dictionary."""
     with open(filename) as f:
         return json.load(f)
+
+def ge_1(value):
+    """Require the value for an argparse argument to be an integer >=1."""
+    ivalue = int(value)
+    if ivalue < 1:
+        raise argparse.ArgumentTypeError("%s must be an integer of at least 1." % value)
+    return ivalue

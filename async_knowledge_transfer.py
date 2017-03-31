@@ -13,7 +13,7 @@ import signal
 from gym.spaces import Discrete
 
 from Learner import Learner
-from utils import discount_rewards, save_config, json_to_dict
+from utils import discount_rewards, save_config, json_to_dict, ge_1
 from Environment.registration import make_environments, make_random_environments
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
@@ -231,11 +231,11 @@ parser = argparse.ArgumentParser()
 
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--environments", metavar="envs", type=str, help="Json file with Gym environments to execute the experiment on.")
-parser.add_argument("--random_envs", type=int, help="Number of CartPole-v0 environments with random parameters to generate.")
+parser.add_argument("--random_envs", type=ge_1, help="Number of CartPole-v0 environments with random parameters to generate.")
 parser.add_argument("--env_name", type=str, help="Name of the environment type for which to generate random instances.")
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--learning_method", metavar="learning_method", type=str, default="REINFORCE", choices=["REINFORCE", "Karpathy"])
-parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run each task.")
+parser.add_argument("--iterations", default=100, type=ge_1, help="Number of iterations to run each task.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():

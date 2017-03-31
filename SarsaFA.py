@@ -11,6 +11,7 @@ from Learners.Sarsa import Sarsa
 from Traces.EligibilityTraces import EligibilityTraces
 from FunctionApproximation.TileCoding import TileCoding
 from Environment.registration import make_environment
+from utils import ge_1
 
 # def draw_3d(tile_starts):
 #     states = []
@@ -62,7 +63,7 @@ class SarsaFALearner(object):
 parser = argparse.ArgumentParser()
 # No environment argument for now: algorithm only works with MountainCar-v0 right now
 # parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("n_episodes", metavar="n_episodes", type=int, help="Number of episodes to run")
+parser.add_argument("n_episodes", metavar="n_episodes", type=ge_1, help="Number of episodes to run")
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 
 def main():

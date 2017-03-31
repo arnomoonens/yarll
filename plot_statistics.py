@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import json
 import argparse
+from utils import ge_1
 import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
@@ -120,13 +121,6 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None):
         plt.title(scalar + " per episode")
         fig.canvas.set_window_title(scalar + " per episode")
     plt.show()
-
-def ge_1(value):
-    """Require the value for an argparse argument to be an integer >=1."""
-    ivalue = int(value)
-    if ivalue < 1:
-        raise argparse.ArgumentTypeError("%s must be an integer of at least 1." % value)
-    return ivalue
 
 def exp_smoothing_weight_test(value):
     """Require that the weight for exponential smoothing is a weight between 0 and 1"""

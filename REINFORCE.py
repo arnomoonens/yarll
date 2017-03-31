@@ -19,7 +19,7 @@ from gym.spaces import Discrete, Box
 
 from Learner import Learner
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
-from utils import discount_rewards, preprocess_image, save_config
+from utils import discount_rewards, preprocess_image, save_config, ge_1
 from Reporter import Reporter
 from Environment.registration import make_environment
 
@@ -350,7 +350,7 @@ parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path
 parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--rnn", action="store_true", default=False, help="Use a Recurrent Neural Network (only for envs with a state space of rank 1).")
-parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
+parser.add_argument("--iterations", default=100, type=ge_1, help="Number of iterations to run the algorithm.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():

@@ -10,7 +10,7 @@ import argparse
 from gym.spaces import Discrete
 
 from Learner import Learner
-from utils import discount_rewards, save_config, json_to_dict
+from utils import discount_rewards, save_config, json_to_dict, ge_1
 from Environment.registration import make_environments
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
@@ -39,7 +39,8 @@ class KnowledgeTransferLearner(Learner):
             timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
-            n_iter=400,
+            n_iter=100,
+            switch_at_iter=50,
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
@@ -51,9 +52,7 @@ class KnowledgeTransferLearner(Learner):
         self.config.update(usercfg)
 
         self.build_networks()
-        self.add_at_iteration = {}  # Dict with which environments to add and use at every step
-        for i, env in enumerate(self.envs):
-            self.add_at_iteration.setdefault(env.add_at_iteration, []).append(TaskLearner(env, self.action_tensors[i], self, **self.config))
+        self.task_learners = [TaskLearner(envs[i], action, self, **self.config) for i, action in enumerate(self.action_tensors)]
         if self.config["save_model"]:
             for action_tensor in self.action_tensors:
                 tf.add_to_collection("action", action_tensor)
@@ -63,21 +62,26 @@ class KnowledgeTransferLearner(Learner):
     def build_networks(self):
         self.session = tf.Session()
 
-        self.states = tf.placeholder(tf.float32, name="states")
-        self.action_taken = tf.placeholder(tf.float32, name="action_taken")
-        self.advantage = tf.placeholder(tf.float32, name="advantage")
+        with tf.variable_scope("shared"):
+            self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
+            self.action_taken = tf.placeholder(tf.float32, name="action_taken")
+            self.advantage = tf.placeholder(tf.float32, name="advantage")
 
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name="L1")
+            L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.config["n_hidden_units"],
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(stddev=0.01),
+                biases_initializer=tf.zeros_initializer(),
+                scope="L1")
 
-        knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]), name="knowledge_base")
+            knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]], stddev=0.01), name="knowledge_base")
 
-        self.shared_vars = [W0, b0, knowledge_base]
+            self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="shared")
 
         # Every task has its own (sparse) representation
         sparse_representations = [
-            tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA]), name="sparse%d" % i)
+            tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA], stddev=0.01), name="sparse%d" % i)
             for i in range(self.n_tasks)
         ]
 
@@ -95,9 +99,9 @@ class KnowledgeTransferLearner(Learner):
         self.loss = tf.placeholder("float", name="loss")
         summary_loss = tf.summary.scalar("Loss", self.loss)
         self.rewards = tf.placeholder("float", name="Rewards")
-        summary_rewards = tf.summary.scalar("Rewards", self.rewards)
+        summary_rewards = tf.summary.scalar("Reward", self.rewards)
         self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
-        summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
+        summary_episode_lengths = tf.summary.scalar("Length", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
         self.writers = []
@@ -134,11 +138,13 @@ class KnowledgeTransferLearner(Learner):
         reporter = Reporter()
         config = self.config
         total_n_trajectories = np.zeros(len(self.envs))
-        task_learners = []
         for iteration in range(config["n_iter"]):
-            task_learners += self.add_at_iteration.get(iteration, [])  # Possibly add and use extra tasks in this iteration
             self.session.run([self.reset_accum_grads])
-            for i, learner in enumerate(task_learners):
+            for i, learner in enumerate(self.task_learners):
+                if iteration > self.config["switch_at_iter"] and i != (len(self.task_learners) - 1):
+                    continue
+                elif iteration < self.config["switch_at_iter"] and i == len(self.task_learners) - 1:
+                    continue
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectories = learner.get_trajectories()
                 total_n_trajectories[i] += len(trajectories)
@@ -184,7 +190,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 parser.add_argument("--environments", metavar="envs", type=str, help="Json file with Gym environments to execute the experiment on.")
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
-parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
+parser.add_argument("--iterations", default=100, type=ge_1, help="Number of iterations to run the algorithm.")
+parser.add_argument("--switch", default=50, type=ge_1, help="Iteration at which to switch from the first tasks to the last one.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
@@ -202,6 +209,7 @@ def main():
         agent = KnowledgeTransferLearner(
             envs, args.monitor_path,
             n_iter=args.iterations,
+            switch_at_iter=args.switch,
             save_model=args.save_model,
             learning_rate=args.learning_rate
         )

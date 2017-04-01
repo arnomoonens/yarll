@@ -120,51 +120,56 @@ class A2CDiscrete(A2C):
         self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
 
         # Actor network
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.config["actor_n_hidden"],
-            activation_fn=tf.tanh,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
+        with tf.variable_scope("actor"):
+            L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.config["actor_n_hidden"],
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="L1")
 
-        self.probs = tf.contrib.layers.fully_connected(
-            inputs=L1,
-            num_outputs=self.nA,
-            activation_fn=tf.nn.softmax,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
+            self.probs = tf.contrib.layers.fully_connected(
+                inputs=L1,
+                num_outputs=self.nA,
+                activation_fn=tf.nn.softmax,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="probs")
 
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+            self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, self.actions_taken), reduction_indices=[1])
-        eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
-            * (self.critic_rewards - self.critic_feedback)
-        loss = -tf.reduce_mean(eligibility)
-        self.summary_actor_loss = loss
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-        self.actor_train = self.optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
+            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, self.actions_taken), reduction_indices=[1])
+            eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
+                * (self.critic_rewards - self.critic_feedback)
+            loss = tf.negative(tf.reduce_mean(eligibility), name="loss")
+            self.summary_actor_loss = loss
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
+            self.actor_train = self.optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
-        self.critic_target = tf.placeholder("float", name="critic_target")
+        with tf.variable_scope("critic"):
+            self.critic_target = tf.placeholder("float", name="critic_target")
+            # Critic network
+            critic_L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.config["critic_n_hidden"],
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="L1")
 
-        # Critic network
-        critic_L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.config["critic_n_hidden"],
-            activation_fn=tf.tanh,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
+            self.critic_value = tf.contrib.layers.fully_connected(
+                inputs=critic_L1,
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer(),
+                scope="value")
 
-        self.critic_value = tf.contrib.layers.fully_connected(
-            inputs=critic_L1,
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
-
-        critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_value))
-        self.summary_critic_loss = critic_loss
-        critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
-        self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
+            critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.critic_value), name="loss")
+            self.summary_critic_loss = critic_loss
+            critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
+            self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
 
 class A2CContinuous(A2C):
     """Advantage Actor Critic for continuous action spaces."""
@@ -177,56 +182,59 @@ class A2CContinuous(A2C):
         self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
         self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
 
-        mu = tf.contrib.layers.fully_connected(
-            inputs=tf.expand_dims(self.states, 0),
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.zeros_initializer())
-        mu = tf.squeeze(mu)
+        # Actor network
+        with tf.variable_scope("actor"):
+            mu = tf.contrib.layers.fully_connected(
+                inputs=tf.expand_dims(self.states, 0),
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.zeros_initializer())
+            mu = tf.squeeze(mu, name="mu")
 
-        sigma = tf.contrib.layers.fully_connected(
-            inputs=tf.expand_dims(self.states, 0),
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.zeros_initializer())
-        sigma = tf.squeeze(sigma)
-        sigma = tf.nn.softplus(sigma) + 1e-5
+            sigma = tf.contrib.layers.fully_connected(
+                inputs=tf.expand_dims(self.states, 0),
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.zeros_initializer())
+            sigma = tf.squeeze(sigma)
+            sigma = tf.add(tf.nn.softplus(sigma), 1e-5, name="sigma")
 
-        self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
-        self.action = self.normal_dist.sample(1)
-        self.action = tf.clip_by_value(self.action, self.action_space.low[0], self.action_space.high[0])
+            self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
+            self.action = self.normal_dist.sample(1)
+            self.action = tf.clip_by_value(self.action, self.action_space.low[0], self.action_space.high[0], name="action")
 
-        # Loss and train op
-        self.loss = -self.normal_dist.log_prob(tf.squeeze(self.actions_taken)) * (self.critic_rewards - self.critic_feedback)
-        # Add cross entropy cost to encourage exploration
-        self.loss -= 1e-1 * self.normal_dist.entropy()
-        self.summary_actor_loss = tf.reduce_mean(self.loss)
+            # Loss and train op
+            self.loss = -self.normal_dist.log_prob(tf.squeeze(self.actions_taken)) * (self.critic_rewards - self.critic_feedback)
+            # Add cross entropy cost to encourage exploration
+            self.loss -= 1e-1 * self.normal_dist.entropy()
+            self.summary_actor_loss = tf.reduce_mean(self.loss)
 
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-        self.actor_train = self.optimizer.minimize(
-            self.loss, global_step=tf.contrib.framework.get_global_step())
+            self.optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
+            self.actor_train = self.optimizer.minimize(
+                self.loss, global_step=tf.contrib.framework.get_global_step())
 
-        self.critic_target = tf.placeholder("float", name="critic_target")
+        with tf.variable_scope("critic"):
+            self.critic_target = tf.placeholder("float", name="critic_target")
 
-        # Critic network
-        critic_L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.config["critic_n_hidden"],
-            activation_fn=tf.tanh,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
+            # Critic network
+            critic_L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.config["critic_n_hidden"],
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer())
 
-        self.critic_value = tf.contrib.layers.fully_connected(
-            inputs=critic_L1,
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
+            self.critic_value = tf.contrib.layers.fully_connected(
+                inputs=critic_L1,
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.random_normal_initializer(),
+                biases_initializer=tf.zeros_initializer())
 
-        critic_loss = tf.reduce_mean(tf.squared_difference(self.critic_target, self.critic_value))
-        self.summary_critic_loss = critic_loss
-        critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
-        self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
+            critic_loss = tf.reduce_mean(tf.squared_difference(self.critic_target, self.critic_value))
+            self.summary_critic_loss = critic_loss
+            critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
+            self.critic_train = critic_optimizer.minimize(critic_loss, global_step=tf.contrib.framework.get_global_step())
 
     def learn(self):
         """Run learning algorithm"""

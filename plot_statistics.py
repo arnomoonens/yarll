@@ -12,9 +12,9 @@ import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
 
-# Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy?rq=1
+# Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
 def moving_average(a, n):
-    """Compute the moving average of an array a of numbers using a window length n"""
+    """Compute the moving average of an array a of numbers using a window length n."""
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n

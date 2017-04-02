@@ -22,11 +22,12 @@ from Exceptions import WrongArgumentsException
 
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
-    def __init__(self, master, env, task_id, n_iter):
+    def __init__(self, master, env, task_id, n_iter, start_at_iter=0):
         super(AKTThread, self).__init__()
         self.master = master
         self.task_id = task_id
         self.n_iter = n_iter
+        self.start_at_iter = start_at_iter
         self.add_accum_grad = None  # To be filled in later
 
         self.build_networks()
@@ -61,7 +62,7 @@ class AKTThread(Thread):
         reporter = Reporter()
         config = self.master.config
         total_n_trajectories = 0
-        iteration = 0
+        iteration = self.start_at_iter
         while iteration < self.n_iter and not self.master.stop_requested:
             iteration += 1
             self.master.session.run([self.master.reset_accum_grads])
@@ -103,7 +104,7 @@ class AKTThread(Thread):
         config = self.master.config
         self.master.session.run([self.master.reset_accum_grads])
 
-        iteration = 0
+        iteration = self.start_at_iter
         while iteration < self.n_iter and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
             iteration += 1
             trajectory = self.task_learner.get_trajectory()
@@ -183,7 +184,8 @@ class AsyncKnowledgeTransferLearner(Learner):
                 self.make_thread(
                     env,
                     i,
-                    self.config["n_iter"] - self.config["switch_at_iter"] if last else self.config["switch_at_iter"]))
+                    self.config["switch_at_iter"] if not(last) else self.config["n_iter"],
+                    start_at_iter=(0 if not(last) else self.config["switch_at_iter"])))
 
         net_vars = self.shared_vars + [job.sparse_representation for job in self.jobs]
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
@@ -242,8 +244,8 @@ class AsyncKnowledgeTransferLearner(Learner):
         if self.config["save_model"]:
             self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
-    def make_thread(self, env, task_id, n_iter):
-        return AKTThread(self, env, task_id, n_iter)
+    def make_thread(self, env, task_id, n_iter, start_at_iter=0):
+        return AKTThread(self, env, task_id, n_iter, start_at_iter=start_at_iter)
 
 parser = argparse.ArgumentParser()
 

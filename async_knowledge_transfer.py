@@ -14,7 +14,7 @@ from gym.spaces import Discrete
 
 from Learner import Learner
 from utils import discount_rewards, save_config, json_to_dict, ge_1
-from Environment.registration import make_environments, make_random_environments
+from Environment.registration import make_environments
 from Reporter import Reporter
 from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from knowledge_transfer import TaskLearner
@@ -22,10 +22,11 @@ from Exceptions import WrongArgumentsException
 
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
-    def __init__(self, master, env, task_id):
+    def __init__(self, master, env, task_id, n_iter):
         super(AKTThread, self).__init__()
         self.master = master
         self.task_id = task_id
+        self.n_iter = n_iter
         self.add_accum_grad = None  # To be filled in later
 
         self.build_networks()
@@ -61,7 +62,7 @@ class AKTThread(Thread):
         config = self.master.config
         total_n_trajectories = 0
         iteration = 0
-        while iteration < config["n_iter"] and not self.master.stop_requested:
+        while iteration < self.n_iter and not self.master.stop_requested:
             iteration += 1
             self.master.session.run([self.master.reset_accum_grads])
             # Collect trajectories until we get timesteps_per_batch total timesteps
@@ -103,7 +104,7 @@ class AKTThread(Thread):
         self.master.session.run([self.master.reset_accum_grads])
 
         iteration = 0
-        while iteration < config['n_iter'] and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
+        while iteration < self.n_iter and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
             iteration += 1
             trajectory = self.task_learner.get_trajectory()
             reward = sum(trajectory["reward"])
@@ -147,6 +148,7 @@ class AsyncKnowledgeTransferLearner(Learner):
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=200,
+            switch_at_iter=100,
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
@@ -174,14 +176,22 @@ class AsyncKnowledgeTransferLearner(Learner):
         summary_episode_lengths = tf.summary.scalar("Episode_length", self.episode_length)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
-        self.jobs = [self.make_thread(env, i) for i, env in enumerate(self.envs)]
+        self.jobs = []
+        for i, env in enumerate(self.envs):
+            last = (i == len(self.envs) - 1)
+            self.jobs.append(
+                self.make_thread(
+                    env,
+                    i,
+                    self.config["n_iter"] - self.config["switch_at_iter"] if last else self.config["switch_at_iter"]))
 
         net_vars = self.shared_vars + [job.sparse_representation for job in self.jobs]
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
-        for job in self.jobs:
+        for i, job in enumerate(self.jobs):
+            last = (i == len(self.jobs) - 1)
             job.add_accum_grad = add_accumulative_gradients_op(
-                self.shared_vars + [job.sparse_representation],
-                self.accum_grads,
+                (self.shared_vars if not(last) else []) + [job.sparse_representation],
+                self.accum_grads if not(last) else [self.accum_grads[-1]],
                 job.loss,
                 job.task_id)
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.accum_grads, net_vars))
@@ -222,16 +232,18 @@ class AsyncKnowledgeTransferLearner(Learner):
 
     def learn(self):
         signal.signal(signal.SIGINT, self.signal_handler)
-        for job in self.jobs:
+        for job in self.jobs[:-1]:
             job.start()
-        for job in self.jobs:
+        for job in self.jobs[:-1]:
             job.join()
+        self.jobs[-1].start()
+        self.jobs[-1].join()
 
         if self.config["save_model"]:
             self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
 
-    def make_thread(self, env, task_id):
-        return AKTThread(self, env, task_id)
+    def make_thread(self, env, task_id, n_iter):
+        return AKTThread(self, env, task_id, n_iter)
 
 parser = argparse.ArgumentParser()
 
@@ -242,6 +254,7 @@ parser.add_argument("--env_name", type=str, help="Name of the environment type f
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 parser.add_argument("--learning_method", metavar="learning_method", type=str, default="REINFORCE", choices=["REINFORCE", "Karpathy"])
 parser.add_argument("--iterations", default=100, type=ge_1, help="Number of iterations to run each task.")
+parser.add_argument("--switch", default=50, type=ge_1, help="Iteration at which to switch from the first tasks to the last one.")
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
@@ -251,22 +264,17 @@ def main():
         sys.exit()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
-    if args.environments and args.random_envs:
-        raise WrongArgumentsException("Only supply either an environments file or a number of random environments.")
-    elif args.environments:
+    if args.environments:
         envs = make_environments(json_to_dict(args.environments))
-    elif args.random_envs:
-        if args.env_name is None:
-            raise WrongArgumentsException("A name of the environment type for which to generate random instances must be provided.")
-        envs = make_random_environments(args.env_name, args.random_envs)
     else:
-        raise WrongArgumentsException("Please supply an environments file or a number of random environments.")
+        raise WrongArgumentsException("Please supply an environments file.")
     if isinstance(envs[0].action_space, Discrete):
         agent = AsyncKnowledgeTransferLearner(
             envs,
             args.learning_method,
             args.monitor_path,
             n_iter=args.iterations,
+            switch_at_iter=args.switch,
             save_model=args.save_model,
             learning_rate=args.learning_rate
         )

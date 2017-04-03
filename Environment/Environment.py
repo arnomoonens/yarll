@@ -12,6 +12,7 @@ class Environment(Wrapper):
         super(Environment, self).__init__(make(name))
         self.name = name
         self.add_at_iteration = add_at_iteration
+        self.args = kwargs
         self.change_variables = change_variables
 
     def to_dict(self):

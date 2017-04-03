@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import sys
 import os
 import numpy as np
 import tensorflow as tf
@@ -22,13 +21,6 @@ from gradient_ops import create_accumulative_gradients_op, add_accumulative_grad
 logging.getLogger().setLevel("INFO")
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
-
-def random_with_probability(output, n_actions, temperature=1.0):
-    # total = sum([np.exp(float(o) / temperature) for o in output])
-    # probs = [np.exp(float(o) / temperature) / total for o in output]
-    probs = output / np.sum(output)
-    action = np.random.choice(n_actions, p=probs)
-    return action, probs
 
 class KPCNNLearner(Learner):
     """Karpathy policy gradient learner using a convolutional neural network"""
@@ -127,37 +119,37 @@ class KPCNNLearner(Learner):
     def choose_action(self, state):
         return self.session.run([self.action], feed_dict={self.states: [state]})[0]
 
-    def get_trajectory(self, env, episode_max_length, render=False):
+    def get_trajectory(self, render=False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
         Note that this function returns more than the get_trajectory in the Learner class.
         """
-        state = preprocess_image(env.reset())
+        state = preprocess_image(self.env.reset())
         prev_state = state
         states = []
         actions = []
         rewards = []
-        for _ in range(episode_max_length):
+        for _ in range(self.config["episode_max_length"]):
             delta = state - prev_state
             action = self.choose_action(delta)
             states.append(delta)
             prev_state = state
-            state, rew, done, _ = env.step(action)
+            state, rew, done, _ = self.env.step(action)
             state = preprocess_image(state)
             actions.append(action)
             rewards.append(rew)
             if done:
                 break
             if render:
-                env.render()
+                self.env.render()
         return {
             "reward": np.array(rewards),
             "state": np.array(states),
             "action": np.array(actions),
         }
 
-    def learn(self, env):
+    def learn(self):
         reporter = Reporter()
 
         self.session.run([self.reset_accumulative_grads])
@@ -168,7 +160,7 @@ class KPCNNLearner(Learner):
         episode_rewards = np.zeros(self.config["batch_size"])
         mean_rewards = []
         while True:  # Keep executing episodes
-            trajectory = self.get_trajectory(env, self.config["episode_max_length"])
+            trajectory = self.get_trajectory()
 
             episode_rewards[episode_nr % self.config["batch_size"]] = sum(trajectory["reward"])
             episode_lengths[episode_nr % self.config["batch_size"]] = len(trajectory["reward"])
@@ -205,10 +197,7 @@ parser.add_argument("--no_video", dest="video", action="store_false", default=Tr
 parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate used when optimizing weights.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     env = make_environment(args.environment)
@@ -226,8 +215,8 @@ def main():
         raise NotImplementedError
     save_config(args.monitor_path, agent.config, [env.to_dict()])
     try:
-        env = wrappers.Monitor(env, args.monitor_path, force=True, video_callable=(None if args.video else False))
-        agent.learn(env)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
+        agent.learn()
     except KeyboardInterrupt:
         pass
 

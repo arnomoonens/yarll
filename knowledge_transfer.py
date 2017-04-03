@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import sys
 import os
 import numpy as np
 import tensorflow as tf
@@ -195,10 +194,7 @@ parser.add_argument("--switch", default=50, type=ge_1, help="Iteration at which 
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     if args.environments:

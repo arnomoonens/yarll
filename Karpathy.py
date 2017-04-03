@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import sys
 import os
 import numpy as np
 import logging
@@ -166,10 +165,7 @@ parser.add_argument("--no_video", dest="video", action="store_false", default=Tr
 parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     env = make_environment(args.environment)

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import sys
 import os
 import numpy as np
 import tensorflow as tf
@@ -202,6 +201,9 @@ class A3CThread(Thread):
             self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
                 zip(self.critic_create_ag, master.shared_critic_net.vars), global_step=master.global_step)
 
+    def transform_actions(self, actions):
+        return actions
+
     def get_critic_value(self, states):
         return self.master.session.run([self.critic_net.value], feed_dict={self.critic_net.states: states})[0].flatten()
 
@@ -297,9 +299,6 @@ class A3CThreadContinuous(A3CThread):
     def build_networks(self):
         self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.master.config["actor_n_hidden"], scope="local_actor_net")
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config["critic_n_hidden"], scope="local_critic_net")
-
-    def transform_actions(self, actions):
-        return actions  # Nothing has to be done in case of a continuous action space
 
 class A3CLearner(Learner):
     """Asynchronous Advantage Actor Critic learner."""
@@ -414,10 +413,7 @@ parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     env = make_environment(args.environment)

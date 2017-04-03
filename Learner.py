@@ -15,7 +15,7 @@ class Learner(object):
             n_iter=100)
         self.config.update(usercfg)
 
-    def choose_action(self, state, task=0):
+    def choose_action(self, state):
         """Return which action to take based on the given state"""
         pass
 

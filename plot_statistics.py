@@ -2,7 +2,6 @@
 # -*- coding: utf8 -*-
 
 import os
-import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import json
@@ -11,6 +10,7 @@ from utils import ge_1
 import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
+from Exceptions import WrongArgumentsException
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
 def moving_average(a, n):
@@ -138,11 +138,9 @@ parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=N
 parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a moving average with a window w>0")
 
 if __name__ == "__main__":
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
-    assert not(not(args.exp_smoothing is None) and not(args.moving_average is None)), "Maximally 1 smoothing technique can be used"
+    args = parser.parse_args()
+    if not(args.exp_smoothing is None) and not(args.moving_average is None):
+        raise WrongArgumentsException("Maximally 1 smoothing technique can be used.")
     smoothing_technique = None
     if not(args.exp_smoothing is None):
         smoothing_technique = create_smoother(exponential_smoothing, args.exp_smoothing)  # args.exp_smoothing holds the weight

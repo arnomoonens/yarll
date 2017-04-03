@@ -5,7 +5,9 @@
 # When making an environment, we first look if we registered a version of it ourselves.
 # Else, we make just make one using the Environment class.
 import numpy as np
+
 from Environment import Environment
+from Exceptions import ClassNotRegisteredException
 
 environment_registry = {}
 
@@ -16,7 +18,10 @@ def register_environment(name, cls):
 def make_environment(name, **args):
     """Make an environment of a given name, possibly using extra arguments."""
     env = environment_registry.get(name, Environment)
-    return env(**args)
+    if name in environment_registry:
+        return env(**args)
+    else:
+        return env(name, **args)
 
 def make_environments(descriptions):
     """Make environments using a list of descriptions."""
@@ -24,7 +29,8 @@ def make_environments(descriptions):
 
 def make_random_environments(env_name, n_envs):
     """Make n_envs random environments of the env_name class."""
-    assert env_name in environment_registry, "Class %s must be registered." % env_name
+    if env_name not in environment_registry:
+        raise ClassNotRegisteredException("Class %s must be registered in order to be randomly instantiated." % env_name)
     cls = environment_registry.get(env_name)
     envs = []
     for _ in range(n_envs):

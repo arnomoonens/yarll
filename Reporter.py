@@ -9,9 +9,12 @@ class Reporter(object):
     def __init__(self):
         super(Reporter, self).__init__()
         logging.getLogger().setLevel("INFO")
+        self.fig = None
+        self.ax1 = None
 
-    def print_iteration_stats(self, iteration, episode_rewards, episode_lengths, total_n_trajectories):
-        """Print statistics about rewards and episode lengths of the current iteration"""
+    @staticmethod
+    def print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories):
+        """Print statistics about rewards and episode lengths of the current iteration."""
         logging.info("-----------------")
         logging.info("Iteration: \t\t %i" % iteration)
         logging.info("NumTrajs: \t\t %i" % len(episode_rewards))

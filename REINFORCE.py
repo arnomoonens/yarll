@@ -8,7 +8,6 @@
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html
 
 import numpy as np
-import sys
 import os
 import argparse
 
@@ -157,8 +156,8 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         states = tf.expand_dims(flatten(self.states), [0])
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
-        L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
-                                          sequence_length=n_states, dtype=tf.float32)
+        L1, _ = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
+                                  sequence_length=n_states, dtype=tf.float32)
         self.probs = tf.contrib.layers.fully_connected(
             inputs=L1[0],
             num_outputs=self.nA,
@@ -245,8 +244,8 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         states = tf.expand_dims(flatten(self.states), [0])
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
-        L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
-                                          sequence_length=n_states, dtype=tf.float32)
+        L1, _ = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
+                                  sequence_length=n_states, dtype=tf.float32)
 
         L1 = L1[0]
 
@@ -354,10 +353,7 @@ parser.add_argument("--iterations", default=100, type=ge_1, help="Number of iter
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     env = make_environment(args.environment)

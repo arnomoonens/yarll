@@ -6,7 +6,7 @@ class FunctionApproximator(object):
         self.thetas = []
         self.features_shape = (0)
 
-    def get_summed_thetas(self, state, action):
+    def get_summed_thetas(state, action):
         return 0
 
     def set_thetas(self, addition):

@@ -2,7 +2,6 @@
 # -*- coding: utf8 -*-
 
 import os
-import sys
 import argparse
 import tensorflow as tf
 from gym import wrappers
@@ -42,7 +41,7 @@ class ModelRunner(object):
         Return dictionary of results
         """
         state = self.env.reset()
-        for i in range(self.config["episode_max_length"]):
+        for _ in range(self.config["episode_max_length"]):
             action = self.choose_action(state)
             for _ in range(self.config["repeat_n_actions"]):
                 _, _, done, _ = self.env.step(action)
@@ -55,7 +54,7 @@ class ModelRunner(object):
         return
 
     def run(self):
-        for i in range(self.config["n_iter"]):
+        for _ in range(self.config["n_iter"]):
             self.get_trajectory()
 
 
@@ -66,10 +65,7 @@ parser.add_argument("save_directory", type=str, help="Directory where results of
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     env = make_environment(args.environment)
     runner = ModelRunner(env, args.model_directory, args.save_directory, n_iter=args.iterations)
     try:

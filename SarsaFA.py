@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import sys
 import os
 import argparse
 
@@ -55,7 +54,7 @@ class SarsaFALearner(object):
             while not(done):
                 iteration += 1
                 # env.render()
-                state, reward, done, info = self.env.step(action)
+                state, reward, done, _ = self.env.step(action)
                 if done and iteration < self.config["steps_per_episode"]:
                     print("Episode {}: Less than {} steps were needed: {}".format(i, self.config["steps_per_episode"], iteration))
                 action = sarsa.step(state, reward)
@@ -67,10 +66,7 @@ parser.add_argument("n_episodes", metavar="n_episodes", type=ge_1, help="Number 
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     # env = make_environment(args.environment)

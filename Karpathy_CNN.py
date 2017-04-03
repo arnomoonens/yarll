@@ -215,8 +215,8 @@ def main():
         raise NotImplementedError
     save_config(args.monitor_path, agent.config, [env.to_dict()])
     try:
-        env = wrappers.Monitor(env, args.monitor_path, force=True, video_callable=(None if args.video else False))
-        agent.learn(env)
+        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
+        agent.learn()
     except KeyboardInterrupt:
         pass
 

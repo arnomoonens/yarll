@@ -9,6 +9,7 @@ import argparse
 import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
+from Exceptions import WrongArgumentsException
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy?rq=1
 def moving_average(a, n):
@@ -144,7 +145,8 @@ parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a mov
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    assert not(not(args.exp_smoothing is None) and not(args.moving_average is None)), "Maximally 1 smoothing technique can be used"
+    if not(args.exp_smoothing is None) and not(args.moving_average is None):
+        raise WrongArgumentsException("Maximally 1 smoothing technique can be used.")
     smoothing_technique = None
     if not(args.exp_smoothing is None):
         smoothing_technique = create_smoother(exponential_smoothing, args.exp_smoothing)  # args.exp_smoothing holds the weight

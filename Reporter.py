@@ -14,7 +14,7 @@ class Reporter(object):
 
     @staticmethod
     def print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories):
-        """Print statistics about rewards and episode lengths of the current iteration"""
+        """Print statistics about rewards and episode lengths of the current iteration."""
         logging.info("-----------------")
         logging.info("Iteration: \t\t %i" % iteration)
         logging.info("NumTrajs: \t\t %i" % len(episode_rewards))

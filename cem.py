@@ -12,6 +12,7 @@ from gym.spaces import Discrete, Box
 
 from Environment.registration import make_environment
 from Learner import Learner
+from Exceptions import WrongShapeException
 
 # ================================================================
 # Policies
@@ -27,7 +28,9 @@ class DeterministicDiscreteActionLinearPolicy(object):
         """
         dim_ob = ob_space.shape[0]
         n_actions = ac_space.n
-        assert len(theta) == (dim_ob + 1) * n_actions
+        expected_shape = (dim_ob + 1) * n_actions
+        if len(theta) != expected_shape:
+            raise WrongShapeException("Expected a theta of length %s instead of %s" % (expected_shape, len(theta)))
         self.W = theta[0: dim_ob * n_actions].reshape(dim_ob, n_actions)
         self.b = theta[dim_ob * n_actions: None].reshape(1, n_actions)
 
@@ -48,7 +51,9 @@ class DeterministicContinuousActionLinearPolicy(object):
         self.ac_space = ac_space
         dim_ob = ob_space.shape[0]
         dim_ac = ac_space.shape[0]
-        assert len(theta) == (dim_ob + 1) * dim_ac
+        expected_shape = (dim_ob + 1) * dim_ac
+        if len(theta) != expected_shape:
+            raise WrongShapeException("Expected a theta of length %s instead of %s" % (expected_shape, len(theta)))
         self.W = theta[0:dim_ob * dim_ac].reshape(dim_ob, dim_ac)
         self.b = theta[dim_ob * dim_ac:None]
 

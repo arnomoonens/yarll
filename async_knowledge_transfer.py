@@ -46,12 +46,8 @@ class AKTThread(Thread):
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
             good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
-            eligibility = tf.log(good_probabilities) * self.master.advantage
+            eligibility = tf.log(good_probabilities + 1e-10) * self.master.advantage
             self.loss = -tf.reduce_sum(eligibility)
-
-    def choose_action(self, state):
-        """Choose an action."""
-        return self.master.session.run([self.action], feed_dict={self.master.states: [state]})[0]
 
     def run(self):
         """Run the appropriate learning algorithm."""

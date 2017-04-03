@@ -244,8 +244,8 @@ class REINFORCELearnerContinuous(REINFORCELearner):
         states = tf.expand_dims(flatten(self.states), [0])
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
-        L1, enc_state = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
-                                          sequence_length=n_states, dtype=tf.float32)
+        L1, _ = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
+                                  sequence_length=n_states, dtype=tf.float32)
 
         L1 = L1[0]
 

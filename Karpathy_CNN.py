@@ -119,13 +119,13 @@ class KPCNNLearner(Learner):
     def choose_action(self, state):
         return self.session.run([self.action], feed_dict={self.states: [state]})[0]
 
-    def get_trajectory(self, env, render=False):
+    def get_trajectory(self, render=False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
         Note that this function returns more than the get_trajectory in the Learner class.
         """
-        state = preprocess_image(env.reset())
+        state = preprocess_image(self.env.reset())
         prev_state = state
         states = []
         actions = []
@@ -135,21 +135,21 @@ class KPCNNLearner(Learner):
             action = self.choose_action(delta)
             states.append(delta)
             prev_state = state
-            state, rew, done, _ = env.step(action)
+            state, rew, done, _ = self.env.step(action)
             state = preprocess_image(state)
             actions.append(action)
             rewards.append(rew)
             if done:
                 break
             if render:
-                env.render()
+                self.env.render()
         return {
             "reward": np.array(rewards),
             "state": np.array(states),
             "action": np.array(actions),
         }
 
-    def learn(self, env):
+    def learn(self):
         reporter = Reporter()
 
         self.session.run([self.reset_accumulative_grads])
@@ -160,7 +160,7 @@ class KPCNNLearner(Learner):
         episode_rewards = np.zeros(self.config["batch_size"])
         mean_rewards = []
         while True:  # Keep executing episodes
-            trajectory = self.get_trajectory(env, self.config["episode_max_length"])
+            trajectory = self.get_trajectory()
 
             episode_rewards[episode_nr % self.config["batch_size"]] = sum(trajectory["reward"])
             episode_lengths[episode_nr % self.config["batch_size"]] = len(trajectory["reward"])

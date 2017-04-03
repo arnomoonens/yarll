@@ -2,7 +2,6 @@
 # -*- coding: utf8 -*-
 
 import os
-import sys
 import argparse
 import tensorflow as tf
 from gym import wrappers

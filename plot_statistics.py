@@ -2,7 +2,6 @@
 # -*- coding: utf8 -*-
 
 import os
-import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import json
@@ -144,10 +143,7 @@ parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=N
 parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a moving average with a window w>0")
 
 if __name__ == "__main__":
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     assert not(not(args.exp_smoothing is None) and not(args.moving_average is None)), "Maximally 1 smoothing technique can be used"
     smoothing_technique = None
     if not(args.exp_smoothing is None):

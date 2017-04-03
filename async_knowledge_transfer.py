@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import sys
 import os
 import numpy as np
 import tensorflow as tf
@@ -53,7 +52,10 @@ class AKTThread(Thread):
 
     def run(self):
         """Run the appropriate learning algorithm."""
-        self.learn_REINFORCE() if self.master.learning_method == "REINFORCE" else self.learn_Karpathy()
+        if self.master.learning_method == "REINFORCE":
+            self.learn_REINFORCE()
+        else:
+            self.learn_Karpathy()
 
     def learn_REINFORCE(self):
         """Learn using updates like in the REINFORCE algorithm."""
@@ -245,10 +247,7 @@ parser.add_argument("--iterations", default=100, type=int, help="Number of itera
 parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     if args.environments and args.random_envs:

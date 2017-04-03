@@ -3,7 +3,7 @@
 
 #  Cross-Entropy Method
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab1.html
-import sys
+
 import argparse
 
 import numpy as np
@@ -92,7 +92,7 @@ class CEMLearner(Learner):
     def do_episode(self, policy):
         total_rew = 0
         ob = self.env.reset()
-        for t in range(self.config["num_steps"]):
+        for _ in range(self.config["num_steps"]):
             a = policy.act(ob)
             (ob, reward, done, _info) = self.env.step(a)
             total_rew += reward
@@ -110,8 +110,8 @@ class CEMLearner(Learner):
             elite_inds = np.argsort(rewards)[self.config["batch_size"] - n_elite:self.config["batch_size"]]
             elite_thetas = [thetas[i] for i in elite_inds]
             # Update theta_mean, theta_std
-            theta_mean = np.mean(elite_thetas, axis=0)
-            theta_std = np.std(elite_thetas, axis=0)
+            self.theta_mean = np.mean(elite_thetas, axis=0)
+            self.theta_std = np.std(elite_thetas, axis=0)
             print("iteration %i. mean f: %8.3g. max f: %8.3g" % (iteration, np.mean(rewards), np.max(rewards)))
             self.do_episode(self.make_policy(self.theta_mean))
 
@@ -120,10 +120,7 @@ parser.add_argument("environment", metavar="env", type=str, help="Gym environmen
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     env = make_environment(args.environment)
     if isinstance(env.action_space, Discrete):
         # action_selection = ProbabilisticCategoricalActionSelection()

@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import sys
 import os
 import numpy as np
 import tensorflow as tf
@@ -22,13 +21,6 @@ from gradient_ops import create_accumulative_gradients_op, add_accumulative_grad
 logging.getLogger().setLevel("INFO")
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
-
-def random_with_probability(output, n_actions, temperature=1.0):
-    # total = sum([np.exp(float(o) / temperature) for o in output])
-    # probs = [np.exp(float(o) / temperature) / total for o in output]
-    probs = output / np.sum(output)
-    action = np.random.choice(n_actions, p=probs)
-    return action, probs
 
 class KPCNNLearner(Learner):
     """Karpathy policy gradient learner using a convolutional neural network"""
@@ -127,7 +119,7 @@ class KPCNNLearner(Learner):
     def choose_action(self, state):
         return self.session.run([self.action], feed_dict={self.states: [state]})[0]
 
-    def get_trajectory(self, env, episode_max_length, render=False):
+    def get_trajectory(self, env, render=False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
@@ -138,7 +130,7 @@ class KPCNNLearner(Learner):
         states = []
         actions = []
         rewards = []
-        for _ in range(episode_max_length):
+        for _ in range(self.config["episode_max_length"]):
             delta = state - prev_state
             action = self.choose_action(delta)
             states.append(delta)
@@ -205,10 +197,7 @@ parser.add_argument("--no_video", dest="video", action="store_false", default=Tr
 parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate used when optimizing weights.")
 
 def main():
-    try:
-        args = parser.parse_args()
-    except:
-        sys.exit()
+    args = parser.parse_args()
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     env = make_environment(args.environment)

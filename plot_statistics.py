@@ -17,7 +17,7 @@ for gui in gui_env:
         matplotlib.use(gui, warn=False, force=True)
         from matplotlib import pyplot as plt
         break
-    except:
+    except ImportError:
         continue
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy?rq=1
@@ -125,6 +125,7 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None, 
             # max_y = max(max_y, max(filter(lambda x: x != np.inf, error_max)))
         plt.xlim(xmax=xmax)
         # plt.ylim(ymin=min(0, min_y), ymax=max(0, max_y + 0.1 * max_y))
+        plt.ylim(ymin=0)
         plt.xlabel(x_label_upper)
         plt.ylabel(scalar)
         plt.title("%s per %s" % (scalar, x_label))

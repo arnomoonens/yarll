@@ -2,7 +2,6 @@
 # -*- coding: utf8 -*-
 
 import os
-import matplotlib.pyplot as plt
 import numpy as np
 import json
 import argparse
@@ -11,6 +10,16 @@ import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
 from Exceptions import WrongArgumentsException
+
+import matplotlib
+gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
+for gui in gui_env:
+    try:
+        matplotlib.use(gui, warn=False, force=True)
+        from matplotlib import pyplot as plt
+        break
+    except:
+        continue
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
 def moving_average(a, n):

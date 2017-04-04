@@ -18,7 +18,7 @@ def register_environment(name, cls):
 def make_environment(name, **args):
     """Make an environment of a given name, possibly using extra arguments."""
     env = environment_registry.get(name, Environment)
-    if env in environment_registry:
+    if name in environment_registry:
         return env(**args)
     else:
         return env(name, **args)

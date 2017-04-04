@@ -1,8 +1,17 @@
 # -*- coding: utf8 -*-
 
-import matplotlib.pyplot as plt
 import numpy as np
 import logging
+
+import matplotlib
+gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
+for gui in gui_env:
+    try:
+        matplotlib.use(gui, warn=False, force=True)
+        from matplotlib import pyplot as plt
+        break
+    except:
+        continue
 
 class Reporter(object):
     """Report iteration statistics using text and graphs."""

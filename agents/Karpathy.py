@@ -1,15 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import os
 import numpy as np
 import logging
-import argparse
 
 from gym import wrappers
-from gym.spaces import Discrete, Box
 
-from Environment.registration import make_environment
 from agents.Agent import Agent
 from misc.utils import discount_rewards
 from misc.Reporter import Reporter

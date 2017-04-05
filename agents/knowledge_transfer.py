@@ -4,16 +4,11 @@
 import os
 import numpy as np
 import tensorflow as tf
-import argparse
-
-from gym.spaces import Discrete
 
 from agents.Agent import Agent
-from misc.utils import discount_rewards, save_config, json_to_dict
-from Environment.registration import make_environments, make_random_environments
+from misc.utils import discount_rewards
 from misc.Reporter import Reporter
 from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
-from misc.Exceptions import WrongArgumentsError
 
 class TaskLearner(Agent):
     """Learner for a specific environment and with its own action selection."""
@@ -165,44 +160,3 @@ class KnowledgeTransfer(Agent):
             if not os.path.exists(self.monitor_path):
                 os.makedirs(self.monitor_path)
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
-
-parser = argparse.ArgumentParser()
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
-parser.add_argument("--environments", metavar="envs", type=str, help="Json file with Gym environments to execute the experiment on.")
-parser.add_argument("--random_envs", type=int, help="Number of environments with random parameters to generate.")
-parser.add_argument("--env_name", type=str, help="Name of the environment type for which to generate random instances.")
-parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
-parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
-parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
-
-def main():
-    args = parser.parse_args()
-    if not os.path.exists(args.monitor_path):
-        os.makedirs(args.monitor_path)
-    if args.environments and args.random_envs:
-        raise WrongArgumentsError("Only supply either an environments file or a number of random environments.")
-    elif args.environments:
-        envs = make_environments(json_to_dict(args.environments))
-    elif args.random_envs:
-        if args.env_name is None:
-            raise WrongArgumentsError("A name of the environment type for which to generate random instances must be provided.")
-        envs = make_random_environments(args.env_name, args.random_envs)
-    else:
-        raise WrongArgumentsError("Please supply an environments file or a number of random environments.")
-    if isinstance(envs[0].action_space, Discrete):
-        agent = KnowledgeTransfer(
-            envs, args.monitor_path,
-            n_iter=args.iterations,
-            save_model=args.save_model,
-            learning_rate=args.learning_rate
-        )
-    else:
-        raise NotImplementedError("Only environments with a discrete action space are supported right now.")
-    save_config(args.monitor_path, agent.config, [env.to_dict() for env in envs])
-    try:
-        agent.learn()
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == "__main__":
-    main()

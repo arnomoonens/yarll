@@ -11,7 +11,7 @@ from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Environment.registration import make_environment
-from Learner import Learner
+from Agent import Agent
 from Exceptions import WrongShapeException
 
 # ================================================================
@@ -61,16 +61,17 @@ class DeterministicContinuousActionLinearPolicy(object):
         a = np.clip(ob.dot(self.W) + self.b, self.ac_space.low, self.ac_space.high)
         return a
 
-class CEMLearner(Learner):
+class CEMLearner(Agent):
     """Cross-Entropy Method learner"""
     def __init__(self, env, **usercfg):
         super(CEMLearner, self).__init__(env, **usercfg)
-        self.config = dict(
+        self.config.update(dict(
             num_steps=500,  # maximum length of episode
             n_iter=100,  # number of iterations of CEM
             batch_size=25,  # number of samples per batch
             elite_frac=0.2  # fraction of samples used as elite set
-        )
+        ))
+        self.config.update(usercfg)
         if isinstance(env.action_space, Discrete):
             self.dim_theta = (env.observation_space.shape[0] + 1) * env.action_space.n
         elif isinstance(env.action_space, Box):

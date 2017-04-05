@@ -1,10 +1,10 @@
 # -*- coding: utf8 -*-
 import numpy as np
 
-class Learner(object):
-    """Reinforcement Learner"""
+class Agent(object):
+    """Reinforcement Agent"""
     def __init__(self, env, **usercfg):
-        super(Learner, self).__init__()
+        super(Agent, self).__init__()
         self.env = env
         self.ob_space = self.env.observation_space
         self.action_space = self.env.action_space

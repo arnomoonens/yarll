@@ -10,9 +10,9 @@ import argparse
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
-from Learner import Learner
-from utils import discount_rewards, save_config
-from Reporter import Reporter
+from Agent import Agent
+from misc.utils import discount_rewards, save_config
+from misc.Reporter import Reporter
 from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
 from Environment.registration import make_environment
 
@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO,
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
 
-class A2C(Learner):
+class A2C(Agent):
     """Advantage Actor Critic"""
     def __init__(self, env, action_selection, monitor_dir, **usercfg):
         super(A2C, self).__init__(env, **usercfg)

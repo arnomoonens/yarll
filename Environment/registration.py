@@ -7,7 +7,7 @@
 import numpy as np
 
 from Environment import Environment
-from Exceptions import ClassNotRegisteredException
+from misc.Exceptions import ClassNotRegisteredException
 
 environment_registry = {}
 

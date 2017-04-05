@@ -8,14 +8,14 @@ import argparse
 
 from gym.spaces import Discrete
 
-from Learner import Learner
-from utils import discount_rewards, save_config, json_to_dict
+from agents.Agent import Agent
+from misc.utils import discount_rewards, save_config, json_to_dict
 from Environment.registration import make_environments, make_random_environments
-from Reporter import Reporter
-from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
-from Exceptions import WrongArgumentsException
+from misc.Reporter import Reporter
+from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
+from misc.Exceptions import WrongArgumentsError
 
-class TaskLearner(Learner):
+class TaskLearner(Agent):
     """Learner for a specific environment and with its own action selection."""
     def __init__(self, env, action, master, **usercfg):
         super(TaskLearner, self).__init__(env, **usercfg)
@@ -26,13 +26,13 @@ class TaskLearner(Learner):
         """Choose an action."""
         return self.master.session.run([self.action], feed_dict={self.master.states: [state]})[0]
 
-class KnowledgeTransferLearner(Learner):
+class KnowledgeTransfer(Agent):
     """Learner for variations of a task."""
-    def __init__(self, envs, monitor_dir, **usercfg):
-        super(KnowledgeTransferLearner, self).__init__(envs[0], **usercfg)
+    def __init__(self, envs, monitor_path, **usercfg):
+        super(KnowledgeTransfer, self).__init__(envs[0], **usercfg)
         self.envs = envs
         self.n_tasks = len(envs)
-        self.monitor_dir = monitor_dir
+        self.monitor_path = monitor_path
         self.nA = envs[0].action_space.n
         self.config.update(dict(
             timesteps_per_batch=10000,
@@ -97,7 +97,7 @@ class KnowledgeTransferLearner(Learner):
             eligibility = tf.log(good_probabilities) * self.advantage
             loss = -tf.reduce_sum(eligibility)
             self.losses.append(loss)
-            writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "task" + str(i)), self.session.graph)
+            writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task" + str(i)), self.session.graph)
             self.writers.append(writer)
 
         # An add op for every task & its loss
@@ -162,9 +162,9 @@ class KnowledgeTransferLearner(Learner):
             self.session.run([self.apply_gradients])
 
         if self.config["save_model"]:
-            if not os.path.exists(self.monitor_dir):
-                os.makedirs(self.monitor_dir)
-            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
+            if not os.path.exists(self.monitor_path):
+                os.makedirs(self.monitor_path)
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 parser = argparse.ArgumentParser()
 parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
@@ -180,17 +180,17 @@ def main():
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     if args.environments and args.random_envs:
-        raise WrongArgumentsException("Only supply either an environments file or a number of random environments.")
+        raise WrongArgumentsError("Only supply either an environments file or a number of random environments.")
     elif args.environments:
         envs = make_environments(json_to_dict(args.environments))
     elif args.random_envs:
         if args.env_name is None:
-            raise WrongArgumentsException("A name of the environment type for which to generate random instances must be provided.")
+            raise WrongArgumentsError("A name of the environment type for which to generate random instances must be provided.")
         envs = make_random_environments(args.env_name, args.random_envs)
     else:
-        raise WrongArgumentsException("Please supply an environments file or a number of random environments.")
+        raise WrongArgumentsError("Please supply an environments file or a number of random environments.")
     if isinstance(envs[0].action_space, Discrete):
-        agent = KnowledgeTransferLearner(
+        agent = KnowledgeTransfer(
             envs, args.monitor_path,
             n_iter=args.iterations,
             save_model=args.save_model,

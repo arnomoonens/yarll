@@ -11,13 +11,13 @@ import signal
 
 from gym.spaces import Discrete
 
-from Learner import Learner
-from utils import discount_rewards, save_config, json_to_dict
+from agents.Agent import Agent
+from misc.utils import discount_rewards, save_config, json_to_dict
 from Environment.registration import make_environments, make_random_environments
-from Reporter import Reporter
-from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
-from knowledge_transfer import TaskLearner
-from Exceptions import WrongArgumentsException
+from misc.Reporter import Reporter
+from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
+from agents.knowledge_transfer import TaskLearner
+from misc.Exceptions import WrongArgumentsError
 
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
@@ -33,7 +33,7 @@ class AKTThread(Thread):
         self.task_learner = TaskLearner(env, self.action, self, **self.master.config)
 
         # Write the summary of each task in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "task" + str(self.task_id)), self.master.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task" + str(self.task_id)), self.master.session.graph)
 
     def build_networks(self):
         with tf.variable_scope("task%s" % self.task_id):
@@ -136,13 +136,13 @@ class AKTThread(Thread):
             self.master.session.run([self.master.reset_accum_grads])
 
 
-class AsyncKnowledgeTransferLearner(Learner):
+class AsyncKnowledgeTransfer(Agent):
     """Asynchronous learner for variations of a task."""
-    def __init__(self, envs, learning_method, monitor_dir, **usercfg):
-        super(AsyncKnowledgeTransferLearner, self).__init__(envs[0], **usercfg)
+    def __init__(self, envs, learning_method, monitor_path, **usercfg):
+        super(AsyncKnowledgeTransfer, self).__init__(envs[0], **usercfg)
         self.envs = envs
         self.learning_method = learning_method
-        self.monitor_dir = monitor_dir
+        self.monitor_path = monitor_path
         self.nA = envs[0].action_space.n
         self.config.update(dict(
             timesteps_per_batch=10000,
@@ -230,7 +230,7 @@ class AsyncKnowledgeTransferLearner(Learner):
             job.join()
 
         if self.config["save_model"]:
-            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
     def make_thread(self, env, task_id):
         return AKTThread(self, env, task_id)
@@ -251,17 +251,17 @@ def main():
     if not os.path.exists(args.monitor_path):
         os.makedirs(args.monitor_path)
     if args.environments and args.random_envs:
-        raise WrongArgumentsException("Only supply either an environments file or a number of random environments.")
+        raise WrongArgumentsError("Only supply either an environments file or a number of random environments.")
     elif args.environments:
         envs = make_environments(json_to_dict(args.environments))
     elif args.random_envs:
         if args.env_name is None:
-            raise WrongArgumentsException("A name of the environment type for which to generate random instances must be provided.")
+            raise WrongArgumentsError("A name of the environment type for which to generate random instances must be provided.")
         envs = make_random_environments(args.env_name, args.random_envs)
     else:
-        raise WrongArgumentsException("Please supply an environments file or a number of random environments.")
+        raise WrongArgumentsError("Please supply an environments file or a number of random environments.")
     if isinstance(envs[0].action_space, Discrete):
-        agent = AsyncKnowledgeTransferLearner(
+        agent = AsyncKnowledgeTransfer(
             envs,
             args.learning_method,
             args.monitor_path,

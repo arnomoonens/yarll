@@ -10,9 +10,9 @@ from gym import wrappers
 from gym.spaces import Discrete, Box
 
 from Environment.registration import make_environment
-from Learner import Learner
-from utils import discount_rewards
-from Reporter import Reporter
+from agents.Agent import Agent
+from misc.utils import discount_rewards
+from misc.Reporter import Reporter
 
 logging.getLogger().setLevel("INFO")
 
@@ -33,15 +33,17 @@ def random_with_probability(output, n_actions, temperature=1.0):
     action = np.random.choice(n_actions, p=probs)
     return action, probs
 
-class KPLearner(Learner):
-    """Karpathy policy gradient learner"""
-    def __init__(self, env, **usercfg):
-        super(KPLearner, self).__init__(env, **usercfg)
+class Karpathy(Agent):
+    """Karpathy policy gradient agent"""
+    def __init__(self, env, monitor_path, video=True, **usercfg):
+        super(Karpathy, self).__init__(env, **usercfg)
+        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
         self.nA = self.action_space.n
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
             # timesteps_per_batch=10000,
             # n_iter=100,
+            episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             gamma=0.99,
             learning_rate=0.05,
             batch_size=10,  # Amount of episodes after which to adapt gradients
@@ -157,33 +159,3 @@ class KPLearner(Learner):
                 mean_rewards.append(episode_rewards.mean())
                 if episode_nr % self.config["draw_frequency"] == 0:
                     reporter.draw_rewards(mean_rewards)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
-parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
-parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
-
-def main():
-    args = parser.parse_args()
-    if not os.path.exists(args.monitor_path):
-        os.makedirs(args.monitor_path)
-    env = make_environment(args.environment)
-    if isinstance(env.action_space, Discrete):
-        agent = KPLearner(
-            env,
-            episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
-            learning_rate=args.learning_rate
-        )
-    elif isinstance(env.action_space, Box):
-        raise NotImplementedError
-    else:
-        raise NotImplementedError
-    try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
-        agent.learn()
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == "__main__":
-    main()

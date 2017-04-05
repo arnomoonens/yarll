@@ -7,7 +7,7 @@
 import numpy as np
 
 from Environment import Environment
-from misc.Exceptions import ClassNotRegisteredException
+from misc.Exceptions import ClassNotRegisteredError
 
 environment_registry = {}
 
@@ -30,7 +30,7 @@ def make_environments(descriptions):
 def make_random_environments(env_name, n_envs):
     """Make n_envs random environments of the env_name class."""
     if env_name not in environment_registry:
-        raise ClassNotRegisteredException("Class %s must be registered in order to be randomly instantiated." % env_name)
+        raise ClassNotRegisteredError("Class %s must be registered in order to be randomly instantiated." % env_name)
     cls = environment_registry.get(env_name)
     envs = []
     for _ in range(n_envs):

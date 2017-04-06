@@ -97,3 +97,5 @@ ENV/
 Environment/*.json
 
 *.orig
+
+*-experiment.json

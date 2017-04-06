@@ -6,14 +6,14 @@ This code is part of my master thesis at the [VUB](http://www.vub.ac.be), Brusse
 
 ## Status
 Different algorithms have already been implemented:
-- [Cross-Entropy Method](https://github.com/arnomoonens/DeepRL/blob/master/cem.py)
-- [Sarsa with with function approximation and eligibility traces](https://github.com/arnomoonens/DeepRL/blob/master/SarsaFA.py)
-- [REINFORCE](https://github.com/arnomoonens/DeepRL/blob/master/REINFORCE.py) (convolutional neural network part has not been tested yet)
-- [Karpathy's policy gradient algorithm](https://github.com/arnomoonens/DeepRL/blob/master/Karpathy.py) ([version using convolutional neural networks](https://github.com/arnomoonens/DeepRL/blob/master/Karpathy_CNN.py) has not been tested yet)
-- [Advantage Actor Critic](https://github.com/arnomoonens/DeepRL/blob/master/A2C.py)
-- [Asynchronous Advantage Actor Critic (A3C)](https://github.com/arnomoonens/DeepRL/blob/master/A3C.py)
-- [(Sequential) knowledge transfer](https://github.com/arnomoonens/DeepRL/blob/master/knowledge_transfer.py)
-- [Asynchronous knowledge transfer](https://github.com/arnomoonens/DeepRL/blob/master/async_knowledge_transfer.py)
+- [Cross-Entropy Method](./agents/CEM.py)
+- [Sarsa with with function approximation and eligibility traces](./agents/SarsaFA.py)
+- [REINFORCE](./agents/REINFORCE.py) (convolutional neural network part has not been tested yet)
+- [Karpathy's policy gradient algorithm](./agents/Karpathy.py) ([version using convolutional neural networks](./agents/Karpathy_CNN.py) has not been tested yet)
+- [Advantage Actor Critic](./agents/A2C.py)
+- [Asynchronous Advantage Actor Critic (A3C)](./agents/A3C.py)
+- [(Sequential) knowledge transfer](./agents/knowledge_transfer.py)
+- [Asynchronous knowledge transfer](./agents/async_knowledge_transfer.py)
 
 ### Sarsa + function apprixmation
 The following parts are combined to learn to act in the [_Mountain Car_ environment](https://gym.openai.com/envs/MountainCar-v0):

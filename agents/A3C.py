@@ -5,19 +5,16 @@ import os
 import numpy as np
 import tensorflow as tf
 import logging
-import argparse
 from threading import Thread
 import multiprocessing
 import signal
 
 from gym import wrappers
-from gym.spaces import Discrete, Box
 
 from Environment.registration import make_environment
-from Learner import Learner
-from utils import discount_rewards, save_config
-from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
-from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_gradients_op
+from agents.Agent import Agent
+from misc.utils import discount_rewards
+from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_gradients_op
 
 logging.getLogger().setLevel("INFO")
 
@@ -126,7 +123,6 @@ class ActorNetworkContinuous(object):
             self.summary_loss = -tf.reduce_mean(self.loss)  # Loss to show as a summary
             self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="%s_actor" % scope)
 
-
 class CriticNetwork(object):
     """Neural network for the Critic of an Actor-Critic algorithm"""
     def __init__(self, state_shape, n_hidden, scope, summary=True):
@@ -167,13 +163,13 @@ class A3CThread(Thread):
         self.env = make_environment(master.env_name)
         self.master = master
         if thread_id == 0 and self.master.monitor:
-            self.env = wrappers.Monitor(self.env, master.monitor_dir, force=True, video_callable=(None if self.master.video else False))
+            self.env = wrappers.Monitor(self.env, master.monitor_path, force=True, video_callable=(None if self.master.video else False))
 
         # Build actor and critic networks
         self.build_networks()
 
         # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_dir, "thread" + str(self.thread_id)), self.master.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
 
         self.actor_sync_net = sync_gradients_op(master.shared_actor_net, self.actor_net.vars, self.thread_id)
         self.actor_create_ag = create_accumulative_gradients_op(self.actor_net.vars, self.thread_id)
@@ -300,17 +296,16 @@ class A3CThreadContinuous(A3CThread):
         self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.master.config["actor_n_hidden"], scope="local_actor_net")
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config["critic_n_hidden"], scope="local_critic_net")
 
-class A3CLearner(Learner):
+class A3C(Agent):
     """Asynchronous Advantage Actor Critic learner."""
-    def __init__(self, env, action_selection, monitor, monitor_dir, video=True, **usercfg):
-        super(A3CLearner, self).__init__(env)
+    def __init__(self, env, monitor, monitor_path, video=True, **usercfg):
+        super(A3C, self).__init__(env)
         self.env = env
         self.shared_counter = 0
         self.T = 0
-        self.action_selection = action_selection
         self.env_name = env.spec.id
         self.monitor = monitor
-        self.monitor_dir = monitor_dir
+        self.monitor_path = monitor_path
         self.video = video
 
         self.config.update(dict(
@@ -324,7 +319,8 @@ class A3CLearner(Learner):
             gradient_clip_value=40,
             n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
             T_max=5e5,
-            repeat_n_actions=1
+            repeat_n_actions=1,
+            save_model=False
         ))
         self.config.update(usercfg)
         self.stop_requested = False
@@ -376,12 +372,12 @@ class A3CLearner(Learner):
         for job in self.jobs:
             job.join()
         if self.config["save_model"]:
-            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
-class A3CLearnerDiscrete(A3CLearner):
-    """A3CLearner for a discrete action space"""
-    def __init__(self, env, action_selection, monitor, monitor_dir, **usercfg):
-        super(A3CLearnerDiscrete, self).__init__(env, action_selection, monitor, monitor_dir, **usercfg)
+class A3CDiscrete(A3C):
+    """A3C for a discrete action space"""
+    def __init__(self, env, monitor, monitor_path, **usercfg):
+        super(A3CDiscrete, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
         self.shared_actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.config["actor_n_hidden"], scope="global_actor_net", summary=False)
@@ -390,10 +386,10 @@ class A3CLearnerDiscrete(A3CLearner):
     def make_thread(self, thread_id):
         return A3CThreadDiscrete(self, thread_id)
 
-class A3CLearnerContinuous(A3CLearner):
-    """A3CLearner for a continuous action space"""
-    def __init__(self, env, action_selection, monitor, monitor_dir, **usercfg):
-        super(A3CLearnerContinuous, self).__init__(env, action_selection, monitor, monitor_dir, **usercfg)
+class A3CContinuous(A3C):
+    """A3C for a continuous action space"""
+    def __init__(self, env, monitor, monitor_path, **usercfg):
+        super(A3CContinuous, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
         self.shared_actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.config["actor_n_hidden"], scope="global_actor_net", summary=False)
@@ -401,42 +397,3 @@ class A3CLearnerContinuous(A3CLearner):
 
     def make_thread(self, thread_id):
         return A3CThreadContinuous(self, thread_id)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("--monitor", action="store_true", default=False, help="Track performance of a single thread using gym monitor.")
-parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
-parser.add_argument("--actor_learning_rate", type=float, default=0.01, help="Learning rate used when optimizing weights.")
-parser.add_argument("--critic_learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved.")
-# parser.add_argument("--iterations", default=5e5, type=float, help="Number of iterations to run the algorithm.")
-parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
-
-def main():
-    args = parser.parse_args()
-    if not os.path.exists(args.monitor_path):
-        os.makedirs(args.monitor_path)
-    env = make_environment(args.environment)
-    shared_args = {
-        "monitor": args.monitor,
-        "video": args.video,
-        "monitor_dir": args.monitor_path,
-        # "n_iter": args.iterations,
-        "save_model": args.save_model,
-        "actor_learning_rate": args.actor_learning_rate,
-        "critic_learning_rate": args.critic_learning_rate
-    }
-    if isinstance(env.action_space, Discrete):
-        agent = A3CLearnerDiscrete(env, ProbabilisticCategoricalActionSelection(), **shared_args)
-    elif isinstance(env.action_space, Box):
-        agent = A3CLearnerContinuous(env, ContinuousActionSelection(), **shared_args)
-    else:
-        raise NotImplementedError
-    save_config(args.monitor_path, agent.config, [env.to_dict()])
-    try:
-        agent.learn()
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == "__main__":
-    main()

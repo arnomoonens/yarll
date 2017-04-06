@@ -10,7 +10,7 @@ for gui in gui_env:
         matplotlib.use(gui, warn=False, force=True)
         from matplotlib import pyplot as plt
         break
-    except:
+    except ImportError:
         continue
 
 class Reporter(object):

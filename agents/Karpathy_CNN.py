@@ -5,30 +5,26 @@ import os
 import numpy as np
 import tensorflow as tf
 import logging
-import argparse
 
 from gym import wrappers
-from gym.spaces import Discrete, Box
 # import gym_ple
 
-from Environment.registration import make_environment
-from Learner import Learner
-from utils import discount_rewards, preprocess_image, save_config
-from Reporter import Reporter
-from ActionSelection import ProbabilisticCategoricalActionSelection
-from gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
+from agents.Agent import Agent
+from misc.utils import discount_rewards, preprocess_image
+from misc.Reporter import Reporter
+from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
 logging.getLogger().setLevel("INFO")
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
 
-class KPCNNLearner(Learner):
+class KarpathyCNN(Agent):
     """Karpathy policy gradient learner using a convolutional neural network"""
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
-        super(KPCNNLearner, self).__init__(env, **usercfg)
+    def __init__(self, env, monitor_path, video=True, **usercfg):
+        super(KarpathyCNN, self).__init__(env, **usercfg)
+        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
         self.nA = env.action_space.n
-        self.action_selection = action_selection
-        self.monitor_dir = monitor_dir
+        self.monitor_path = monitor_path
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(
             dict(
@@ -187,38 +183,4 @@ class KPCNNLearner(Learner):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
-
-parser = argparse.ArgumentParser()
-parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
-parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
-parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
-parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate used when optimizing weights.")
-
-def main():
-    args = parser.parse_args()
-    if not os.path.exists(args.monitor_path):
-        os.makedirs(args.monitor_path)
-    env = make_environment(args.environment)
-    if isinstance(env.action_space, Discrete):
-        agent = KPCNNLearner(
-            env,
-            ProbabilisticCategoricalActionSelection(),
-            args.monitor_path,
-            save_model=args.save_model,
-            learning_rate=args.learning_rate
-        )
-    elif isinstance(env.action_space, Box):
-        raise NotImplementedError
-    else:
-        raise NotImplementedError
-    save_config(args.monitor_path, agent.config, [env.to_dict()])
-    try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
-        agent.learn()
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == "__main__":
-    main()
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))

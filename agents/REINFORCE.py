@@ -9,27 +9,23 @@
 
 import numpy as np
 import os
-import argparse
 
 import tensorflow as tf
 from gym import wrappers
-from gym.spaces import Discrete, Box
 # import gym_ple
 
-from Learner import Learner
-from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
-from utils import discount_rewards, preprocess_image, save_config, ge_1
-from Reporter import Reporter
-from Environment.registration import make_environment
+from agents.Agent import Agent
+from misc.utils import discount_rewards, preprocess_image
+from misc.Reporter import Reporter
 
-class REINFORCELearner(Learner):
+class REINFORCE(Agent):
     """
     REINFORCE with baselines
     """
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
-        super(REINFORCELearner, self).__init__(env, **usercfg)
-        self.action_selection = action_selection
-        self.monitor_dir = monitor_dir
+    def __init__(self, env, monitor_path, video=True, **usercfg):
+        super(REINFORCE, self).__init__(env, **usercfg)
+        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
+        self.monitor_path = monitor_path
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
             batch_update="timesteps",
@@ -59,7 +55,7 @@ class REINFORCELearner(Learner):
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
-        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "task0"), self.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
 
     def choose_action(self, state):
         """Choose an action."""
@@ -101,14 +97,13 @@ class REINFORCELearner(Learner):
 
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         if self.config["save_model"]:
-            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
-class REINFORCELearnerDiscrete(REINFORCELearner):
-
-    def __init__(self, env, action_selection, rnn, monitor_dir, **usercfg):
+class REINFORCEDiscrete(REINFORCE):
+    def __init__(self, env, monitor_path, rnn=False, video=True, **usercfg):
         self.nA = env.action_space.n
         self.rnn = rnn
-        super(REINFORCELearnerDiscrete, self).__init__(env, action_selection, monitor_dir, **usercfg)
+        super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
         if self.rnn:
@@ -174,10 +169,10 @@ class REINFORCELearnerDiscrete(REINFORCELearner):
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
 
-class REINFORCELearnerContinuous(REINFORCELearner):
-    def __init__(self, env, action_selection, rnn, monitor_dir, **usercfg):
+class REINFORCEContinuous(REINFORCE):
+    def __init__(self, env, rnn, monitor_path, video=True, **usercfg):
         self.rnn = rnn
-        super(REINFORCELearnerContinuous, self).__init__(env, action_selection, monitor_dir, **usercfg)
+        super(REINFORCEContinuous, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
         if self.rnn:
@@ -281,10 +276,10 @@ class REINFORCELearnerContinuous(REINFORCELearner):
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
 
-class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+class REINFORCEDiscreteCNN(REINFORCEDiscrete):
+    def __init__(self, env, monitor_path, video=True, **usercfg):
         usercfg["n_hidden_units"] = 200
-        super(REINFORCELearnerDiscreteCNN, self).__init__(env, action_selection, monitor_dir, **usercfg)
+        super(REINFORCEDiscreteCNN, self).__init__(env, monitor_path, video=video, **usercfg)
         self.config.update(usercfg)
 
     def reset_env(self):
@@ -342,48 +337,3 @@ class REINFORCELearnerDiscreteCNN(REINFORCELearnerDiscrete):
         self.summary_loss = loss
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
-
-parser = argparse.ArgumentParser()
-parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved.")
-parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
-parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
-parser.add_argument("--rnn", action="store_true", default=False, help="Use a Recurrent Neural Network (only for envs with a state space of rank 1).")
-parser.add_argument("--iterations", default=100, type=ge_1, help="Number of iterations to run the algorithm.")
-parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
-
-def main():
-    args = parser.parse_args()
-    if not os.path.exists(args.monitor_path):
-        os.makedirs(args.monitor_path)
-    env = make_environment(args.environment)
-    rank = len(env.observation_space.shape)  # Observation space rank
-    shared_args = {
-        "n_iter": args.iterations,
-        "monitor_dir": args.monitor_path,
-        "save_model": args.save_model,
-        "learning_rate": args.learning_rate
-    }
-    if isinstance(env.action_space, Discrete):
-        action_selection = ProbabilisticCategoricalActionSelection()
-        if rank == 1:
-            agent = REINFORCELearnerDiscrete(env, action_selection, args.rnn, **shared_args)
-        else:
-            agent = REINFORCELearnerDiscreteCNN(env, action_selection, **shared_args)
-    elif isinstance(env.action_space, Box):
-        action_selection = ContinuousActionSelection()
-        if rank == 1:
-            agent = REINFORCELearnerContinuous(env, action_selection, args.rnn, **shared_args)
-        else:
-            raise NotImplementedError
-    else:
-        raise NotImplementedError
-    save_config(args.monitor_path, agent.config, [env.to_dict()])
-    try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
-        agent.learn()
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == "__main__":
-    main()

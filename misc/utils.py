@@ -46,5 +46,5 @@ def ge_1(value):
     """Require the value for an argparse argument to be an integer >=1."""
     ivalue = int(value)
     if ivalue < 1:
-        raise argparse.ArgumentTypeError("%s must be an integer of at least 1." % value)
+        raise argparse.ArgumentTypeError("{} must be an integer of at least 1.".format(value))
     return ivalue

@@ -5,40 +5,38 @@ import os
 import numpy as np
 import tensorflow as tf
 import logging
-import argparse
 
 from gym import wrappers
-from gym.spaces import Discrete, Box
 
-from Learner import Learner
-from utils import discount_rewards, save_config, ge_1
-from Reporter import Reporter
-from ActionSelection import ProbabilisticCategoricalActionSelection, ContinuousActionSelection
-from Environment.registration import make_environment
+from agents.Agent import Agent
+from misc.utils import discount_rewards
+from misc.Reporter import Reporter
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
 
-class A2C(Learner):
+class A2C(Agent):
     """Advantage Actor Critic"""
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+    def __init__(self, env, monitor_path, video=True, **usercfg):
         super(A2C, self).__init__(env, **usercfg)
-        self.action_selection = action_selection
-        self.monitor_dir = monitor_dir
+        self.monitor_path = monitor_path
+
+        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
 
         self.config.update(dict(
             timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
-            n_iter=400,
+            n_iter=100,
             gamma=0.99,
             actor_learning_rate=0.01,
             critic_learning_rate=0.05,
             actor_n_hidden=20,
             critic_n_hidden=20,
-            repeat_n_actions=1
+            repeat_n_actions=1,
+            save_model=False
         ))
         self.config.update(usercfg)
         self.build_networks()
@@ -57,7 +55,7 @@ class A2C(Learner):
         summary_rewards = tf.summary.scalar("Rewards", self.rewards)
         summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_actor_loss, summary_critic_loss, summary_rewards, summary_episode_lengths])
-        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_dir, "summaries"), self.session.graph)
+        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "summaries"), self.session.graph)
         return
 
     def get_critic_value(self, state):
@@ -104,13 +102,13 @@ class A2C(Learner):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 class A2CDiscrete(A2C):
     """A2C learner for a discrete action space"""
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
+    def __init__(self, env, monitor_path, **usercfg):
         self.nA = env.action_space.n
-        super(A2CDiscrete, self).__init__(env, action_selection, monitor_dir, **usercfg)
+        super(A2CDiscrete, self).__init__(env, monitor_path, **usercfg)
 
     def build_networks(self):
         self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
@@ -172,8 +170,8 @@ class A2CDiscrete(A2C):
 
 class A2CContinuous(A2C):
     """Advantage Actor Critic for continuous action spaces."""
-    def __init__(self, env, action_selection, monitor_dir, **usercfg):
-        super(A2CContinuous, self).__init__(env, action_selection, monitor_dir, **usercfg)
+    def __init__(self, env, monitor_path, **usercfg):
+        super(A2CContinuous, self).__init__(env, monitor_path, **usercfg)
 
     def build_networks(self):
         self.states = tf.placeholder(tf.float32, [None, self.ob_space.shape[0]], name="states")
@@ -269,41 +267,4 @@ class A2CContinuous(A2C):
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
 
         if self.config["save_model"]:
-            self.saver.save(self.session, os.path.join(self.monitor_dir, "model"))
-
-parser = argparse.ArgumentParser()
-parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
-parser.add_argument("--no_video", dest="video", action="store_false", default=True, help="Don't render and show video.")
-parser.add_argument("--learning_rate", type=float, default=0.05, help="Learning rate used when optimizing weights.")
-parser.add_argument("--iterations", default=100, type=ge_1, help="Number of iterations to run the algorithm.")
-parser.add_argument("--save_model", action="store_true", default=False, help="Save resulting model.")
-
-def main():
-    args = parser.parse_args()
-    if not os.path.exists(args.monitor_path):
-        os.makedirs(args.monitor_path)
-    env = make_environment(args.environment)
-    shared_args = {
-        "monitor_dir": args.monitor_path,
-        "n_iter": args.iterations,
-        "save_model": args.save_model,
-        "learning_rate": args.learning_rate
-    }
-    if isinstance(env.action_space, Discrete):
-        action_selection = ProbabilisticCategoricalActionSelection()
-        agent = A2CDiscrete(env, action_selection, **shared_args)
-    elif isinstance(env.action_space, Box):
-        action_selection = ContinuousActionSelection()
-        agent = A2CContinuous(env, action_selection, **shared_args)
-    else:
-        raise NotImplementedError
-    save_config(args.monitor_path, agent.config, [env.to_dict()])
-    try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True, video_callable=(None if args.video else False))
-        agent.learn()
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == "__main__":
-    main()
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))

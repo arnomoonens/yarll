@@ -1,16 +1,11 @@
 #!/usr/bin/env python
 
-import os
-import argparse
-
 from gym import wrappers
 
 from Policies.EGreedy import EGreedy
 from Learners.Sarsa import Sarsa
 from Traces.EligibilityTraces import EligibilityTraces
 from FunctionApproximation.TileCoding import TileCoding
-from Environment.registration import make_environment
-from utils import ge_1
 
 # def draw_3d(tile_starts):
 #     states = []
@@ -19,12 +14,13 @@ from utils import ge_1
 #             states.append([i, j])
 #     states = np.array(states)
 
-class SarsaFALearner(object):
+class SarsaFA(object):
     """Learner using Sarsa and function approximation"""
-    def __init__(self, env):
-        super(SarsaFALearner, self).__init__()
+    def __init__(self, env, monitor_path, video=True, **usercfg):
+        super(SarsaFA, self).__init__()
         self.env = env
-        m = 10  # Number of tilings
+        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
+        m = usercfg.get("m", 10)  # Number of tilings
         self.config = dict(
             m=m,
             n_x_tiles=9,
@@ -33,8 +29,10 @@ class SarsaFALearner(object):
             epsilon=0,  # fully greedy in this case
             alpha=(0.05 * (0.5 / m)),
             gamma=1,
+            n_iter=1000,
             steps_per_episode=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps")  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
         )
+        self.config.update(usercfg)
         O = env.observation_space
         self.x_low, self.y_low = O.low
         self.x_high, self.y_high = O.high
@@ -43,8 +41,8 @@ class SarsaFALearner(object):
         self.policy = EGreedy(self.config["epsilon"])
         self.function_approximation = TileCoding(self.x_low, self.x_high, self.y_low, self.y_high, m, self.config["n_x_tiles"], self.config["n_y_tiles"], self.nA)
 
-    def learn(self, n_episodes):
-        for i in range(n_episodes):
+    def learn(self):
+        for i in range(self.config["n_iter"]):
             # print('Episode {}'.format(i))
             traces = EligibilityTraces(self.function_approximation.features_shape, self.config["gamma"], self.config["Lambda"])
             state, action = self.env.reset(), 0
@@ -58,29 +56,3 @@ class SarsaFALearner(object):
                 if done and iteration < self.config["steps_per_episode"]:
                     print("Episode {}: Less than {} steps were needed: {}".format(i, self.config["steps_per_episode"], iteration))
                 action = sarsa.step(state, reward)
-
-parser = argparse.ArgumentParser()
-# No environment argument for now: algorithm only works with MountainCar-v0 right now
-# parser.add_argument("environment", metavar="env", type=str, help="Gym environment to execute the experiment on.")
-parser.add_argument("n_episodes", metavar="n_episodes", type=ge_1, help="Number of episodes to run")
-parser.add_argument("monitor_path", metavar="monitor_path", type=str, help="Path where Gym monitor files may be saved")
-
-def main():
-    args = parser.parse_args()
-    if not os.path.exists(args.monitor_path):
-        os.makedirs(args.monitor_path)
-    # env = make_environment(args.environment)
-    env = make_environment("MountainCar-v0")
-    # if isinstance(env.action_space, Discrete):
-    #     agent = SarsaFALearner(env)
-    # else:
-    #     raise NotImplementedError("Only environments with a discrete action space are supported right now.")
-    agent = SarsaFALearner(env)
-    try:
-        agent.env = wrappers.Monitor(agent.env, args.monitor_path, force=True)
-        agent.learn(args.n_episodes)
-    except KeyboardInterrupt:
-        pass
-
-if __name__ == "__main__":
-    main()

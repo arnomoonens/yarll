@@ -9,7 +9,7 @@ from utils import ge_1
 import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
-from Exceptions import WrongArgumentsException
+from misc.Exceptions import WrongArgumentsError
 
 import matplotlib
 gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
@@ -18,7 +18,7 @@ for gui in gui_env:
         matplotlib.use(gui, warn=False, force=True)
         from matplotlib import pyplot as plt
         break
-    except:
+    except ImportError:
         continue
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
@@ -126,17 +126,18 @@ def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None, 
             # max_y = max(max_y, max(filter(lambda x: x != np.inf, error_max)))
         plt.xlim(xmax=xmax)
         # plt.ylim(ymin=min(0, min_y), ymax=max(0, max_y + 0.1 * max_y))
+        plt.ylim(ymin=0)
         plt.xlabel(x_label_upper)
         plt.ylabel(scalar)
-        plt.title("%s per %s" % (scalar, x_label))
-        fig.canvas.set_window_title("%s per %s" % (scalar, x_label))
+        plt.title("{} per {}".format(scalar, x_label))
+        fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
     plt.show()
 
 def exp_smoothing_weight_test(value):
     """Require that the weight for exponential smoothing is a weight between 0 and 1"""
     fvalue = float(value)
     if fvalue < 0 or fvalue > 1:
-        raise argparse.ArgumentTypeError("%s must be a float between 0 and 1" % value)
+        raise argparse.ArgumentTypeError("{} must be a float between 0 and 1".format(value))
     return fvalue
 
 parser = argparse.ArgumentParser()
@@ -149,7 +150,7 @@ parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a mov
 if __name__ == "__main__":
     args = parser.parse_args()
     if not(args.exp_smoothing is None) and not(args.moving_average is None):
-        raise WrongArgumentsException("Maximally 1 smoothing technique can be used.")
+        raise WrongArgumentsError("Maximally 1 smoothing technique can be used.")
     smoothing_technique = None
     if not(args.exp_smoothing is None):
         smoothing_technique = create_smoother(exponential_smoothing, args.exp_smoothing)  # args.exp_smoothing holds the weight

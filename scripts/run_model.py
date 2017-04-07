@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
+import sys
+sys.path.append(".")
+
 import os
 import argparse
 import tensorflow as tf

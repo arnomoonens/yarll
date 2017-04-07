@@ -8,7 +8,7 @@ import argparse
 import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
-from misc.Exceptions import WrongArgumentsError
+from Exceptions import WrongArgumentsError
 
 import matplotlib
 gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']

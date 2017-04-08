@@ -9,13 +9,13 @@ from Environment.registration import make_environment, make_environments
 from agents.registration import make_agent
 from misc.utils import json_to_dict, save_config
 
-parser = argparse.ArgumentParser()
-parser.add_argument("experiment", type=str, help="JSON file with the experiment specification")
-
-def run_experiment(spec):
+def run_experiment(spec, monitor_path=None):
     """Run an experiment using a specification dictionary."""
     args = spec["agent"]["args"]
-    monitor_path = args["monitor_path"]
+    if monitor_path:
+        args["monitor_path"] = monitor_path
+    else:
+        monitor_path = args["monitor_path"]
     if not os.path.exists(monitor_path):
         os.makedirs(monitor_path)
     envs_type = spec["environments"]["type"]
@@ -30,9 +30,13 @@ def run_experiment(spec):
     save_config(monitor_path, agent.config, [env.to_dict() for env in envs])
     agent.learn()
 
+parser = argparse.ArgumentParser()
+parser.add_argument("experiment", type=str, help="JSON file with the experiment specification")
+parser.add_argument("--monitor_path", metavar="monitor_path", default=None, type=str, help="Path where Gym monitor files may be saved")
+
 def main():
     args = parser.parse_args()
-    run_experiment(json_to_dict(args.experiment))
+    run_experiment(json_to_dict(args.experiment), args.monitor_path)
 
 if __name__ == '__main__':
     main()

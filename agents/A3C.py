@@ -33,7 +33,7 @@ class ActorNetworkDiscrete(object):
         self.n_hidden = n_hidden
         self.scope = scope
 
-        with tf.variable_scope("%s_actor" % scope):
+        with tf.variable_scope("{}_actor".format(scope)):
             self.states = tf.placeholder("float", [None, self.state_shape], name="states")
             self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
@@ -63,7 +63,7 @@ class ActorNetworkDiscrete(object):
                 * (self.critic_rewards - self.critic_feedback)
             self.loss = tf.negative(tf.reduce_mean(eligibility), name="loss")
             self.summary_loss = self.loss  # Loss to show as a summary
-            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="%s_actor" % scope)
+            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class ActorNetworkContinuous(object):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
@@ -73,7 +73,7 @@ class ActorNetworkContinuous(object):
         self.n_hidden = n_hidden
         self.scope = scope
 
-        with tf.variable_scope("%s_actor" % scope):
+        with tf.variable_scope("{}_actor".format(scope)):
             self.states = tf.placeholder("float", [None, self.state_shape], name="states")
             self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")  # Advantage
@@ -121,7 +121,7 @@ class ActorNetworkContinuous(object):
             # Add cross entropy cost to encourage exploration
             self.loss -= 1e-1 * self.normal_dist.entropy()
             self.summary_loss = -tf.reduce_mean(self.loss)  # Loss to show as a summary
-            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="%s_actor" % scope)
+            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class CriticNetwork(object):
     """Neural network for the Critic of an Actor-Critic algorithm"""
@@ -131,7 +131,7 @@ class CriticNetwork(object):
         self.n_hidden = n_hidden
         self.scope = scope
 
-        with tf.variable_scope("%s_critic" % scope):
+        with tf.variable_scope("{}_critic".format(scope)):
             self.states = tf.placeholder("float", [None, self.state_shape], name="states")
             self.target = tf.placeholder("float", name="critic_target")
 
@@ -153,7 +153,7 @@ class CriticNetwork(object):
 
             self.loss = tf.reduce_mean(tf.square(self.target - self.value))
             self.summary_loss = self.loss
-            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="%s_critic" % scope)
+            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class A3CThread(Thread):
     """Single A3C learner thread."""

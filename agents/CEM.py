@@ -27,7 +27,7 @@ class DeterministicDiscreteActionLinearPolicy(object):
         n_actions = ac_space.n
         expected_shape = (dim_ob + 1) * n_actions
         if len(theta) != expected_shape:
-            raise WrongShapeError("Expected a theta of length %s instead of %s" % (expected_shape, len(theta)))
+            raise WrongShapeError("Expected a theta of length {} instead of {}".format(expected_shape, len(theta)))
         self.W = theta[0: dim_ob * n_actions].reshape(dim_ob, n_actions)
         self.b = theta[dim_ob * n_actions: None].reshape(1, n_actions)
 
@@ -50,7 +50,7 @@ class DeterministicContinuousActionLinearPolicy(object):
         dim_ac = ac_space.shape[0]
         expected_shape = (dim_ob + 1) * dim_ac
         if len(theta) != expected_shape:
-            raise WrongShapeError("Expected a theta of length %s instead of %s" % (expected_shape, len(theta)))
+            raise WrongShapeError("Expected a theta of length {} instead of {}".format(expected_shape, len(theta)))
         self.W = theta[0:dim_ob * dim_ac].reshape(dim_ob, dim_ac)
         self.b = theta[dim_ob * dim_ac:None]
 
@@ -116,5 +116,5 @@ class CEM(Agent):
             # Update theta_mean, theta_std
             self.theta_mean = np.mean(elite_thetas, axis=0)
             self.theta_std = np.std(elite_thetas, axis=0)
-            print("iteration %i. mean f: %8.3g. max f: %8.3g" % (iteration, np.mean(rewards), np.max(rewards)))
+            print("iteration {}. mean f: {:>8.3g}. max f: {8.3g}".format(iteration, np.mean(rewards), np.max(rewards)))
             self.do_episode(self.make_policy(self.theta_mean))

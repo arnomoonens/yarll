@@ -16,9 +16,9 @@ class TileCoding(FunctionApproximator):
         self.n_actions = n_actions
 
         if self.n_x_tiles % 1 != 0 or self.n_x_tiles <= 0:
-            raise TypeError('Number of x tiles must be a positive natural number instead of %s' % self.n_x_tiles)
+            raise TypeError("Number of x tiles must be a positive natural number instead of {}".format(self.n_x_tiles))
         if self.n_y_tiles % 1 != 0 or self.n_y_tiles <= 0:
-            raise TypeError('Number of y tiles must be a positive natural number instead of %s' % self.n_y_tiles)
+            raise TypeError("Number of y tiles must be a positive natural number instead of {}".format(self.n_y_tiles))
 
         self.tile_width = (self.x_high - self.x_low) / self.n_x_tiles
         self.tile_height = (self.y_high - self.y_low) / self.n_y_tiles

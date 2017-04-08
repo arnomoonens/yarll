@@ -31,7 +31,7 @@ class AKTThread(Thread):
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task" + str(self.task_id)), self.master.session.graph)
 
     def build_networks(self):
-        with tf.variable_scope("task%s" % self.task_id):
+        with tf.variable_scope("task{}".format(self.task_id)):
             self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
             self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
 

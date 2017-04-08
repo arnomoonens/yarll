@@ -116,5 +116,5 @@ class CEM(Agent):
             # Update theta_mean, theta_std
             self.theta_mean = np.mean(elite_thetas, axis=0)
             self.theta_std = np.std(elite_thetas, axis=0)
-            print("iteration {}. mean f: {:>8.3g}. max f: {8.3g}".format(iteration, np.mean(rewards), np.max(rewards)))
+            print("iteration {:d}. mean f: {:>8.3g}. max f: {:>8.3g}".format(iteration, np.mean(rewards), np.max(rewards)))
             self.do_episode(self.make_policy(self.theta_mean))

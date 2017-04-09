@@ -206,17 +206,11 @@ class AsyncKnowledgeTransfer(Agent):
             self.action_taken = tf.placeholder(tf.float32, name="action_taken")
             self.advantage = tf.placeholder(tf.float32, name="advantage")
 
-            self.L1 = tf.contrib.layers.fully_connected(
-                inputs=self.states,
-                num_outputs=self.config["n_hidden_units"],
-                activation_fn=tf.tanh,
-                weights_initializer=tf.random_normal_initializer(),
-                biases_initializer=tf.zeros_initializer(),
-                scope="L1")
+            self.L1 = self.states
 
-            self.knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]), name="knowledge_base")
+            self.knowledge_base = tf.Variable(tf.random_normal([self.nO, self.config["n_sparse_units"]]), name="knowledge_base")
 
-            self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="shared")
+            self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
             self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 

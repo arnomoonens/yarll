@@ -30,7 +30,7 @@ def make_environments(descriptions):
 def make_random_environments(env_name, n_envs):
     """Make n_envs random environments of the env_name class."""
     if env_name not in environment_registry:
-        raise ClassNotRegisteredError("Class %s must be registered in order to be randomly instantiated." % env_name)
+        raise ClassNotRegisteredError("Class {} must be registered in order to be randomly instantiated.".format(env_name))
     cls = environment_registry.get(env_name)
     envs = []
     for _ in range(n_envs):

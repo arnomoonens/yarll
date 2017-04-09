@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-from Environment.registration import make_random_environments
+import sys
+sys.path.append(".")
+
+from Environment import make_random_environments
 import json
 import argparse
 from misc.utils import ge_1

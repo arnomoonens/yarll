@@ -25,13 +25,13 @@ class Reporter(object):
     def print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories):
         """Print statistics about rewards and episode lengths of the current iteration."""
         logging.info("-----------------")
-        logging.info("Iteration: \t\t %i" % iteration)
-        logging.info("NumTrajs: \t\t %i" % len(episode_rewards))
-        logging.info("NumTimesteps: \t %i" % np.sum(episode_lengths))
-        logging.info("MaxRew: \t\t %s" % episode_rewards.max())
-        logging.info("MeanRew: \t\t %s +- %s" % (episode_rewards.mean(), episode_rewards.std() / np.sqrt(len(episode_rewards))))
-        logging.info("MeanLen: \t\t %s +- %s" % (episode_lengths.mean(), episode_lengths.std() / np.sqrt(len(episode_lengths))))
-        logging.info("Total NumTrajs: \t %i" % total_n_trajectories)
+        logging.info("Iteration: \t\t {}".format(iteration))
+        logging.info("NumTrajs: \t\t {}".format(len(episode_rewards)))
+        logging.info("NumTimesteps: \t {}".format(np.sum(episode_lengths)))
+        logging.info("MaxRew: \t\t {}".format(episode_rewards.max()))
+        logging.info("MeanRew: \t\t {} +- {}".format(episode_rewards.mean(), episode_rewards.std() / np.sqrt(len(episode_rewards))))
+        logging.info("MeanLen: \t\t {} +- {}".format(episode_lengths.mean(), episode_lengths.std() / np.sqrt(len(episode_lengths))))
+        logging.info("Total NumTrajs: \t {}".format(total_n_trajectories))
         logging.info("-----------------")
         return
 

@@ -2,7 +2,8 @@
 # -*- coding: utf8 -*-
 
 import sys
-sys.path.append(".")
+from os.path import abspath, dirname
+sys.path.append(dirname(dirname(abspath(__file__))))
 
 from Environment import make_random_environments
 import json

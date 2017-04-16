@@ -10,7 +10,7 @@ import argparse
 import tensorflow as tf
 from gym import wrappers
 
-from Environment.registration import make_environment
+from environment.registration import make_environment
 
 class ModelRunner(object):
     """

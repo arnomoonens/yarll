@@ -2,10 +2,10 @@
 
 from gym import wrappers
 
-from Policies.EGreedy import EGreedy
-from Learners.Sarsa import Sarsa
-from Traces.EligibilityTraces import EligibilityTraces
-from FunctionApproximation.TileCoding import TileCoding
+from policies.EGreedy import EGreedy
+from agents.Sarsa import Sarsa
+from traces.EligibilityTraces import EligibilityTraces
+from functionapproximation.TileCoding import TileCoding
 
 # def draw_3d(tile_starts):
 #     states = []

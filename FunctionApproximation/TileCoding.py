@@ -1,6 +1,6 @@
 import numpy as np
 
-from FunctionApproximation.FunctionApproximator import FunctionApproximator
+from functionapproximation.FunctionApproximator import FunctionApproximator
 
 class TileCoding(FunctionApproximator):
     """Map states to tiles"""

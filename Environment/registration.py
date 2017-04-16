@@ -6,7 +6,7 @@
 # Else, we make just make one using the Environment class.
 import numpy as np
 
-from Environment import Environment
+from environment import Environment
 from misc.Exceptions import ClassNotRegisteredError
 
 environment_registry = {}

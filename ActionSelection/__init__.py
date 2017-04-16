@@ -1,2 +1,2 @@
-from ActionSelection.CategoricalActionSelection import *
-from ActionSelection.ContinuousActionSelection import *
+from actionselection.CategoricalActionSelection import *
+from actionselection.ContinuousActionSelection import *

@@ -5,7 +5,7 @@ import argparse
 import os
 from gym.spaces import Discrete
 
-from Environment.registration import make_environment, make_environments
+from environment.registration import make_environment, make_environments
 from agents.registration import make_agent
 from misc.utils import json_to_dict, save_config
 

@@ -5,7 +5,7 @@ import sys
 from os.path import abspath, dirname
 sys.path.append(dirname(dirname(abspath(__file__))))
 
-from Environment import make_random_environments
+from environment import make_random_environments
 import json
 import argparse
 from misc.utils import ge_1

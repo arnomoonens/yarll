@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-from Environment import Environment
+from environment import Environment
 
 class CartPole(Environment):
     """Cartpole-v0 environment wrapper."""

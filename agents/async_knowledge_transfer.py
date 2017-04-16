@@ -176,13 +176,13 @@ class AsyncKnowledgeTransfer(Agent):
                 self.make_thread(
                     env,
                     i,
-                    self.config["switch_at_iter"] if not(self.config["switch_at_iter"] is None) and i != len(self.envs) - 1 else self.config["n_iter"],
+                    self.config["switch_at_iter"] if self.config["switch_at_iter"] is not None and i != len(self.envs) - 1 else self.config["n_iter"],
                     start_at_iter=(0 if self.config["switch_at_iter"] is None or i != len(self.envs) - 1 else self.config["switch_at_iter"])))
 
         net_vars = self.shared_vars + [job.sparse_representation for job in self.jobs]
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
         for i, job in enumerate(self.jobs):
-            only_sparse = (not(self.config["switch_at_iter"] is None) and i == len(self.jobs) - 1)
+            only_sparse = (self.config["switch_at_iter"] is not None and i == len(self.jobs) - 1)
             job.add_accum_grad = add_accumulative_gradients_op(
                 (self.shared_vars if not(only_sparse) else []) + [job.sparse_representation],
                 self.accum_grads if not(only_sparse) else [self.accum_grads[-1]],

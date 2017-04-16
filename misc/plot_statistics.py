@@ -149,12 +149,12 @@ parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a mov
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    if not(args.exp_smoothing is None) and not(args.moving_average is None):
+    if args.exp_smoothing is not None and args.moving_average is not None:
         raise WrongArgumentsError("Maximally 1 smoothing technique can be used.")
     smoothing_technique = None
-    if not(args.exp_smoothing is None):
+    if args.exp_smoothing is not None:
         smoothing_technique = create_smoother(exponential_smoothing, args.exp_smoothing)  # args.exp_smoothing holds the weight
-    elif not (args.moving_average is None):
+    elif args.moving_average is not None:
         smoothing_technique = create_smoother(moving_average, args.moving_average)  # args.moving_average holds the window
     if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
         plot_tf_monitor_stats(args.stats_path, args.xmax, smoothing_technique)

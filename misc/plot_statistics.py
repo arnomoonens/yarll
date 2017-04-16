@@ -5,6 +5,7 @@ import os
 import numpy as np
 import json
 import argparse
+from utils import ge_1
 import re
 import operator
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer
@@ -20,9 +21,9 @@ for gui in gui_env:
     except ImportError:
         continue
 
-# Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy?rq=1
+# Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
 def moving_average(a, n):
-    """Compute the moving average of an array a of numbers using a window length n"""
+    """Compute the moving average of an array a of numbers using a window length n."""
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n
@@ -156,13 +157,6 @@ def plot_tf_scalar_summaries_subdirs(summaries_dir, xmax=None, smoothing_functio
 
     plot_tasks(data, x_label, smoothing_function=smoothing_function, xmax=xmax)
 
-def ge_1(value):
-    """Require the value for an argparse argument to be an integer >=1."""
-    ivalue = int(value)
-    if ivalue < 1:
-        raise argparse.ArgumentTypeError("{} must be an integer of at least 1.".format(value))
-    return ivalue
-
 def exp_smoothing_weight_test(value):
     """Require that the weight for exponential smoothing is a weight between 0 and 1"""
     fvalue = float(value)
@@ -180,12 +174,12 @@ parser.add_argument("--subdirs", action="store_true", default=False, help="Proce
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    if not(args.exp_smoothing is None) and not(args.moving_average is None):
+    if args.exp_smoothing is not None and args.moving_average is not None:
         raise WrongArgumentsError("Maximally 1 smoothing technique can be used.")
     smoothing_technique = None
-    if not(args.exp_smoothing is None):
+    if args.exp_smoothing is not None:
         smoothing_technique = create_smoother(exponential_smoothing, args.exp_smoothing)  # args.exp_smoothing holds the weight
-    elif not (args.moving_average is None):
+    elif args.moving_average is not None:
         smoothing_technique = create_smoother(moving_average, args.moving_average)  # args.moving_average holds the window
     if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
         plot_tf_monitor_stats(args.stats_path, args.xmax, smoothing_technique)

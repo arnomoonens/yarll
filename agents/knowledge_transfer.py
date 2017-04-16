@@ -33,7 +33,8 @@ class KnowledgeTransfer(Agent):
             timesteps_per_batch=10000,
             trajectories_per_batch=10,
             batch_update="timesteps",
-            n_iter=400,
+            n_iter=100,
+            switch_at_iter=None,
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
@@ -43,6 +44,7 @@ class KnowledgeTransfer(Agent):
             n_sparse_units=10
         ))
         self.config.update(usercfg)
+
         self.build_networks()
         self.task_learners = [TaskLearner(envs[i], action, self, **self.config) for i, action in enumerate(self.action_tensors)]
         if self.config["save_model"]:
@@ -54,54 +56,71 @@ class KnowledgeTransfer(Agent):
     def build_networks(self):
         self.session = tf.Session()
 
-        self.states = tf.placeholder(tf.float32, name="states")
-        self.action_taken = tf.placeholder(tf.float32, name="action_taken")
-        self.advantage = tf.placeholder(tf.float32, name="advantage")
+        with tf.variable_scope("shared"):
+            self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
+            self.action_taken = tf.placeholder(tf.float32, name="action_taken")
+            self.advantage = tf.placeholder(tf.float32, name="advantage")
 
-        W0 = tf.Variable(tf.random_normal([self.nO, self.config["n_hidden_units"]]) / np.sqrt(self.nO), name='W0')
-        b0 = tf.Variable(tf.zeros([self.config["n_hidden_units"]]), name='b0')
-        L1 = tf.tanh(tf.nn.xw_plus_b(self.states, W0, b0), name="L1")
+            L1 = tf.contrib.layers.fully_connected(
+                inputs=self.states,
+                num_outputs=self.config["n_hidden_units"],
+                activation_fn=tf.tanh,
+                weights_initializer=tf.random_normal_initializer(stddev=0.01),
+                biases_initializer=tf.zeros_initializer(),
+                scope="L1")
 
-        knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]]))
+            knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]], stddev=0.01), name="knowledge_base")
 
-        self.shared_vars = [W0, b0, knowledge_base]
+            self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="shared")
 
-        # Every task has its own sparse representation
-        sparse_representations = [tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA])) for _ in range(self.n_tasks)]
+        # Every task has its own (sparse) representation
+        sparse_representations = [
+            tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA], stddev=0.01), name="sparse%d" % i)
+            for i in range(self.n_tasks)
+        ]
 
         self.probs_tensors = [tf.nn.softmax(tf.matmul(L1, tf.matmul(knowledge_base, s))) for s in sparse_representations]
         self.action_tensors = [tf.squeeze(tf.multinomial(tf.log(probs), 1)) for probs in self.probs_tensors]
 
-        self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+        self.optimizer = tf.train.RMSPropOptimizer(
+            learning_rate=self.config["learning_rate"],
+            decay=self.config["decay"],
+            epsilon=self.config["epsilon"]
+        )
         net_vars = self.shared_vars + sparse_representations
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
-
-        self.writers = []
-        self.losses = []
 
         self.loss = tf.placeholder("float", name="loss")
         summary_loss = tf.summary.scalar("Loss", self.loss)
         self.rewards = tf.placeholder("float", name="Rewards")
-        summary_rewards = tf.summary.scalar("Rewards", self.rewards)
+        summary_rewards = tf.summary.scalar("Reward", self.rewards)
         self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
-        summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
+        summary_episode_lengths = tf.summary.scalar("Length", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
+        self.writers = []
+        self.losses = []
+
+        regularizer = tf.contrib.layers.l1_regularizer(.05)
         for i, probabilities in enumerate(self.probs_tensors):
             good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
-            loss = -tf.reduce_sum(eligibility)
+            loss = -tf.reduce_sum(eligibility) + regularizer(sparse_representations[i])
             self.losses.append(loss)
             writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task" + str(i)), self.session.graph)
             self.writers.append(writer)
 
         # An add op for every task & its loss
-        self.add_accum_grads = [add_accumulative_gradients_op(
-            self.shared_vars + [sparse_representations[i]],
-            self.accum_grads,
-            loss,
-            i)
-            for i, loss in enumerate(self.losses)]
+        self.add_accum_grads = []
+        for i, loss in enumerate(self.losses):
+            # Use all variables if the switch tasks experiment is disactivated or it's not the last task
+            all_vars = self.config["switch_at_iter"] is None or i != len(self.losses) - 1
+            self.add_accum_grads.append(add_accumulative_gradients_op(
+                (self.shared_vars if all_vars else []) + [sparse_representations[i]],
+                self.accum_grads if all_vars else [self.accum_grads[-1]],
+                loss,
+                i
+            ))
 
         self.apply_gradients = self.optimizer.apply_gradients(
             zip(self.accum_grads, net_vars))
@@ -120,6 +139,11 @@ class KnowledgeTransfer(Agent):
         for iteration in range(config["n_iter"]):
             self.session.run([self.reset_accum_grads])
             for i, learner in enumerate(self.task_learners):
+                if self.config["switch_at_iter"] is not None:
+                    if iteration > self.config["switch_at_iter"] and i != (len(self.task_learners) - 1):
+                        continue
+                    elif iteration < self.config["switch_at_iter"] and i == len(self.task_learners) - 1:
+                        continue
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectories = learner.get_trajectories()
                 total_n_trajectories[i] += len(trajectories)

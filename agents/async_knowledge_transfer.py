@@ -16,10 +16,12 @@ from agents.knowledge_transfer import TaskLearner
 
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
-    def __init__(self, master, env, task_id):
+    def __init__(self, master, env, task_id, n_iter, start_at_iter=0):
         super(AKTThread, self).__init__()
         self.master = master
         self.task_id = task_id
+        self.n_iter = n_iter
+        self.start_at_iter = start_at_iter
         self.add_accum_grad = None  # To be filled in later
 
         self.build_networks()
@@ -38,12 +40,8 @@ class AKTThread(Thread):
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
             good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
-            eligibility = tf.log(good_probabilities) * self.master.advantage
+            eligibility = tf.log(good_probabilities + 1e-10) * self.master.advantage
             self.loss = -tf.reduce_sum(eligibility)
-
-    def choose_action(self, state):
-        """Choose an action."""
-        return self.master.session.run([self.action], feed_dict={self.master.states: [state]})[0]
 
     def run(self):
         """Run the appropriate learning algorithm."""
@@ -57,8 +55,8 @@ class AKTThread(Thread):
         reporter = Reporter()
         config = self.master.config
         total_n_trajectories = 0
-        iteration = 0
-        while iteration < config["n_iter"] and not self.master.stop_requested:
+        iteration = self.start_at_iter
+        while iteration < self.n_iter and not self.master.stop_requested:
             iteration += 1
             self.master.session.run([self.master.reset_accum_grads])
             # Collect trajectories until we get timesteps_per_batch total timesteps
@@ -99,8 +97,8 @@ class AKTThread(Thread):
         config = self.master.config
         self.master.session.run([self.master.reset_accum_grads])
 
-        iteration = 0
-        while iteration < config['n_iter'] and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
+        iteration = self.start_at_iter
+        while iteration < self.n_iter and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
             iteration += 1
             trajectory = self.task_learner.get_trajectory()
             reward = sum(trajectory["reward"])
@@ -144,6 +142,7 @@ class AsyncKnowledgeTransfer(Agent):
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=200,
+            switch_at_iter=None,  # None to deactivate, otherwhise an iteration at which to switch
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
@@ -171,14 +170,22 @@ class AsyncKnowledgeTransfer(Agent):
         summary_episode_lengths = tf.summary.scalar("Episode_length", self.episode_length)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
-        self.jobs = [self.make_thread(env, i) for i, env in enumerate(self.envs)]
+        self.jobs = []
+        for i, env in enumerate(self.envs):
+            self.jobs.append(
+                self.make_thread(
+                    env,
+                    i,
+                    self.config["switch_at_iter"] if self.config["switch_at_iter"] is not None and i != len(self.envs) - 1 else self.config["n_iter"],
+                    start_at_iter=(0 if self.config["switch_at_iter"] is None or i != len(self.envs) - 1 else self.config["switch_at_iter"])))
 
         net_vars = self.shared_vars + [job.sparse_representation for job in self.jobs]
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
-        for job in self.jobs:
+        for i, job in enumerate(self.jobs):
+            only_sparse = (self.config["switch_at_iter"] is not None and i == len(self.jobs) - 1)
             job.add_accum_grad = add_accumulative_gradients_op(
-                self.shared_vars + [job.sparse_representation],
-                self.accum_grads,
+                (self.shared_vars if not(only_sparse) else []) + [job.sparse_representation],
+                self.accum_grads if not(only_sparse) else [self.accum_grads[-1]],
                 job.loss,
                 job.task_id)
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.accum_grads, net_vars))
@@ -219,13 +226,22 @@ class AsyncKnowledgeTransfer(Agent):
 
     def learn(self):
         signal.signal(signal.SIGINT, self.signal_handler)
-        for job in self.jobs:
+        if self.config["switch_at_iter"] is None:
+            idx = None
+        else:
+            idx = -1
+        for job in self.jobs[:idx]:
             job.start()
-        for job in self.jobs:
+        for job in self.jobs[:idx]:
             job.join()
+        try:
+            self.jobs[idx].start()
+            self.jobs[idx].join()
+        except TypeError:  # idx is None
+            pass
 
         if self.config["save_model"]:
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
-    def make_thread(self, env, task_id):
-        return AKTThread(self, env, task_id)
+    def make_thread(self, env, task_id, n_iter, start_at_iter=0):
+        return AKTThread(self, env, task_id, n_iter, start_at_iter=start_at_iter)

@@ -5,7 +5,7 @@
 This code is part of my master thesis at the [VUB](http://www.vub.ac.be), Brussels.
 
 ## Status
-Different algorithms have already been implemented:
+Different algorithms have currently been implemented:
 - [Cross-Entropy Method](./agents/CEM.py)
 - [Sarsa with with function approximation and eligibility traces](./agents/SarsaFA.py)
 - [REINFORCE](./agents/REINFORCE.py) (convolutional neural network part has not been tested yet)
@@ -61,12 +61,14 @@ First, install the requirements using [pip](https://pypi.python.org/pypi/pip):
 pip install -r requirements.txt
 ```
 
-Then you can run algorithms by passing an experiment specification (in _json_ format) to `main.py`:
+### Algorithms/experiments
+You can run algorithms by passing an experiment specification (in _json_ format) to `main.py`:
 ```
 python main.py <experiment_description>
 ```
 [Example of an experiment specification](./experiment_spec_example.json)
 
+### Statistics
 Statistics can be plot using:
 ```
 python misc/plot_statistics.py <path_to_stats>

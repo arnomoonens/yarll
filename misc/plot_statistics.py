@@ -8,7 +8,9 @@ import argparse
 from utils import ge_1
 import re
 import operator
-from tensorflow.python.summary.event_multiplexer import EventMultiplexer
+from tensorflow.python.summary.event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
+import logging
+
 from Exceptions import WrongArgumentsError
 
 import matplotlib
@@ -20,6 +22,8 @@ for gui in gui_env:
         break
     except ImportError:
         continue
+
+logging.getLogger("tensorflow").setLevel(logging.WARNING)
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
 def moving_average(a, n):
@@ -88,7 +92,7 @@ def plot_tasks(data, x_label, smoothing_function=None, xmax=None):
         fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
     plt.show()
 
-def plot_tf_monitor_stats(stats_path, xmax=None, smoothing_function=None):
+def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None):
     f = open(stats_path)
     contents = json.load(f)
     data = contents["episode_rewards"]
@@ -109,9 +113,8 @@ def plot_tf_monitor_stats(stats_path, xmax=None, smoothing_function=None):
     plot(range(len(data)), data, "episode", "length", xmax=xmax, ymin=ymin, ymax=ymax)
     plt.show()
 
-def tf_scalar_data(directory):
-    em = EventMultiplexer().AddRunsFromDirectory(directory)
-    em.Reload()
+def tf_scalar_data(em):
+    """Process scalar data of TensorFlow summaries."""
     runs = list(em.Runs().keys())
     scalars = em.Runs()[runs[0]]["scalars"]  # Assumes that the scalars of every run are the same
 
@@ -137,17 +140,21 @@ def tf_scalar_data(directory):
     return data
 
 def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None, x_label="episode"):
-    data = tf_scalar_data(summaries_dir)
+    """Plot TensorFlow scalar summaries."""
+    em = EventMultiplexer().AddRunsFromDirectory(summaries_dir).Reload()
+    data = tf_scalar_data(em)
     plot_tasks(data, x_label, smoothing_function=smoothing_function, xmax=xmax)
 
 def plot_tf_scalar_summaries_subdirs(summaries_dir, xmax=None, smoothing_function=None, x_label="episode"):
+    """Process each subdirectory of summaries_dir separately before plotting TensorFlow scalar summaries."""
     _, subdirs, _ = next(os.walk(summaries_dir))
 
     data = {}
     for subdir in subdirs:
         if not subdir.startswith("exp"):
             continue
-        subdir_data = tf_scalar_data(os.path.join(summaries_dir, subdir))
+        em = EventMultiplexer().AddRunsFromDirectory(os.path.join(summaries_dir, subdir)).Reload()
+        subdir_data = tf_scalar_data(em)
         for scalar, scalar_data in subdir_data.items():
             if scalar not in data:
                 data[scalar] = scalar_data
@@ -155,6 +162,29 @@ def plot_tf_scalar_summaries_subdirs(summaries_dir, xmax=None, smoothing_functio
                 for task, epochs_values in scalar_data.items():
                     data[scalar][task]["values"].extend(epochs_values["values"])
 
+    plot_tasks(data, x_label, smoothing_function=smoothing_function, xmax=xmax)
+
+def plot_tf_scalar_summaries_splitted(summaries_dir, xmax=None, smoothing_function=None, x_label="episode", splitted_length=25):
+    """Process sets of runs (of length splitted_length) separately before plotting TensorFlow scalar summaries."""
+    _, rundirs, _ = next(os.walk(summaries_dir))
+    data = {}
+    for runs_group in range(int(np.ceil(len(rundirs) / splitted_length))):
+        logging.info("Processing run group {}. Runs processed: {}/{}.".format(runs_group, runs_group * splitted_length, len(rundirs)))
+        em = EventMultiplexer()
+        for run_idx in range(runs_group * splitted_length, runs_group * splitted_length + splitted_length):
+            run_path = os.path.join(summaries_dir, "run" + str(run_idx + 1))
+            for subdir in GetLogdirSubdirectories(run_path):
+                rpath = os.path.relpath(subdir, summaries_dir)
+                em.AddRun(subdir, name=rpath)
+        em.Reload()
+        data_runs = tf_scalar_data(em)
+        for scalar, scalar_data in data_runs.items():
+            if scalar not in data:
+                data[scalar] = scalar_data
+            else:
+                for task, epochs_values in scalar_data.items():
+                    data[scalar][task]["values"].extend(epochs_values["values"])
+    logging.info("Data processed, plotting...")
     plot_tasks(data, x_label, smoothing_function=smoothing_function, xmax=xmax)
 
 def exp_smoothing_weight_test(value):
@@ -171,9 +201,17 @@ parser.add_argument("--xmax", type=ge_1, default=None, help="Maximum episode for
 parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=None, help="Use exponential smoothing with a weight 0<=w<=1.")
 parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a moving average with a window w>0")
 parser.add_argument("--subdirs", action="store_true", default=False, help="Process each subdirectory separately (solves memory issues).")
+parser.add_argument("--splitted", action="store_true", default=False, help="Process sets of runs separately (solves memory issues).")
+parser.add_argument(
+    '-d', '--debug',
+    help="Print debugging statements",
+    action="store_const", dest="loglevel", const=logging.DEBUG,
+    default=logging.WARNING
+)
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    logging.basicConfig(level=args.loglevel, format='%(asctime)s - %(levelname)s - %(message)s')
     if args.exp_smoothing is not None and args.moving_average is not None:
         raise WrongArgumentsError("Maximally 1 smoothing technique can be used.")
     smoothing_technique = None
@@ -182,10 +220,12 @@ if __name__ == "__main__":
     elif args.moving_average is not None:
         smoothing_technique = create_smoother(moving_average, args.moving_average)  # args.moving_average holds the window
     if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
-        plot_tf_monitor_stats(args.stats_path, args.xmax, smoothing_technique)
+        plot_gym_monitor_stats(args.stats_path, args.xmax, smoothing_technique)
     elif os.path.isdir(args.stats_path):
         if args.subdirs:
             plot_tf_scalar_summaries_subdirs(args.stats_path, args.xmax, smoothing_technique, x_label=args.x_label)
+        elif args.splitted:
+            plot_tf_scalar_summaries_splitted(args.stats_path, args.xmax, smoothing_technique, x_label=args.x_label)
         else:
             plot_tf_scalar_summaries(args.stats_path, args.xmax, smoothing_technique, x_label=args.x_label)
     else:

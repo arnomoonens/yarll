@@ -21,10 +21,11 @@ def run_experiment(spec, monitor_path=None):
     envs_type = spec["environments"]["type"]
     if envs_type == "single":
         envs = [make_environment(spec["environments"]["source"])]
-        args["env"] = envs[0]
     elif envs_type == "json":
         envs = make_environments(json_to_dict(spec["environments"]["source"]))
-        args["envs"] = envs
+    args["envs"] = envs
+    if len(envs) == 1:
+        args["env"] = envs[0]
     action_space_type = "discrete" if isinstance(envs[0].action_space, Discrete) else "continuous"
     agent = make_agent(spec["agent"]["name"], action_space_type, **args)
     save_config(monitor_path, agent.config, [env.to_dict() for env in envs])

@@ -36,6 +36,7 @@ def make_random_environments(env_name, n_envs):
     for _ in range(n_envs):
         params = {}
         for p in cls.changeable_parameters:
-            params[p["name"]] = np.random.uniform(p["low"], p["high"])  # Assume for now only range parameters are used
+            if p["type"] == "range":
+                params[p["name"]] = np.random.uniform(p["low"], p["high"])  # Assume for now only range parameters are used
         envs.append(cls(**params))
     return envs

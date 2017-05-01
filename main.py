@@ -9,7 +9,7 @@ from environment.registration import make_environment, make_environments
 from agents.registration import make_agent
 from misc.utils import json_to_dict, save_config
 
-def run_experiment(spec, monitor_path=None):
+def run_experiment(spec, monitor_path=None, only_last=False):
     """Run an experiment using a specification dictionary."""
     args = spec["agent"]["args"]
     if monitor_path:
@@ -24,9 +24,10 @@ def run_experiment(spec, monitor_path=None):
     elif envs_type == "json":
         envs = make_environments(json_to_dict(spec["environments"]["source"]))
     args["envs"] = envs
-    if len(envs) == 1:
-        args["env"] = envs[0]
+    if len(envs) == 1 or only_last:
+        args["env"] = envs[-1]
     action_space_type = "discrete" if isinstance(envs[0].action_space, Discrete) else "continuous"
+    print(args)
     agent = make_agent(spec["agent"]["name"], action_space_type, **args)
     save_config(monitor_path, agent.config, [env.to_dict() for env in envs])
     agent.learn()
@@ -34,10 +35,11 @@ def run_experiment(spec, monitor_path=None):
 parser = argparse.ArgumentParser()
 parser.add_argument("experiment", type=str, help="JSON file with the experiment specification")
 parser.add_argument("--monitor_path", metavar="monitor_path", default=None, type=str, help="Path where Gym monitor files may be saved")
+parser.add_argument("--only_last", default=False, action="store_true", help="Only use the last environment in a list of provided environments.")
 
 def main():
     args = parser.parse_args()
-    run_experiment(json_to_dict(args.experiment), args.monitor_path)
+    run_experiment(json_to_dict(args.experiment), monitor_path=args.monitor_path, only_last=args.only_last)
 
 if __name__ == '__main__':
     main()

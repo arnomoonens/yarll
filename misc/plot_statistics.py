@@ -64,13 +64,15 @@ def plot(x, y, x_label, scalar, xmax=None, ymin=None, ymax=None):
     plt.title("{} per {}".format(scalar, x_label))
     fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
 
-def plot_tasks(data, x_label, smoothing_function=None, xmax=None, legend=True):
+def plot_tasks(data, x_label, smoothing_function=None, xmax=None, max_reward=None, legend=True):
     x_label_upper = x_label[0].upper() + x_label[1:]
     for scalar, tasks in data.items():
         fig = plt.figure()
         # min_y = np.inf
         # max_y = -np.inf
         for task, epochs_values in sorted(tasks.items(), key=operator.itemgetter(0)):
+            if task != len(tasks) - 1:
+                continue
             mean = np.mean(epochs_values["values"], axis=0)
             if smoothing_function:
                 mean = smoothing_function(mean)
@@ -86,7 +88,11 @@ def plot_tasks(data, x_label, smoothing_function=None, xmax=None, legend=True):
             plt.legend()
         plt.xlim(xmax=xmax)
         # plt.ylim(ymin=min(0, min_y), ymax=max(0, max_y + 0.1 * max_y))
-        plt.ylim(ymin=0)
+        if "reward" in scalar.lower() and max_reward is not None:
+            ymax = max_reward * 1.1
+        else:
+            ymax = None
+        plt.ylim(ymin=(0 if "loss" not in scalar.lower() else None), ymax=ymax)
         plt.xlabel(x_label_upper)
         plt.ylabel(scalar)
         plt.title("{} per {}".format(scalar, x_label))
@@ -140,13 +146,13 @@ def tf_scalar_data(em):
         data[scalar] = scalar_data
     return data
 
-def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None, x_label="episode", legend=True):
+def plot_tf_scalar_summaries(summaries_dir, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True):
     """Plot TensorFlow scalar summaries."""
     em = EventMultiplexer().AddRunsFromDirectory(summaries_dir).Reload()
     data = tf_scalar_data(em)
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, xmax=xmax, legend=legend)
+    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmax=xmax, legend=legend)
 
-def plot_tf_scalar_summaries_subdirs(summaries_dir, xmax=None, smoothing_function=None, x_label="episode", legend=True):
+def plot_tf_scalar_summaries_subdirs(summaries_dir, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True):
     """Process each subdirectory of summaries_dir separately before plotting TensorFlow scalar summaries."""
     _, subdirs, _ = next(os.walk(summaries_dir))
 
@@ -163,9 +169,9 @@ def plot_tf_scalar_summaries_subdirs(summaries_dir, xmax=None, smoothing_functio
                 for task, epochs_values in scalar_data.items():
                     data[scalar][task]["values"].extend(epochs_values["values"])
 
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, xmax=xmax, legend=legend)
+    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmax=xmax, legend=legend)
 
-def plot_tf_scalar_summaries_splitted(summaries_dir, xmax=None, smoothing_function=None, x_label="episode", legend=True, splitted_length=25):
+def plot_tf_scalar_summaries_splitted(summaries_dir, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, splitted_length=25):
     """Process sets of runs (of length splitted_length) separately before plotting TensorFlow scalar summaries."""
     _, rundirs, _ = next(os.walk(summaries_dir))
     data = {}
@@ -186,7 +192,7 @@ def plot_tf_scalar_summaries_splitted(summaries_dir, xmax=None, smoothing_functi
                 for task, epochs_values in scalar_data.items():
                     data[scalar][task]["values"].extend(epochs_values["values"])
     logging.info("Data processed, plotting...")
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, xmax=xmax, legend=legend)
+    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmax=xmax, legend=legend)
 
 def exp_smoothing_weight_test(value):
     """Require that the weight for exponential smoothing is a weight between 0 and 1"""
@@ -200,6 +206,7 @@ parser.add_argument("stats_path", metavar="stats", type=str, help="Path to the T
 parser.add_argument("--x_label", type=str, default="episode", choices=["episode", "epoch"], help="Whether to use episode or epoch as x label.")
 parser.add_argument("--no_legend", action="store_false", default=True, dest="legend", help="Don't show a legend in the plots.")
 parser.add_argument("--xmax", type=ge_1, default=None, help="Maximum episode for which to show results.")
+parser.add_argument("--max_reward", type=float, default=None, help="Maximum obtainable reward in the environment.")
 parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=None, help="Use exponential smoothing with a weight 0<=w<=1.")
 parser.add_argument("--moving_average", type=ge_1, default=None, help="Use a moving average with a window w>0")
 parser.add_argument("--subdirs", action="store_true", default=False, help="Process each subdirectory separately (solves memory issues).")
@@ -225,10 +232,10 @@ if __name__ == "__main__":
         plot_gym_monitor_stats(args.stats_path, args.xmax, smoothing_technique)
     elif os.path.isdir(args.stats_path):
         if args.subdirs:
-            plot_tf_scalar_summaries_subdirs(args.stats_path, args.xmax, smoothing_technique, x_label=args.x_label, legend=args.legend)
+            plot_tf_scalar_summaries_subdirs(args.stats_path, args.xmax, smoothing_technique, max_reward=args.max_reward, x_label=args.x_label, legend=args.legend)
         elif args.splitted:
-            plot_tf_scalar_summaries_splitted(args.stats_path, args.xmax, smoothing_technique, x_label=args.x_label, legend=args.legend)
+            plot_tf_scalar_summaries_splitted(args.stats_path, args.xmax, smoothing_technique, max_reward=args.max_reward, x_label=args.x_label, legend=args.legend)
         else:
-            plot_tf_scalar_summaries(args.stats_path, args.xmax, smoothing_technique, x_label=args.x_label, legend=args.legend)
+            plot_tf_scalar_summaries(args.stats_path, args.xmax, smoothing_technique, max_reward=args.max_reward, x_label=args.x_label, legend=args.legend)
     else:
         raise NotImplementedError("Only a Tensorflow monitor stats.json file or summaries directory is allowed.")

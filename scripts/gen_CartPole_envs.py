@@ -2,12 +2,16 @@
 # -*- coding: utf8 -*-
 
 import sys
+import json
+import argparse
 from os.path import abspath, dirname
 sys.path.append(dirname(dirname(abspath(__file__))))
 
-from Environment import make_random_environments
-import json
-import argparse
+import logging
+import gym
+gym.envs.registration.logger.setLevel(logging.ERROR)
+
+from environment import make_random_environments
 from misc.utils import ge_1
 
 parser = argparse.ArgumentParser()

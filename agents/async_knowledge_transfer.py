@@ -142,7 +142,7 @@ class AsyncKnowledgeTransfer(Agent):
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=200,
-            switch_at_iter=100,
+            switch_at_iter=None,  # None to deactivate, otherwhise an iteration at which to switch
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
@@ -172,21 +172,20 @@ class AsyncKnowledgeTransfer(Agent):
 
         self.jobs = []
         for i, env in enumerate(self.envs):
-            last = (i == len(self.envs) - 1)
             self.jobs.append(
                 self.make_thread(
                     env,
                     i,
-                    self.config["switch_at_iter"] if not(last) else self.config["n_iter"],
-                    start_at_iter=(0 if not(last) else self.config["switch_at_iter"])))
+                    self.config["switch_at_iter"] if self.config["switch_at_iter"] is not None and i != len(self.envs) - 1 else self.config["n_iter"],
+                    start_at_iter=(0 if self.config["switch_at_iter"] is None or i != len(self.envs) - 1 else self.config["switch_at_iter"])))
 
         net_vars = self.shared_vars + [job.sparse_representation for job in self.jobs]
         self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
         for i, job in enumerate(self.jobs):
-            last = (i == len(self.jobs) - 1)
+            only_sparse = (self.config["switch_at_iter"] is not None and i == len(self.jobs) - 1)
             job.add_accum_grad = add_accumulative_gradients_op(
-                (self.shared_vars if not(last) else []) + [job.sparse_representation],
-                self.accum_grads if not(last) else [self.accum_grads[-1]],
+                (self.shared_vars if not(only_sparse) else []) + [job.sparse_representation],
+                self.accum_grads if not(only_sparse) else [self.accum_grads[-1]],
                 job.loss,
                 job.task_id)
         self.apply_gradients = self.optimizer.apply_gradients(zip(self.accum_grads, net_vars))
@@ -221,12 +220,19 @@ class AsyncKnowledgeTransfer(Agent):
 
     def learn(self):
         signal.signal(signal.SIGINT, self.signal_handler)
-        for job in self.jobs[:-1]:
+        if self.config["switch_at_iter"] is None:
+            idx = None
+        else:
+            idx = -1
+        for job in self.jobs[:idx]:
             job.start()
-        for job in self.jobs[:-1]:
+        for job in self.jobs[:idx]:
             job.join()
-        self.jobs[-1].start()
-        self.jobs[-1].join()
+        try:
+            self.jobs[idx].start()
+            self.jobs[idx].join()
+        except TypeError:  # idx is None
+            pass
 
         if self.config["save_model"]:
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))

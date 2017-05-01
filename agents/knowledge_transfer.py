@@ -34,7 +34,7 @@ class KnowledgeTransfer(Agent):
             trajectories_per_batch=10,
             batch_update="timesteps",
             n_iter=100,
-            switch_at_iter=50,
+            switch_at_iter=None,
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
@@ -111,12 +111,16 @@ class KnowledgeTransfer(Agent):
             self.writers.append(writer)
 
         # An add op for every task & its loss
-        self.add_accum_grads = [add_accumulative_gradients_op(
-            (self.shared_vars if self.envs[i].change_variables == "all" else []) + [sparse_representations[i]],
-            self.accum_grads if self.envs[i].change_variables == "all" else [self.accum_grads[-1]],
-            loss,
-            i)
-            for i, loss in enumerate(self.losses)]
+        self.add_accum_grads = []
+        for i, loss in enumerate(self.losses):
+            # Use all variables if the switch tasks experiment is disactivated or it's not the last task
+            all_vars = self.config["switch_at_iter"] is None or i != len(self.losses) - 1
+            self.add_accum_grads.append(add_accumulative_gradients_op(
+                (self.shared_vars if all_vars else []) + [sparse_representations[i]],
+                self.accum_grads if all_vars else [self.accum_grads[-1]],
+                loss,
+                i
+            ))
 
         self.apply_gradients = self.optimizer.apply_gradients(
             zip(self.accum_grads, net_vars))
@@ -135,10 +139,11 @@ class KnowledgeTransfer(Agent):
         for iteration in range(config["n_iter"]):
             self.session.run([self.reset_accum_grads])
             for i, learner in enumerate(self.task_learners):
-                if iteration > self.config["switch_at_iter"] and i != (len(self.task_learners) - 1):
-                    continue
-                elif iteration < self.config["switch_at_iter"] and i == len(self.task_learners) - 1:
-                    continue
+                if self.config["switch_at_iter"] is not None:
+                    if iteration > self.config["switch_at_iter"] and i != (len(self.task_learners) - 1):
+                        continue
+                    elif iteration < self.config["switch_at_iter"] and i == len(self.task_learners) - 1:
+                        continue
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectories = learner.get_trajectories()
                 total_n_trajectories[i] += len(trajectories)

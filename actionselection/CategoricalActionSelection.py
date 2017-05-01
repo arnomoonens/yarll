@@ -2,7 +2,7 @@
 # -*- coding: utf8 -*-
 
 import numpy as np
-from ActionSelection.ActionSelection import ActionSelection
+from actionselection.ActionSelection import ActionSelection
 
 class CategoricalActionSelection(ActionSelection):
     pass

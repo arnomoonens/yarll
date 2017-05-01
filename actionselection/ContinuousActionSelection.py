@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-from ActionSelection.ActionSelection import ActionSelection
+from actionselection.ActionSelection import ActionSelection
 import numpy as np
 
 class ContinuousActionSelection(ActionSelection):

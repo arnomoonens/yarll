@@ -11,7 +11,7 @@ import signal
 
 from gym import wrappers
 
-from Environment.registration import make_environment
+from environment.registration import make_environment
 from agents.Agent import Agent
 from misc.utils import discount_rewards
 from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_gradients_op

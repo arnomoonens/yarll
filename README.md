@@ -5,7 +5,7 @@
 This code is part of my master thesis at the [VUB](http://www.vub.ac.be), Brussels.
 
 ## Status
-Different algorithms have already been implemented:
+Different algorithms have currently been implemented:
 - [Cross-Entropy Method](./agents/CEM.py)
 - [Sarsa with with function approximation and eligibility traces](./agents/SarsaFA.py)
 - [REINFORCE](./agents/REINFORCE.py) (convolutional neural network part has not been tested yet)
@@ -61,17 +61,20 @@ First, install the requirements using [pip](https://pypi.python.org/pypi/pip):
 pip install -r requirements.txt
 ```
 
-Then you can run the Sarsa + Function approximation algorithm using:
+### Algorithms/experiments
+You can run algorithms by passing an experiment specification (in _json_ format) to `main.py`:
 ```
-python SarsaFA.py <episodes_to_run> <monitor_target_directory>
+python main.py <experiment_description>
 ```
+[Example of an experiment specification](./experiment_spec_example.json)
 
-You can run the `CEM`, `REINFORCE`, `Karpathy`, `Karpathy_CNN`, `A2C` and `A3C` algorithm using:
+### Statistics
+Statistics can be plot using:
 ```
-python <algorithm_name>.py <environment_name> <monitor_target_directory>
+python misc/plot_statistics.py <path_to_stats>
 ```
+`<path_to_stats>` can be one of 2 things:
+- A _json_ file generated using `gym.wrappers.Monitor`, in case it plots the episode lengths and total reward per episode.
+- A directory containing _TensorFlow_ scalar summaries for different tasks, in which case all of the found scalars are plot. This is specifically for `KnowledgeTransfer` and `AsyncKnowledgeTransfer` experiments.
 
-You can plot the episode lengths and total reward per episode graphs using:
-```
-python plot_statistics.py <path_to_stats.json> <moving_average_window>
-```
+Help about other arguments (e.g. for using smoothing) can be found by executing `python misc/plot_statistics.py -h`

@@ -42,9 +42,11 @@ def json_to_dict(filename):
     with open(filename) as f:
         return json.load(f)
 
-def ge_1(value):
-    """Require the value for an argparse argument to be an integer >=1."""
-    ivalue = int(value)
-    if ivalue < 1:
-        raise argparse.ArgumentTypeError("{} must be an integer of at least 1.".format(value))
-    return ivalue
+def ge(min):
+    """Require the value for an argparse argument to be an integer >= min."""
+    def f(value):
+        ivalue = int(value)
+        if ivalue < min:
+            raise argparse.ArgumentTypeError("{} must be an integer of at least 1.".format(value))
+        return ivalue
+    return f

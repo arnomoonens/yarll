@@ -231,11 +231,19 @@ if __name__ == "__main__":
     if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
         plot_gym_monitor_stats(args.stats_path, args.xmax, smoothing_technique)
     elif os.path.isdir(args.stats_path):
+        shared_args = {
+            "summaries_dir": args.stats_path,
+            "xmax": args.xmax,
+            "smoothing_function": smoothing_technique,
+            "max_reward": args.max_reward,
+            "x_label": args.x_label,
+            "legend": args.legend,
+        }
         if args.subdirs:
-            plot_tf_scalar_summaries_subdirs(args.stats_path, args.xmax, smoothing_technique, max_reward=args.max_reward, x_label=args.x_label, legend=args.legend)
+            plot_tf_scalar_summaries_subdirs(**shared_args)
         elif args.splitted:
-            plot_tf_scalar_summaries_splitted(args.stats_path, args.xmax, smoothing_technique, max_reward=args.max_reward, x_label=args.x_label, legend=args.legend)
+            plot_tf_scalar_summaries_splitted(splitted_length=25, **shared_args)
         else:
-            plot_tf_scalar_summaries(args.stats_path, args.xmax, smoothing_technique, max_reward=args.max_reward, x_label=args.x_label, legend=args.legend)
+            plot_tf_scalar_summaries(**shared_args)
     else:
         raise NotImplementedError("Only a Tensorflow monitor stats.json file or summaries directory is allowed.")

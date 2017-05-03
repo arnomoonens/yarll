@@ -75,6 +75,6 @@ python misc/plot_statistics.py <path_to_stats>
 ```
 `<path_to_stats>` can be one of 2 things:
 - A _json_ file generated using `gym.wrappers.Monitor`, in case it plots the episode lengths and total reward per episode.
-- A directory containing _TensorFlow_ scalar summaries for different tasks, in which case all of the found scalars are plot. This is specifically for `KnowledgeTransfer` and `AsyncKnowledgeTransfer` experiments.
+- A directory containing _TensorFlow_ scalar summaries for different tasks, in which case all of the found scalars are plot.
 
 Help about other arguments (e.g. for using smoothing) can be found by executing `python misc/plot_statistics.py -h`

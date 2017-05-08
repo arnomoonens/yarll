@@ -27,7 +27,6 @@ def run_experiment(spec, monitor_path=None, only_last=False):
     if len(envs) == 1 or only_last:
         args["env"] = envs[-1]
     action_space_type = "discrete" if isinstance(envs[0].action_space, Discrete) else "continuous"
-    print(args)
     agent = make_agent(spec["agent"]["name"], action_space_type, **args)
     save_config(monitor_path, agent.config, [env.to_dict() for env in envs])
     agent.learn()

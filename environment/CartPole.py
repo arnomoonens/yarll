@@ -36,11 +36,11 @@ class CartPole(Environment):
 
     def change_parameters(self, length=None, masspole=None, masscart=None):
         """Change a CartPole environment using a different length and/or masspole."""
-        if length:
+        if length is not None:
             self.env.env.length = length
-        if masspole:
+        if masspole is not None:
             self.env.env.masspole = masspole
-        if masscart:
+        if masscart is not None:
             self.env.env.masscart = masscart
         self.env.env.total_mass = self.env.env.masspole + self.env.env.masscart  # Recalculate
         self.env.env.polemass_length = self.env.env.masspole * self.env.env.length  # Recalculate

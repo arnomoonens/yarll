@@ -151,6 +151,7 @@ class AsyncKnowledgeTransfer(Agent):
             repeat_n_actions=1,
             n_task_variations=3,
             n_sparse_units=10,
+            feature_extraction=False
         ))
         self.config.update(usercfg)
 
@@ -205,7 +206,16 @@ class AsyncKnowledgeTransfer(Agent):
             self.action_taken = tf.placeholder(tf.float32, name="action_taken")
             self.advantage = tf.placeholder(tf.float32, name="advantage")
 
-            self.L1 = self.states
+            if self.config["feature_extraction"]:
+                self.L1 = tf.contrib.layers.fully_connected(
+                    inputs=self.states,
+                    num_outputs=self.config["n_hidden_units"],
+                    activation_fn=tf.tanh,
+                    weights_initializer=tf.random_normal_initializer(),
+                    biases_initializer=tf.zeros_initializer(),
+                    scope="L1")
+            else:
+                self.L1 = self.states
 
             self.knowledge_base = tf.Variable(tf.random_normal([self.nO, self.config["n_sparse_units"]]), name="knowledge_base")
 

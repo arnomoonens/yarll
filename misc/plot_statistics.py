@@ -25,6 +25,8 @@ for gui in gui_env:
     except ImportError:
         continue
 
+IMAGES_EXT = ".png"
+
 logging.getLogger("tensorflow").setLevel(logging.WARNING)
 
 # Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
@@ -66,7 +68,7 @@ def plot(x, y, x_label, scalar, xmax=None, ymin=None, ymax=None):
     plt.title("{} per {}".format(scalar, x_label))
     fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
 
-def plot_tasks(data, x_label, smoothing_function=None, xmin=None, xmax=None, max_reward=None, legend=True):
+def plot_tasks(data, x_label, smoothing_function=None, xmin=None, xmax=None, max_reward=None, legend=True, save_directory=None, show_plots=True):
     x_label_upper = x_label[0].upper() + x_label[1:]
     for scalar, tasks in data.items():
         fig = plt.figure()
@@ -97,9 +99,12 @@ def plot_tasks(data, x_label, smoothing_function=None, xmin=None, xmax=None, max
         plt.ylabel(scalar)
         plt.title("{} per {}".format(scalar, x_label))
         fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
-    plt.show()
+        if save_directory is not None:
+            plt.savefig(os.path.join(save_directory, "{}_per_{}".format(scalar, x_label) + IMAGES_EXT))
+    if show_plots:
+        plt.show()
 
-def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None):
+def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None, save_directory=None, show_plots=True):
     f = open(stats_path)
     contents = json.load(f)
     data = contents["episode_rewards"]
@@ -110,6 +115,8 @@ def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None):
     ymin = min(0, min_aer)
     ymax = max(0, max_aer + 0.1 * max_aer)
     plot(range(len(data)), data, "episode", "total reward", xmax=xmax, ymin=ymin, ymax=ymax)
+    if save_directory is not None:
+        plt.savefig(os.path.join(save_directory, "totalreward_per_episode" + IMAGES_EXT))
 
     data = contents["episode_lengths"]
     if smoothing_function:
@@ -118,7 +125,10 @@ def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None):
     ymin = 0
     ymax = (max_ael + 0.1 * max_ael)
     plot(range(len(data)), data, "episode", "length", xmax=xmax, ymin=ymin, ymax=ymax)
-    plt.show()
+    if save_directory is not None:
+        plt.savefig(os.path.join(save_directory, "length_per_episode" + IMAGES_EXT))
+    if show_plots:
+        plt.show()
 
 def tf_scalar_data(em):
     """Process scalar data of TensorFlow summaries."""
@@ -146,13 +156,13 @@ def tf_scalar_data(em):
         data[scalar] = scalar_data
     return data
 
-def plot_tf_scalar_summaries(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True):
+def plot_tf_scalar_summaries(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, save_directory=None, show_plots=True):
     """Plot TensorFlow scalar summaries."""
     em = EventMultiplexer().AddRunsFromDirectory(summaries_dir).Reload()
     data = tf_scalar_data(em)
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend)
+    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend, save_directory=save_directory, show_plots=show_plots)
 
-def plot_tf_scalar_summaries_subdirs(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True):
+def plot_tf_scalar_summaries_subdirs(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, save_directory=None, show_plots=True):
     """Process each subdirectory of summaries_dir separately before plotting TensorFlow scalar summaries."""
     _, subdirs, _ = next(os.walk(summaries_dir))
 
@@ -169,9 +179,9 @@ def plot_tf_scalar_summaries_subdirs(summaries_dir, xmin=None, xmax=None, smooth
                 for task, epochs_values in scalar_data.items():
                     data[scalar][task]["values"].extend(epochs_values["values"])
 
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend)
+    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend, save_directory=save_directory, show_plots=show_plots)
 
-def plot_tf_scalar_summaries_splitted(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, splitted_length=25):
+def plot_tf_scalar_summaries_splitted(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, splitted_length=25, save_directory=None, show_plots=True):
     """Process sets of runs (of length splitted_length) separately before plotting TensorFlow scalar summaries."""
     _, rundirs, _ = next(os.walk(summaries_dir))
     data = {}
@@ -192,7 +202,7 @@ def plot_tf_scalar_summaries_splitted(summaries_dir, xmin=None, xmax=None, smoot
                 for task, epochs_values in scalar_data.items():
                     data[scalar][task]["values"].extend(epochs_values["values"])
     logging.info("Data processed, plotting...")
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend)
+    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend, save_directory=save_directory, show_plots=show_plots)
 
 def exp_smoothing_weight_test(value):
     """Require that the weight for exponential smoothing is a weight between 0 and 1"""
@@ -212,6 +222,8 @@ parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=N
 parser.add_argument("--moving_average", type=ge(1), default=None, help="Use a moving average with a window w>0")
 parser.add_argument("--subdirs", action="store_true", default=False, help="Process each subdirectory separately (solves memory issues).")
 parser.add_argument("--splitted", action="store_true", default=False, help="Process sets of runs separately (solves memory issues).")
+parser.add_argument("--save", type=str, dest="save_dir", default=None, help="Save plots to the given directory.")
+parser.add_argument("--show", action="store_true", default=False, help="Show plots.")
 parser.add_argument(
     '-d', '--debug',
     help="Print debugging statements",
@@ -230,7 +242,7 @@ if __name__ == "__main__":
     elif args.moving_average is not None:
         smoothing_technique = create_smoother(moving_average, args.moving_average)  # args.moving_average holds the window
     if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
-        plot_gym_monitor_stats(args.stats_path, args.xmax, smoothing_technique)
+        plot_gym_monitor_stats(args.stats_path, args.xmax, smoothing_technique, save_directory=args.save_dir, show_plots=args.show)
     elif os.path.isdir(args.stats_path):
         shared_args = {
             "summaries_dir": args.stats_path,
@@ -240,6 +252,8 @@ if __name__ == "__main__":
             "max_reward": args.max_reward,
             "x_label": args.x_label,
             "legend": args.legend,
+            "save_directory": args.save_dir,
+            "show_plots": args.show
         }
         if args.subdirs:
             plot_tf_scalar_summaries_subdirs(**shared_args)

@@ -99,3 +99,5 @@ Environment/*.json
 *.orig
 
 *-experiment.json
+
+*~

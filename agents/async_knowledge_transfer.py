@@ -11,7 +11,6 @@ import signal
 from agents.Agent import Agent
 from misc.utils import discount_rewards
 from misc.Reporter import Reporter
-from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 from agents.knowledge_transfer import TaskLearner
 
 class AKTThread(Thread):
@@ -58,7 +57,6 @@ class AKTThread(Thread):
         iteration = self.start_at_iter
         while iteration < self.n_iter and not self.master.stop_requested:
             iteration += 1
-            self.master.session.run([self.master.reset_accum_grads])
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectories = self.task_learner.get_trajectories()
             total_n_trajectories += len(trajectories)
@@ -76,7 +74,7 @@ class AKTThread(Thread):
             # Do policy gradient update step
             episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
             episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-            results = self.master.session.run([self.loss, self.add_accum_grad], feed_dict={
+            results = self.master.session.run([self.loss, self.apply_grad], feed_dict={
                 self.master.states: all_state,
                 self.master.action_taken: all_action,
                 self.master.advantage: all_adv
@@ -90,12 +88,10 @@ class AKTThread(Thread):
             })
             self.writer.add_summary(results[0], iteration)
             self.writer.flush()
-            self.master.session.run([self.master.apply_gradients])
 
     def learn_Karpathy(self):
         """Learn using updates like in the Karpathy algorithm."""
         config = self.master.config
-        self.master.session.run([self.master.reset_accum_grads])
 
         iteration = self.start_at_iter
         while iteration < self.n_iter and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
@@ -112,7 +108,7 @@ class AKTThread(Thread):
             discounted_episode_rewards /= std
             feedback = discounted_episode_rewards
 
-            results = self.master.session.run([self.loss, self.add_accum_grad], feed_dict={
+            results = self.master.session.run([self.loss, self.apply_grad], feed_dict={
                 self.master.states: trajectory["state"],
                 self.master.action_taken: action_taken,
                 self.master.advantage: feedback
@@ -124,9 +120,6 @@ class AKTThread(Thread):
             })
             self.writer.add_summary(results[0], iteration)
             self.writer.flush()
-
-            self.master.session.run([self.master.apply_gradients])
-            self.master.session.run([self.master.reset_accum_grads])
 
 
 class AsyncKnowledgeTransfer(Agent):
@@ -180,17 +173,14 @@ class AsyncKnowledgeTransfer(Agent):
                     self.config["switch_at_iter"] if self.config["switch_at_iter"] is not None and i != len(self.envs) - 1 else self.config["n_iter"],
                     start_at_iter=(0 if self.config["switch_at_iter"] is None or i != len(self.envs) - 1 else self.config["switch_at_iter"])))
 
-        net_vars = self.shared_vars + [job.sparse_representation for job in self.jobs]
-        self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
         for i, job in enumerate(self.jobs):
             only_sparse = (self.config["switch_at_iter"] is not None and i == len(self.jobs) - 1)
-            job.add_accum_grad = add_accumulative_gradients_op(
-                (self.shared_vars if not(only_sparse) else []) + [job.sparse_representation],
-                self.accum_grads if not(only_sparse) else [self.accum_grads[-1]],
-                job.loss,
-                job.task_id)
-        self.apply_gradients = self.optimizer.apply_gradients(zip(self.accum_grads, net_vars))
-        self.reset_accum_grads = reset_accumulative_gradients_op(net_vars, self.accum_grads, 1)
+            grads = tf.gradients(job.loss, (self.shared_vars if not(only_sparse) else []) + [job.sparse_representation])
+            print(i)
+            job.apply_grad = self.optimizer.apply_gradients(zip(
+                grads,
+                (self.shared_vars if not(only_sparse) else []) + [job.sparse_representation]
+            ))
 
         self.session.run(tf.global_variables_initializer())
 

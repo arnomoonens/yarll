@@ -92,7 +92,7 @@ def plot_tasks(data, x_label, smoothing_function=None, xmin=None, xmax=None, max
             ymax = max_reward * 1.1
         else:
             ymax = None
-        plt.ylim(ymin=(0 if "loss" not in scalar.lower() else None), ymax=ymax)
+        plt.ylim(ymax=ymax)
         plt.xlabel(x_label_upper)
         plt.ylabel(scalar)
         plt.title("{} per {}".format(scalar, x_label))

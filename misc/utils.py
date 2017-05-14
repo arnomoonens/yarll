@@ -6,7 +6,6 @@ from scipy import signal
 import numpy as np
 from os import path
 import json
-import argparse
 
 def discount_rewards(x, gamma):
     """

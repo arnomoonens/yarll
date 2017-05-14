@@ -14,7 +14,7 @@ from gym import wrappers
 from environment.registration import make_environment
 from agents.Agent import Agent
 from misc.utils import discount_rewards
-from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_gradients_op
+from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_networks_op
 
 logging.getLogger().setLevel("INFO")
 
@@ -171,31 +171,26 @@ class A3CThread(Thread):
         # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
 
-        self.actor_sync_net = sync_gradients_op(master.shared_actor_net, self.actor_net.vars, self.thread_id)
-        self.actor_create_ag = create_accumulative_gradients_op(self.actor_net.vars, self.thread_id)
-        self.actor_add_ag = add_accumulative_gradients_op(self.actor_net.vars, self.actor_create_ag, self.actor_net.loss, self.thread_id)
-        self.actor_reset_ag = reset_accumulative_gradients_op(self.actor_net.vars, self.actor_create_ag, self.thread_id)
+        self.actor_sync_net = sync_networks_op(master.shared_actor_net, self.actor_net.vars, self.thread_id)
+        actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
 
-        self.critic_sync_net = sync_gradients_op(master.shared_critic_net, self.critic_net.vars, self.thread_id)
-        self.critic_create_ag = create_accumulative_gradients_op(self.critic_net.vars, self.thread_id)
-        self.critic_add_ag = add_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.critic_net.loss, self.thread_id)
-        self.critic_reset_ag = reset_accumulative_gradients_op(self.critic_net.vars, self.critic_create_ag, self.thread_id)
+        self.critic_sync_net = sync_networks_op(master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        critic_grads = tf.gradients(self.critic_net.loss, self.critic_net.vars)
 
         if clip_gradients:
             # Clipped gradients
             gradient_clip_value = self.master.config["gradient_clip_value"]
-            clip_actor_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.actor_create_ag]
-            self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
-                zip(clip_actor_gradients, master.shared_actor_net.vars), global_step=master.global_step)
-            clip_critic_gradients = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in self.critic_create_ag]
-            self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
-                zip(clip_critic_gradients, master.shared_critic_net.vars), global_step=master.global_step)
+            processed_actor_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in actor_grads]
+            processed_critic_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in critic_grads]
         else:
-            # Non-clipped gradients
-            self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
-                zip(self.actor_create_ag, master.shared_actor_net.vars), global_step=master.global_step)
-            self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
-                zip(self.critic_create_ag, master.shared_critic_net.vars), global_step=master.global_step)
+            # Non-clipped gradients: don't do anything
+            processed_actor_grads = actor_grads
+            processed_critic_grads = critic_grads
+
+        self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
+            zip(processed_actor_grads, master.shared_actor_net.vars), global_step=master.global_step)
+        self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
+            zip(processed_critic_grads, master.shared_critic_net.vars), global_step=master.global_step)
 
     def transform_actions(self, actions):
         return actions
@@ -241,15 +236,13 @@ class A3CThread(Thread):
         sess = self.master.session
         t = 1  # thread step counter
         while self.master.T < self.master.config["T_max"] and not self.master.stop_requested:
-            # Reset gradients: dθ = 0 and dθv = 0
-            sess.run([self.actor_reset_ag, self.critic_reset_ag])
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
             sess.run([self.actor_sync_net, self.critic_sync_net])
             trajectory = self.get_trajectory(self.master.config["episode_max_length"])
             reward = sum(trajectory["reward"])
             trajectory["reward"][-1] = 0 if trajectory["done"] else self.get_critic_value(trajectory["state"][None, -1])[0]
             returns = discount_rewards(trajectory["reward"], self.master.config["gamma"])
-            fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss, self.actor_add_ag, self.critic_add_ag, self.master.global_step]  # What does the master global step thing do?
+            fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss, self.apply_actor_gradients, self.apply_critic_gradients, self.master.global_step]  # What does the master global step thing do?
             ac_net = self.actor_net
             cr_net = self.critic_net
             qw_new = self.master.session.run([cr_net.value], feed_dict={cr_net.states: trajectory["state"]})[0].flatten()
@@ -270,7 +263,6 @@ class A3CThread(Thread):
                                })
             self.writer.add_summary(summary[0], t)
             self.writer.flush()
-            sess.run([self.apply_actor_gradients, self.apply_critic_gradients])
             t += 1
             self.master.T += trajectory["steps"]
 

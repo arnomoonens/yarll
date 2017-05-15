@@ -191,13 +191,12 @@ class A3CThread(Thread):
             processed_actor_grads = actor_grads
             processed_critic_grads = critic_grads
 
+        # Apply gradients to the weights of the master network
+        # Only increase global_step counter once per update of the 2 networks
         apply_actor_gradients = actor_optimizer.apply_gradients(
             zip(processed_actor_grads, master.shared_actor_net.vars), global_step=master.global_step)
         apply_critic_gradients = critic_optimizer.apply_gradients(
-            zip(processed_critic_grads, master.shared_critic_net.vars), global_step=master.global_step)
-
-        # Increase step by number of processed transitions
-        # increase_step = self.master.global_step.assign_add(tf.shape(self.actor_net.states)[0])
+            zip(processed_critic_grads, master.shared_critic_net.vars))
 
         self.train_op = tf.group(apply_actor_gradients, apply_critic_gradients)
 

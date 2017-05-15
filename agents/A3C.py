@@ -162,6 +162,7 @@ class A3CThread(Thread):
         self.thread_id = thread_id
         self.env = make_environment(master.env_name)
         self.master = master
+        self.config = master.config
         if thread_id == 0 and self.master.monitor:
             self.env = wrappers.Monitor(self.env, master.monitor_path, force=True, video_callable=(None if self.master.video else False))
 
@@ -171,6 +172,9 @@ class A3CThread(Thread):
         # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
 
+        actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["actor_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+        critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["critic_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+
         self.actor_sync_net = sync_networks_op(master.shared_actor_net, self.actor_net.vars, self.thread_id)
         actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
 
@@ -179,7 +183,7 @@ class A3CThread(Thread):
 
         if clip_gradients:
             # Clipped gradients
-            gradient_clip_value = self.master.config["gradient_clip_value"]
+            gradient_clip_value = self.config["gradient_clip_value"]
             processed_actor_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in actor_grads]
             processed_critic_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in critic_grads]
         else:
@@ -187,9 +191,9 @@ class A3CThread(Thread):
             processed_actor_grads = actor_grads
             processed_critic_grads = critic_grads
 
-        apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
+        apply_actor_gradients = actor_optimizer.apply_gradients(
             zip(processed_actor_grads, master.shared_actor_net.vars), global_step=master.global_step)
-        apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
+        apply_critic_gradients = critic_optimizer.apply_gradients(
             zip(processed_critic_grads, master.shared_critic_net.vars), global_step=master.global_step)
 
         # Increase step by number of processed transitions
@@ -240,13 +244,13 @@ class A3CThread(Thread):
         # Assume thread-specific parameter vectors θ' and θ'v
         sess = self.master.session
         t = 1  # thread step counter
-        while self.master.T < self.master.config["T_max"] and not self.master.stop_requested:
+        while self.master.T < self.config["T_max"] and not self.master.stop_requested:
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
             sess.run([self.actor_sync_net, self.critic_sync_net])
-            trajectory = self.get_trajectory(self.master.config["episode_max_length"])
+            trajectory = self.get_trajectory(self.config["episode_max_length"])
             reward = sum(trajectory["reward"])
             trajectory["reward"][-1] = 0 if trajectory["done"] else self.get_critic_value(trajectory["state"][None, -1])[0]
-            returns = discount_rewards(trajectory["reward"], self.master.config["gamma"])
+            returns = discount_rewards(trajectory["reward"], self.config["gamma"])
             fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss, self.train_op, self.master.global_step]
             ac_net = self.actor_net
             cr_net = self.critic_net
@@ -277,8 +281,8 @@ class A3CThreadDiscrete(A3CThread):
         super(A3CThreadDiscrete, self).__init__(master, thread_id)
 
     def build_networks(self):
-        self.actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.master.config["actor_n_hidden"], scope="local_actor_net")
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config["critic_n_hidden"], scope="local_critic_net")
+        self.actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.config["actor_n_hidden"], scope="local_actor_net")
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="local_critic_net")
 
     def transform_actions(self, actions):
         possible_actions = np.arange(self.env.action_space.n)
@@ -290,8 +294,8 @@ class A3CThreadContinuous(A3CThread):
         super(A3CThreadContinuous, self).__init__(master, thread_id)
 
     def build_networks(self):
-        self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.master.config["actor_n_hidden"], scope="local_actor_net")
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.master.config["critic_n_hidden"], scope="local_critic_net")
+        self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.config["actor_n_hidden"], scope="local_actor_net")
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="local_critic_net")
 
 class A3C(Agent):
     """Asynchronous Advantage Actor Critic learner."""
@@ -327,9 +331,6 @@ class A3C(Agent):
             tf.add_to_collection("action", self.shared_actor_net.action)
             tf.add_to_collection("states", self.shared_actor_net.states)
             self.saver = tf.train.Saver()
-
-        self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["actor_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
-        self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["critic_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 

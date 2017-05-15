@@ -12,7 +12,7 @@ from gym import wrappers
 from agents.Agent import Agent
 from misc.utils import discount_rewards, preprocess_image
 from misc.Reporter import Reporter
-from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
+from misc.network_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
 logging.getLogger().setLevel("INFO")
 

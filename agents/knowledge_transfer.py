@@ -8,7 +8,7 @@ import tensorflow as tf
 from agents.Agent import Agent
 from misc.utils import discount_rewards
 from misc.Reporter import Reporter
-from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
+from misc.network_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
 class TaskLearner(Agent):
     """Learner for a specific environment and with its own action selection."""

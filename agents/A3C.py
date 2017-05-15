@@ -14,7 +14,7 @@ from gym import wrappers
 from environment.registration import make_environment
 from agents.Agent import Agent
 from misc.utils import discount_rewards
-from misc.gradient_ops import sync_networks_op
+from misc.network_ops import sync_networks_op
 
 logging.getLogger().setLevel("INFO")
 

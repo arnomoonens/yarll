@@ -14,7 +14,7 @@ from gym import wrappers
 from environment.registration import make_environment
 from agents.Agent import Agent
 from misc.utils import discount_rewards
-from misc.gradient_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op, sync_networks_op
+from misc.gradient_ops import sync_networks_op
 
 logging.getLogger().setLevel("INFO")
 
@@ -187,10 +187,15 @@ class A3CThread(Thread):
             processed_actor_grads = actor_grads
             processed_critic_grads = critic_grads
 
-        self.apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
+        apply_actor_gradients = master.shared_actor_optimizer.apply_gradients(
             zip(processed_actor_grads, master.shared_actor_net.vars), global_step=master.global_step)
-        self.apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
+        apply_critic_gradients = master.shared_critic_optimizer.apply_gradients(
             zip(processed_critic_grads, master.shared_critic_net.vars), global_step=master.global_step)
+
+        # Increase step by number of processed transitions
+        # increase_step = self.master.global_step.assign_add(tf.shape(self.actor_net.states)[0])
+
+        self.train_op = tf.group(apply_actor_gradients, apply_critic_gradients)
 
     def transform_actions(self, actions):
         return actions
@@ -242,7 +247,7 @@ class A3CThread(Thread):
             reward = sum(trajectory["reward"])
             trajectory["reward"][-1] = 0 if trajectory["done"] else self.get_critic_value(trajectory["state"][None, -1])[0]
             returns = discount_rewards(trajectory["reward"], self.master.config["gamma"])
-            fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss, self.apply_actor_gradients, self.apply_critic_gradients, self.master.global_step]  # What does the master global step thing do?
+            fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss, self.train_op, self.master.global_step]
             ac_net = self.actor_net
             cr_net = self.critic_net
             qw_new = self.master.session.run([cr_net.value], feed_dict={cr_net.states: trajectory["state"]})[0].flatten()
@@ -261,7 +266,7 @@ class A3CThread(Thread):
                                self.master.reward: reward,
                                self.master.episode_length: trajectory["steps"]
                                })
-            self.writer.add_summary(summary[0], t)
+            self.writer.add_summary(summary[0], results[-1])
             self.writer.flush()
             t += 1
             self.master.T += trajectory["steps"]
@@ -326,7 +331,7 @@ class A3C(Agent):
         self.shared_actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["actor_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
         self.shared_critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["critic_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
-        self.global_step = tf.get_variable("global_step", [], initializer=tf.constant_initializer(0), trainable=False)
+        self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
         self.session = tf.Session(config=tf.ConfigProto(
             log_device_placement=False,
@@ -348,8 +353,6 @@ class A3C(Agent):
             self.jobs.append(job)
 
         self.session.run(tf.global_variables_initializer())
-
-        self.global_step_val = 0
 
     def signal_handler(self, signal, frame):
         """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""

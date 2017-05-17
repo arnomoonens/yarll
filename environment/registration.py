@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf8 -*-
 
 # Inspired by https://github.com/openai/gym/blob/master/gym/envs/registration.py

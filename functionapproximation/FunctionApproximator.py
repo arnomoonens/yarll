@@ -1,3 +1,5 @@
+# -*- coding: utf8 -*-
+
 class FunctionApproximator(object):
     """Map states and actions using a function."""
     def __init__(self, n_actions):

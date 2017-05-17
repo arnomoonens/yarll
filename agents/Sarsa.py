@@ -1,3 +1,5 @@
+# -*- coding: utf8 -*-
+
 class Sarsa(object):
     """Sarsa learner for function approximation"""
     def __init__(self, gamma, alpha, policy, traces, function_approximation, actions, start_state, start_action):

@@ -1,3 +1,5 @@
+# -*- coding: utf8 -*-
+
 class Policy(object):
     """Decides which action to take."""
     def __init__(self):

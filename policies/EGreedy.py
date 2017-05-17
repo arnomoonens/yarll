@@ -1,3 +1,5 @@
+# -*- coding: utf8 -*-
+
 from policies.Policy import Policy
 
 import numpy as np

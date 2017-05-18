@@ -35,7 +35,7 @@ class AKTThread(Thread):
 
     def build_networks(self):
         with tf.variable_scope("task{}".format(self.task_id)):
-            self.sparse_representation = tf.Variable(tf.random_normal([self.master.config["n_sparse_units"], self.master.nA]))
+            self.sparse_representation = tf.Variable(tf.truncated_normal([self.master.config["n_sparse_units"], self.master.nA], mean=0.0, stddev=0.02))
             self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
 
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
@@ -203,13 +203,13 @@ class AsyncKnowledgeTransfer(Agent):
                     inputs=self.states,
                     num_outputs=self.config["n_hidden_units"],
                     activation_fn=tf.tanh,
-                    weights_initializer=tf.random_normal_initializer(),
+                    weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                     biases_initializer=tf.zeros_initializer(),
                     scope="L1")
             else:
                 self.L1 = self.states
 
-            self.knowledge_base = tf.Variable(tf.random_normal([self.nO, self.config["n_sparse_units"]]), name="knowledge_base")
+            self.knowledge_base = tf.Variable(tf.truncated_normal([self.nO, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
 
             self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 

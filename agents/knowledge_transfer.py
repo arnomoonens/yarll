@@ -64,17 +64,17 @@ class KnowledgeTransfer(Agent):
                 inputs=self.states,
                 num_outputs=self.config["n_hidden_units"],
                 activation_fn=tf.tanh,
-                weights_initializer=tf.random_normal_initializer(stddev=0.01),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="L1")
 
-            knowledge_base = tf.Variable(tf.random_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]], stddev=0.01), name="knowledge_base")
+            knowledge_base = tf.Variable(tf.truncated_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
 
             self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="shared")
 
         # Every task has its own (sparse) representation
         sparse_representations = [
-            tf.Variable(tf.random_normal([self.config["n_sparse_units"], self.nA], stddev=0.01), name="sparse%d" % i)
+            tf.Variable(tf.truncated_normal([self.config["n_sparse_units"], self.nA], mean=0.0, stddev=0.02), name="sparse%d" % i)
             for i in range(self.n_tasks)
         ]
 

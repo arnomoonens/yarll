@@ -10,6 +10,7 @@ from gym import wrappers
 from agents.Agent import Agent
 from misc.utils import discount_rewards
 from misc.Reporter import Reporter
+from agents.EnvRunner import EnvRunner
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
@@ -19,10 +20,11 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 class A2C(Agent):
     """Advantage Actor Critic"""
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        super(A2C, self).__init__(env, **usercfg)
+        super(A2C, self).__init__(**usercfg)
         self.monitor_path = monitor_path
 
-        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
+        self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
+        self.env_runner = EnvRunner(self.env, self, usercfg)
 
         self.config.update(dict(
             timesteps_per_batch=10000,
@@ -68,11 +70,11 @@ class A2C(Agent):
         """Run learning algorithm"""
         reporter = Reporter()
         config = self.config
-        possible_actions = np.arange(self.nA)
+        possible_actions = np.arange(self.env_runner.nA)
         total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories()
+            trajectories = self.env_runner.get_trajectories()
             total_n_trajectories += len(trajectories)
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_action = (possible_actions == all_action[:, None]).astype(np.float32)
@@ -106,11 +108,10 @@ class A2C(Agent):
 class A2CDiscrete(A2C):
     """A2C learner for a discrete action space"""
     def __init__(self, env, monitor_path, **usercfg):
-        self.nA = env.action_space.n
         super(A2CDiscrete, self).__init__(env, monitor_path, **usercfg)
 
     def build_networks(self):
-        self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
+        self.states = tf.placeholder(tf.float32, [None, self.env_runner.nO], name="states")
         self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
         self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
         self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
@@ -127,7 +128,7 @@ class A2CDiscrete(A2C):
 
             self.probs = tf.contrib.layers.fully_connected(
                 inputs=L1,
-                num_outputs=self.nA,
+                num_outputs=self.env_runner.nA,
                 activation_fn=tf.nn.softmax,
                 weights_initializer=tf.random_normal_initializer(),
                 biases_initializer=tf.zeros_initializer(),
@@ -239,7 +240,7 @@ class A2CContinuous(A2C):
         total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories()
+            trajectories = self.env_runner.get_trajectories()
             total_n_trajectories += len(trajectories)
             all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
             all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])

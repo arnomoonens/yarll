@@ -5,14 +5,15 @@ import numpy as np
 import tensorflow as tf
 
 from agents.Agent import Agent
+from agents.EnvRunner import EnvRunner
 from misc.utils import discount_rewards
 from misc.Reporter import Reporter
 from misc.network_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
-class TaskLearner(Agent):
-    """Learner for a specific environment and with its own action selection."""
-    def __init__(self, env, action, master, **usercfg):
-        super(TaskLearner, self).__init__(env, **usercfg)
+class TaskPolicy(object):
+    """Policy for a specific class."""
+    def __init__(self, action, master):
+        super(TaskPolicy, self).__init__()
         self.action = action
         self.master = master
 
@@ -23,7 +24,7 @@ class TaskLearner(Agent):
 class KnowledgeTransfer(Agent):
     """Learner for variations of a task."""
     def __init__(self, envs, monitor_path, **usercfg):
-        super(KnowledgeTransfer, self).__init__(envs[0], **usercfg)
+        super(KnowledgeTransfer, self).__init__(**usercfg)
         self.envs = envs
         self.n_tasks = len(envs)
         self.monitor_path = monitor_path
@@ -45,7 +46,7 @@ class KnowledgeTransfer(Agent):
         self.config.update(usercfg)
 
         self.build_networks()
-        self.task_learners = [TaskLearner(envs[i], action, self, **self.config) for i, action in enumerate(self.action_tensors)]
+        self.task_runners = [EnvRunner(envs[i], TaskPolicy(action, self), self.config) for i, action in enumerate(self.action_tensors)]
         if self.config["save_model"]:
             for action_tensor in self.action_tensors:
                 tf.add_to_collection("action", action_tensor)
@@ -56,7 +57,7 @@ class KnowledgeTransfer(Agent):
         self.session = tf.Session()
 
         with tf.variable_scope("shared"):
-            self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
+            self.states = tf.placeholder(tf.float32, [None] + list(self.envs[0].observation_space.shape), name="states")
             self.action_taken = tf.placeholder(tf.float32, name="action_taken")
             self.advantage = tf.placeholder(tf.float32, name="advantage")
 
@@ -137,14 +138,14 @@ class KnowledgeTransfer(Agent):
         total_n_trajectories = np.zeros(len(self.envs))
         for iteration in range(config["n_iter"]):
             self.session.run([self.reset_accum_grads])
-            for i, learner in enumerate(self.task_learners):
+            for i, task_runner in enumerate(self.task_runners):
                 if self.config["switch_at_iter"] is not None:
-                    if iteration > self.config["switch_at_iter"] and i != (len(self.task_learners) - 1):
+                    if iteration > self.config["switch_at_iter"] and i != (len(self.task_runners) - 1):
                         continue
-                    elif iteration < self.config["switch_at_iter"] and i == len(self.task_learners) - 1:
+                    elif iteration < self.config["switch_at_iter"] and i == len(self.task_runners) - 1:
                         continue
                 # Collect trajectories until we get timesteps_per_batch total timesteps
-                trajectories = learner.get_trajectories()
+                trajectories = task_runner.get_trajectories()
                 total_n_trajectories[i] += len(trajectories)
                 all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
                 # Compute discounted sums of rewards

@@ -16,14 +16,16 @@ from gym import wrappers
 from agents.Agent import Agent
 from misc.utils import discount_rewards, preprocess_image
 from misc.Reporter import Reporter
+from agents.EnvRunner import EnvRunner
 
 class REINFORCE(Agent):
     """
     REINFORCE with baselines
     """
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        super(REINFORCE, self).__init__(env, **usercfg)
-        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
+        super(REINFORCE, self).__init__(**usercfg)
+        self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
+        self.env_runner = EnvRunner(self.env, self, usercfg)
         self.monitor_path = monitor_path
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
@@ -68,7 +70,7 @@ class REINFORCE(Agent):
         total_n_trajectories = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.get_trajectories()
+            trajectories = self.env_runner.get_trajectories()
             total_n_trajectories += len(trajectories)
             all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
             # Compute discounted sums of rewards
@@ -100,7 +102,6 @@ class REINFORCE(Agent):
 
 class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path, rnn=False, video=True, **usercfg):
-        self.nA = env.action_space.n
         self.rnn = rnn
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
@@ -112,7 +113,7 @@ class REINFORCEDiscrete(REINFORCE):
 
     def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")  # Observation
+        self.states = tf.placeholder(tf.float32, [None, self.env_runner.nO], name="states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
@@ -125,14 +126,14 @@ class REINFORCEDiscrete(REINFORCE):
 
         self.probs = tf.contrib.layers.fully_connected(
             inputs=L1,
-            num_outputs=self.nA,
+            num_outputs=self.env_runner.nA,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.random_normal_initializer(),
             biases_initializer=tf.zeros_initializer())
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         self.loss = -tf.reduce_sum(eligibility, name="loss")
         self.summary_loss = self.loss
@@ -154,13 +155,13 @@ class REINFORCEDiscrete(REINFORCE):
                                   sequence_length=n_states, dtype=tf.float32)
         self.probs = tf.contrib.layers.fully_connected(
             inputs=L1[0],
-            num_outputs=self.nA,
+            num_outputs=self.env_runner.nA,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.random_normal_initializer(),
             biases_initializer=tf.zeros_initializer())
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         eligibility = tf.Print(eligibility, [eligibility], first_n=5)
         loss = -tf.reduce_sum(eligibility)
@@ -181,7 +182,7 @@ class REINFORCEContinuous(REINFORCE):
 
     def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")  # Observation
+        self.states = tf.placeholder(tf.float32, [None, self.env_runner.nO], name="states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Continuous action
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
@@ -325,12 +326,12 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         # Fully connected layer 2
         self.probs = tf.contrib.layers.fully_connected(
             inputs=self.L3,
-            num_outputs=self.nA,
+            num_outputs=self.env_runner.nA,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.random_normal_initializer(),
             biases_initializer=tf.zeros_initializer())
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.nA)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
         loss = -tf.reduce_sum(eligibility)
         self.summary_loss = loss

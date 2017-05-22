@@ -31,9 +31,9 @@ def random_with_probability(output, n_actions, temperature=1.0):
 class Karpathy(Agent):
     """Karpathy policy gradient agent"""
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        super(Karpathy, self).__init__(env, **usercfg)
-        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
-        self.nA = self.action_space.n
+        super(Karpathy, self).__init__(**usercfg)
+        self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
+        self.nA = self.env.action_space.n
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
             # timesteps_per_batch=10000,

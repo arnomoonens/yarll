@@ -8,9 +8,10 @@ from threading import Thread
 import signal
 
 from agents.Agent import Agent
+from agents.EnvRunner import EnvRunner
 from misc.utils import discount_rewards
 from misc.Reporter import Reporter
-from agents.knowledge_transfer import TaskLearner
+from agents.knowledge_transfer import TaskPolicy
 
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
@@ -19,6 +20,7 @@ class AKTThread(Thread):
         self.master = master
         self.config = self.master.config
         self.task_id = task_id
+        self.nA = env.action_space.n
         self.n_iter = n_iter
         self.start_at_iter = start_at_iter
         self.add_accum_grad = None  # To be filled in later
@@ -26,7 +28,7 @@ class AKTThread(Thread):
         self.build_networks()
         self.states = self.master.states
         self.session = self.master.session
-        self.task_learner = TaskLearner(env, self.action, self, **self.master.config)
+        self.task_runner = EnvRunner(env, TaskPolicy(self.action, self), self.master.config)
 
         # Write the summary of each task in a different directory
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task" + str(self.task_id)), self.master.session.graph)
@@ -35,12 +37,12 @@ class AKTThread(Thread):
 
     def build_networks(self):
         with tf.variable_scope("task{}".format(self.task_id)):
-            self.sparse_representation = tf.Variable(tf.truncated_normal([self.master.config["n_sparse_units"], self.master.nA], mean=0.0, stddev=0.02))
+            self.sparse_representation = tf.Variable(tf.truncated_normal([self.master.config["n_sparse_units"], self.nA], mean=0.0, stddev=0.02))
             self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
 
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.master.nA)), reduction_indices=[1])
+            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.nA)), reduction_indices=[1])
             eligibility = tf.log(good_probabilities + 1e-10) * self.master.advantage
             self.loss = -tf.reduce_sum(eligibility)
 
@@ -59,7 +61,7 @@ class AKTThread(Thread):
         while iteration < self.n_iter and not self.master.stop_requested:
             iteration += 1
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.task_learner.get_trajectories()
+            trajectories = self.task_runner.get_trajectories()
             total_n_trajectories += len(trajectories)
             all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
             # Compute discounted sums of rewards
@@ -95,7 +97,7 @@ class AKTThread(Thread):
         iteration = self.start_at_iter
         while iteration < self.n_iter and not self.master.stop_requested:  # Keep executing episodes until the master requests a stop (e.g. using SIGINT)
             iteration += 1
-            trajectory = self.task_learner.get_trajectory()
+            trajectory = self.task_runner.get_trajectory()
             reward = sum(trajectory["reward"])
             action_taken = trajectory["action"]
 
@@ -124,11 +126,10 @@ class AKTThread(Thread):
 class AsyncKnowledgeTransfer(Agent):
     """Asynchronous learner for variations of a task."""
     def __init__(self, envs, monitor_path, learning_method="REINFORCE", **usercfg):
-        super(AsyncKnowledgeTransfer, self).__init__(envs[0], **usercfg)
+        super(AsyncKnowledgeTransfer, self).__init__(**usercfg)
         self.envs = envs
         self.learning_method = learning_method
         self.monitor_path = monitor_path
-        self.nA = envs[0].action_space.n
         self.config.update(dict(
             timesteps_per_batch=10000,
             trajectories_per_batch=10,
@@ -194,7 +195,7 @@ class AsyncKnowledgeTransfer(Agent):
 
     def build_networks(self):
         with tf.variable_scope("shared"):
-            self.states = tf.placeholder(tf.float32, [None, self.nO], name="states")
+            self.states = tf.placeholder(tf.float32, [None] + list(self.envs[0].observation_space.shape), name="states")
             self.action_taken = tf.placeholder(tf.float32, name="action_taken")
             self.advantage = tf.placeholder(tf.float32, name="advantage")
 
@@ -208,8 +209,8 @@ class AsyncKnowledgeTransfer(Agent):
                     scope="L1")
             else:
                 self.L1 = self.states
-
-            self.knowledge_base = tf.Variable(tf.truncated_normal([self.nO, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
+            nO = self.envs[0].observation_space.shape[0]
+            self.knowledge_base = tf.Variable(tf.truncated_normal([nO, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
 
             self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 

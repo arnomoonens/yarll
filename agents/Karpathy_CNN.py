@@ -20,8 +20,8 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 class KarpathyCNN(Agent):
     """Karpathy policy gradient learner using a convolutional neural network"""
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        super(KarpathyCNN, self).__init__(env, **usercfg)
-        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
+        super(KarpathyCNN, self).__init__(**usercfg)
+        self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.nA = env.action_space.n
         self.monitor_path = monitor_path
         # Default configuration. Can be overwritten using keyword arguments.
@@ -118,7 +118,7 @@ class KarpathyCNN(Agent):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results
-        Note that this function returns more than the get_trajectory in the Learner class.
+        Note that this function returns more than the get_trajectory in the EnvRunner class.
         """
         state = preprocess_image(self.env.reset())
         prev_state = state

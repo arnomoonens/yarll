@@ -298,7 +298,7 @@ class A3CThreadContinuous(A3CThread):
 class A3C(Agent):
     """Asynchronous Advantage Actor Critic learner."""
     def __init__(self, env, monitor, monitor_path, video=True, **usercfg):
-        super(A3C, self).__init__(env)
+        super(A3C, self).__init__(**usercfg)
         self.env = env
         self.shared_counter = 0
         self.T = 0
@@ -318,6 +318,7 @@ class A3C(Agent):
             gradient_clip_value=40,
             n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
             T_max=5e5,
+            episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,
             save_model=False
         ))

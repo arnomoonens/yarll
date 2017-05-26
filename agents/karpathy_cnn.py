@@ -8,9 +8,9 @@ import logging
 from gym import wrappers
 # import gym_ple
 
-from agents.Agent import Agent
+from agents.agent import Agent
 from misc.utils import discount_rewards, preprocess_image
-from misc.Reporter import Reporter
+from misc.reporter import Reporter
 from misc.network_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
 logging.getLogger().setLevel("INFO")

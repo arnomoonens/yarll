@@ -5,9 +5,9 @@ import logging
 
 from gym import wrappers
 
-from agents.Agent import Agent
+from agents.agent import Agent
 from misc.utils import discount_rewards
-from misc.Reporter import Reporter
+from misc.reporter import Reporter
 
 logging.getLogger().setLevel("INFO")
 

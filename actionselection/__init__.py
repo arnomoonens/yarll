@@ -1,2 +1,2 @@
-from actionselection.CategoricalActionSelection import *
-from actionselection.ContinuousActionSelection import *
+from actionselection.categorical_action_selection import *
+from actionselection.continuous_action_selection import *

@@ -1,6 +1,6 @@
 # -*- coding: utf8 -*-
 
-from misc.Exceptions import ClassNotRegisteredError
+from misc.exceptions import ClassNotRegisteredError
 
 # Dictionary with names of algorithms as keys and a list of variants as values.
 # Each variant has its action space type (and later on observation space type to support CNN/RNN agents)

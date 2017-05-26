@@ -13,10 +13,10 @@ import tensorflow as tf
 from gym import wrappers
 # import gym_ple
 
-from agents.Agent import Agent
+from agents.agent import Agent
 from misc.utils import discount_rewards, preprocess_image
-from misc.Reporter import Reporter
-from agents.EnvRunner import EnvRunner
+from misc.reporter import Reporter
+from agents.env_runner import EnvRunner
 
 class REINFORCE(Agent):
     """

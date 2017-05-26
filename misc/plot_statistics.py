@@ -13,7 +13,7 @@ import logging
 from tensorflow.python.summary.event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
 
 from misc.utils import ge
-from misc.Exceptions import WrongArgumentsError
+from misc.exceptions import WrongArgumentsError
 
 import matplotlib
 gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']

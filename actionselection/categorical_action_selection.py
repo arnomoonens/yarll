@@ -1,7 +1,7 @@
 # -*- coding: utf8 -*-
 
 import numpy as np
-from actionselection.ActionSelection import ActionSelection
+from actionselection.action_selection import ActionSelection
 
 class CategoricalActionSelection(ActionSelection):
     pass

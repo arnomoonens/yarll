@@ -1,6 +1,6 @@
 # -*- coding: utf8 -*-
 
-from actionselection.ActionSelection import ActionSelection
+from actionselection.action_selection import ActionSelection
 import numpy as np
 
 class ContinuousActionSelection(ActionSelection):

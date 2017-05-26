@@ -7,10 +7,10 @@ import logging
 from threading import Thread
 import signal
 
-from agents.Agent import Agent
-from agents.EnvRunner import EnvRunner
+from agents.agent import Agent
+from agents.env_runner import EnvRunner
 from misc.utils import discount_rewards
-from misc.Reporter import Reporter
+from misc.reporter import Reporter
 from agents.knowledge_transfer import TaskPolicy
 
 class AKTThread(Thread):

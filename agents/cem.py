@@ -7,8 +7,8 @@ import numpy as np
 from gym import wrappers
 from gym.spaces import Discrete, Box
 
-from agents.Agent import Agent
-from misc.Exceptions import WrongShapeError
+from agents.agent import Agent
+from misc.exceptions import WrongShapeError
 
 # ================================================================
 # Policies

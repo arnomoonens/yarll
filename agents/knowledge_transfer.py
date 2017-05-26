@@ -4,10 +4,10 @@ import os
 import numpy as np
 import tensorflow as tf
 
-from agents.Agent import Agent
-from agents.EnvRunner import EnvRunner
+from agents.agent import Agent
+from agents.env_runner import EnvRunner
 from misc.utils import discount_rewards
-from misc.Reporter import Reporter
+from misc.reporter import Reporter
 from misc.network_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
 class TaskPolicy(object):

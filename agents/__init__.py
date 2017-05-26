@@ -1,15 +1,15 @@
 from agents.registration import register_agent, make_agent
 
 # All agents
-from agents.A2C import A2CDiscrete, A2CContinuous
-from agents.A3C import A3CDiscrete, A3CContinuous
+from agents.a2c import A2CDiscrete, A2CContinuous
+from agents.a3c import A3CDiscrete, A3CContinuous
 from agents.async_knowledge_transfer import AsyncKnowledgeTransfer
-from agents.CEM import CEM
-from agents.Karpathy import Karpathy
-# from agents.Karpathy_CNN import KPCNNLearner  # Not tested
+from agents.cem import CEM
+from agents.karpathy import Karpathy
+# from agents.karpathy_cnn import KPCNNLearner  # Not tested
 from agents.knowledge_transfer import KnowledgeTransfer
-from agents.REINFORCE import REINFORCEDiscrete, REINFORCEContinuous  # REINFORCEDiscreteCNN not tested
-from agents.SarsaFA import SarsaFA
+from agents.reinforce import REINFORCEDiscrete, REINFORCEContinuous  # REINFORCEDiscreteCNN not tested
+from agents.sarsa_fa import SarsaFA
 
 register_agent("A2C", "discrete", A2CDiscrete)
 register_agent("A2C", "continuous", A2CContinuous)

@@ -6,12 +6,12 @@ This code is part of my master thesis at the [VUB](http://www.vub.ac.be), Brusse
 
 ## Status
 Different algorithms have currently been implemented:
-- [Cross-Entropy Method](./agents/CEM.py)
-- [Sarsa with with function approximation and eligibility traces](./agents/SarsaFA.py)
-- [REINFORCE](./agents/REINFORCE.py) (convolutional neural network part has not been tested yet)
-- [Karpathy's policy gradient algorithm](./agents/Karpathy.py) ([version using convolutional neural networks](./agents/Karpathy_CNN.py) has not been tested yet)
-- [Advantage Actor Critic](./agents/A2C.py)
-- [Asynchronous Advantage Actor Critic (A3C)](./agents/A3C.py)
+- [Cross-Entropy Method](./agents/cem.py)
+- [Sarsa with with function approximation and eligibility traces](./agents/sarsa_fa.py)
+- [REINFORCE](./agents/reinforce.py) (convolutional neural network part has not been tested yet)
+- [Karpathy's policy gradient algorithm](./agents/karpathy.py) ([version using convolutional neural networks](./agents/karpathy_cnn.py) has not been tested yet)
+- [Advantage Actor Critic](./agents/a2c.py)
+- [Asynchronous Advantage Actor Critic (A3C)](./agents/a3c.py)
 - [(Sequential) knowledge transfer](./agents/knowledge_transfer.py)
 - [Asynchronous knowledge transfer](./agents/async_knowledge_transfer.py)
 

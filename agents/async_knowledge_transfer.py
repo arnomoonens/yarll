@@ -140,7 +140,7 @@ class AsyncKnowledgeTransfer(Agent):
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.005,
-            n_hidden_units=20,
+            n_hidden_units=10,
             repeat_n_actions=1,
             n_task_variations=3,
             n_sparse_units=10,
@@ -209,8 +209,7 @@ class AsyncKnowledgeTransfer(Agent):
                     scope="L1")
             else:
                 self.L1 = self.states
-            nO = self.envs[0].observation_space.shape[0]
-            self.knowledge_base = tf.Variable(tf.truncated_normal([nO, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
+            self.knowledge_base = tf.Variable(tf.truncated_normal([self.L1.get_shape()[-1].value, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
 
             self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 

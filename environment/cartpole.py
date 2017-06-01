@@ -9,20 +9,20 @@ class CartPole(Environment):
         {
             "name": "length",
             "type": "range",
-            "low": 0.2,
-            "high": 0.8
+            "low": 0.01,
+            "high": 5.0
         },
         {
             "name": "masspole",
             "type": "range",
-            "low": 0.1,
-            "high": 0.2
+            "low": 0.01,
+            "high": 5.0
         },
         {
             "name": "masscart",
             "type": "range",
-            "low": 0.5,
-            "high": 1.5
+            "low": 0.01,
+            "high": 5.0
         },
     ]
 

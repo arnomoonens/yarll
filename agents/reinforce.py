@@ -157,7 +157,7 @@ class REINFORCEDiscrete(REINFORCE):
             inputs=L1[0],
             num_outputs=self.env_runner.nA,
             activation_fn=tf.nn.softmax,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
@@ -190,14 +190,14 @@ class REINFORCEContinuous(REINFORCE):
             inputs=self.states,
             num_outputs=self.config["n_hidden_units"],
             activation_fn=tf.tanh,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
 
         mu = tf.contrib.layers.fully_connected(
             inputs=L1,
             num_outputs=1,
             activation_fn=None,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         mu = tf.squeeze(mu, name="mu")
 
@@ -205,13 +205,13 @@ class REINFORCEContinuous(REINFORCE):
             inputs=self.states,
             num_outputs=self.config["n_hidden_units"],
             activation_fn=tf.tanh,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         sigma = tf.contrib.layers.fully_connected(
             inputs=sigma_L1,
             num_outputs=1,
             activation_fn=None,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         sigma = tf.squeeze(sigma)
         sigma = tf.nn.softplus(sigma) + 1e-5
@@ -248,7 +248,7 @@ class REINFORCEContinuous(REINFORCE):
             inputs=L1,
             num_outputs=1,
             activation_fn=None,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         mu = tf.squeeze(mu, name="mu")
 
@@ -256,7 +256,7 @@ class REINFORCEContinuous(REINFORCE):
             inputs=L1,
             num_outputs=1,
             activation_fn=None,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         sigma = tf.squeeze(sigma)
         sigma = tf.nn.softplus(sigma) + 1e-5
@@ -328,7 +328,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
             inputs=self.L3,
             num_outputs=self.env_runner.nA,
             activation_fn=tf.nn.softmax,
-            weights_initializer=tf.random_normal_initializer(),
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])

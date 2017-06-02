@@ -42,7 +42,7 @@ class ActorNetworkDiscrete(object):
                 inputs=self.states,
                 num_outputs=self.n_hidden,
                 activation_fn=tf.tanh,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="L1")
 
@@ -50,7 +50,7 @@ class ActorNetworkDiscrete(object):
                 inputs=L1,
                 num_outputs=n_actions,
                 activation_fn=tf.nn.softmax,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="probs")
 
@@ -82,7 +82,7 @@ class ActorNetworkContinuous(object):
                 inputs=self.states,
                 num_outputs=self.n_hidden,
                 activation_fn=tf.tanh,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="mu_L1")
 
@@ -90,7 +90,7 @@ class ActorNetworkContinuous(object):
                 inputs=L1,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="mu")
             mu = tf.squeeze(mu, name="mu")
@@ -99,7 +99,7 @@ class ActorNetworkContinuous(object):
                 inputs=self.states,
                 num_outputs=self.n_hidden,
                 activation_fn=tf.tanh,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="sigma_L1")
 
@@ -107,7 +107,7 @@ class ActorNetworkContinuous(object):
                 inputs=sigma_L1,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="sigma")
             sigma = tf.squeeze(sigma)
@@ -138,7 +138,7 @@ class CriticNetwork(object):
                 inputs=self.states,
                 num_outputs=self.n_hidden,
                 activation_fn=tf.tanh,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="L1")
 
@@ -146,7 +146,7 @@ class CriticNetwork(object):
                 inputs=L1,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.random_normal_initializer(),
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer(),
                 scope="value")
 
@@ -317,7 +317,7 @@ class A3C(Agent):
             critic_n_hidden=20,
             gradient_clip_value=40,
             n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
-            T_max=5e5,
+            T_max=8e5,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,
             save_model=False

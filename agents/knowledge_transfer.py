@@ -74,7 +74,7 @@ class KnowledgeTransfer(Agent):
             else:
                 L1 = self.states
 
-            knowledge_base = tf.Variable(tf.truncated_normal([self.L1.get_shape()[-1].value, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
+            knowledge_base = tf.Variable(tf.truncated_normal([L1.get_shape()[-1].value, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
 
             self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="shared")
 

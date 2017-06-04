@@ -39,9 +39,10 @@ class KnowledgeTransfer(Agent):
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.005,
-            n_hidden_units=20,
+            n_hidden_units=10,
             repeat_n_actions=1,
-            n_sparse_units=10
+            n_sparse_units=10,
+            feature_extraction=False
         ))
         self.config.update(usercfg)
 
@@ -61,15 +62,19 @@ class KnowledgeTransfer(Agent):
             self.action_taken = tf.placeholder(tf.float32, name="action_taken")
             self.advantage = tf.placeholder(tf.float32, name="advantage")
 
-            L1 = tf.contrib.layers.fully_connected(
-                inputs=self.states,
-                num_outputs=self.config["n_hidden_units"],
-                activation_fn=tf.tanh,
-                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-                biases_initializer=tf.zeros_initializer(),
-                scope="L1")
+            L1 = None
+            if self.config["feature_extraction"]:
+                L1 = tf.contrib.layers.fully_connected(
+                    inputs=self.states,
+                    num_outputs=self.config["n_hidden_units"],
+                    activation_fn=tf.tanh,
+                    weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                    biases_initializer=tf.zeros_initializer(),
+                    scope="L1")
+            else:
+                L1 = self.states
 
-            knowledge_base = tf.Variable(tf.truncated_normal([self.config["n_hidden_units"], self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
+            knowledge_base = tf.Variable(tf.truncated_normal([self.L1.get_shape()[-1].value, self.config["n_sparse_units"]], mean=0.0, stddev=0.02), name="knowledge_base")
 
             self.shared_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="shared")
 

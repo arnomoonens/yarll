@@ -93,7 +93,7 @@ class KnowledgeTransfer(Agent):
             epsilon=self.config["epsilon"]
         )
         net_vars = self.shared_vars + sparse_representations
-        self.accum_grads = create_accumulative_gradients_op(net_vars, 1)
+        self.accum_grads = create_accumulative_gradients_op(net_vars, 0)
 
         self.loss = tf.placeholder("float", name="loss")
         summary_loss = tf.summary.scalar("Loss", self.loss)
@@ -122,14 +122,14 @@ class KnowledgeTransfer(Agent):
             all_vars = self.config["switch_at_iter"] is None or i != len(self.losses) - 1
             self.add_accum_grads.append(add_accumulative_gradients_op(
                 (self.shared_vars if all_vars else []) + [sparse_representations[i]],
-                self.accum_grads if all_vars else [self.accum_grads[-1]],
+                ([self.accum_grads[0]] if all_vars else []) + [self.accum_grads[i + 1]],
                 loss,
                 i
             ))
 
         self.apply_gradients = self.optimizer.apply_gradients(
             zip(self.accum_grads, net_vars))
-        self.reset_accum_grads = reset_accumulative_gradients_op(net_vars, self.accum_grads, 1)
+        self.reset_accum_grads = reset_accumulative_gradients_op(net_vars, self.accum_grads, 0)
 
         init = tf.global_variables_initializer()
 
@@ -166,7 +166,7 @@ class KnowledgeTransfer(Agent):
                 # Do policy gradient update step
                 episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
                 episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
-                results = self.session.run([self.losses[i], self.add_accum_grads[i]], feed_dict={
+                results = self.session.run([self.losses[i], self.add_accum_grads[i], self.accum_grads], feed_dict={
                     self.states: all_state,
                     self.action_taken: all_action,
                     self.advantage: all_adv

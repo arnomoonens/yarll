@@ -145,7 +145,7 @@ class KnowledgeTransfer(Agent):
             self.session.run([self.reset_accum_grads])
             for i, task_runner in enumerate(self.task_runners):
                 if self.config["switch_at_iter"] is not None:
-                    if iteration > self.config["switch_at_iter"] and i != (len(self.task_runners) - 1):
+                    if iteration >= self.config["switch_at_iter"] and i != (len(self.task_runners) - 1):
                         continue
                     elif iteration < self.config["switch_at_iter"] and i == len(self.task_runners) - 1:
                         continue

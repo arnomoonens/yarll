@@ -281,13 +281,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         usercfg["n_hidden_units"] = 200
         super(REINFORCEDiscreteCNN, self).__init__(env, monitor_path, video=video, **usercfg)
         self.config.update(usercfg)
-
-    def reset_env(self):
-        return preprocess_image(self.env.reset())
-
-    def step_env(self, action):
-        state, reward, done, info = self.env.step(action)
-        return preprocess_image(state), reward, done, info
+        self.env_runner.state_preprocessor = preprocess_image
 
     def build_network(self):
         image_size = 80
@@ -330,6 +324,8 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
+
+        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n

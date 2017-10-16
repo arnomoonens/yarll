@@ -4,7 +4,7 @@ import numpy as np
 
 class EnvRunner(object):
     """Environment runner using a policy"""
-    def __init__(self, env, policy, config):
+    def __init__(self, env, policy, config, state_preprocessor=None):
         super(EnvRunner, self).__init__()
         self.env = env
         self.ob_space = self.env.observation_space
@@ -20,6 +20,7 @@ class EnvRunner(object):
             repeat_n_actions=1
         )
         self.config.update(config)
+        self.state_preprocessor = state_preprocessor
 
     def choose_action(self, state):
         """Choose an action based on the current state in the environment."""
@@ -27,11 +28,15 @@ class EnvRunner(object):
 
     def reset_env(self):
         """Reset the current environment and get the initial state"""
-        return self.env.reset()
+        state = self.env.reset()
+        state = state if self.state_preprocessor is None else self.state_preprocessor(state)
+        return state
 
     def step_env(self, action):
         """Execute an action in the current environment."""
-        return self.env.step(action)
+        state, reward, done, info = self.env.step(action)
+        state = state if self.state_preprocessor is None else self.state_preprocessor(state)
+        return state, reward, done, info
 
     def get_trajectory(self, render=False):
         """
@@ -55,12 +60,13 @@ class EnvRunner(object):
                 break
             if render:
                 self.env.render()
-        return {"reward": np.array(rewards),
-                "state": np.array(states),
-                "action": np.array(actions),
-                "done": done,  # Tajectory ended because a terminal state was reached
-                "steps": i + 1
-                }
+        return {
+            "reward": np.array(rewards),
+            "state": np.array(states),
+            "action": np.array(actions),
+            "done": done,  # Tajectory ended because a terminal state was reached
+            "steps": i + 1
+        }
 
     def get_trajectories(self):
         """Generate trajectories until a certain number of timesteps or trajectories."""

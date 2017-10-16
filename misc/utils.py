@@ -32,6 +32,17 @@ def preprocess_image(img):
 def save_config(directory, config, envs):
     """Save the configuration of an agent to a file."""
     config["envs"] = envs
+    # Save git information if possible
+    try:
+        import pygit2
+        repo = pygit2.Repository(path.abspath(path.join(path.dirname(path.realpath(__file__)), "..")))
+        git = {
+            "branch": repo.head.name,
+            "commit": str(repo.head.target)
+        }
+        config["git"] = git
+    except:
+        pass
     with open(path.join(directory, "config.json"), "w") as outfile:
         json.dump(config, outfile)
 

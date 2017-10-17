@@ -9,3 +9,11 @@ class Agent(object):
     def learn(self):
         """Learn in the current environment."""
         raise NotImplementedError()
+
+    def new_trajectory(self):
+        """
+        Notification by the environment runner that
+        a new trajectory will be started
+        """
+
+        pass

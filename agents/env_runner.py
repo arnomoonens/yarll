@@ -44,6 +44,7 @@ class EnvRunner(object):
         Returns dictionary of rewards, states, actions, whether a terminal state is reached and steps.
         """
         state = self.reset_env()
+        self.policy.new_trajectory()
         states = []
         actions = []
         rewards = []

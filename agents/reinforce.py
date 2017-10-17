@@ -30,7 +30,7 @@ class REINFORCE(Agent):
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
             batch_update="timesteps",
-            timesteps_per_batch=10000,
+            timesteps_per_batch=1000,
             n_iter=100,
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
@@ -41,6 +41,7 @@ class REINFORCE(Agent):
             save_model=False
         ))
         self.config.update(usercfg)
+
         self.build_network()
         init = tf.global_variables_initializer()
         # Launch the graph.
@@ -101,17 +102,10 @@ class REINFORCE(Agent):
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 class REINFORCEDiscrete(REINFORCE):
-    def __init__(self, env, monitor_path, rnn=False, video=True, **usercfg):
-        self.rnn = rnn
+    def __init__(self, env, monitor_path, video=True, **usercfg):
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
-        if self.rnn:
-            self.build_network_rnn()
-        else:
-            self.build_network_normal()
-
-    def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
         self.states = tf.placeholder(tf.float32, [None, self.env_runner.nO], name="states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
@@ -140,7 +134,13 @@ class REINFORCEDiscrete(REINFORCE):
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
         self.train = optimizer.minimize(self.loss, name="train")
 
-    def build_network_rnn(self):
+
+class REINFORCEDiscreteRNN(REINFORCE):
+    def __init__(self, env, monitor_path, video=True, **usercfg):
+        super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
+
+    def build_network(self):
+        self.rnn_state = None
         self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
         # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
@@ -151,8 +151,12 @@ class REINFORCEDiscrete(REINFORCE):
         states = tf.expand_dims(flatten(self.states), [0])
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
-        L1, _ = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
-                                  sequence_length=n_states, dtype=tf.float32)
+        self.rnn_state_in = enc_cell.zero_state(1, tf.float32)
+        L1, self.rnn_state_out = tf.nn.dynamic_rnn(cell=enc_cell,
+                                                   inputs=states,
+                                                   sequence_length=n_states,
+                                                   initial_state=self.rnn_state_in,
+                                                   dtype=tf.float32)
         self.probs = tf.contrib.layers.fully_connected(
             inputs=L1[0],
             num_outputs=self.env_runner.nA,
@@ -168,6 +172,19 @@ class REINFORCEDiscrete(REINFORCE):
         self.summary_loss = loss
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
         self.train = optimizer.minimize(loss)
+
+    def new_trajectory(self):
+        self.rnn_state = None
+
+    def choose_action(self, state):
+        """Choose an action."""
+        feed_dict = {
+            self.states: [state]
+        }
+        if self.rnn_state is not None:
+            feed_dict[self.rnn_state_in] = self.rnn_state
+        action, self.rnn_state = self.session.run([self.action, self.rnn_state_out], feed_dict=feed_dict)
+        return action
 
 class REINFORCEContinuous(REINFORCE):
     def __init__(self, env, rnn, monitor_path, video=True, **usercfg):
@@ -293,7 +310,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         # Convolution layer 1
-        depth = 32
+        depth = 16
         patch_size = 4
         self.w1 = tf.Variable(tf.truncated_normal([patch_size, patch_size, image_depth, depth], stddev=0.01))
         self.b1 = tf.Variable(tf.zeros([depth]))
@@ -301,6 +318,8 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
         # Convolution layer 2
+        depth = 32
+        patch_size = 2
         self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
         self.b2 = tf.Variable(tf.zeros([depth]))
         self.L2 = tf.nn.relu(tf.nn.conv2d(self.L1, self.w2, strides=[1, 2, 2, 1], padding="SAME") + self.b2)

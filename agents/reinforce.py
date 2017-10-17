@@ -186,9 +186,70 @@ class REINFORCEDiscreteRNN(REINFORCE):
         action, self.rnn_state = self.session.run([self.action, self.rnn_state_out], feed_dict=feed_dict)
         return action
 
+class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
+    def __init__(self, env, monitor_path, video=True, **usercfg):
+        super(REINFORCEDiscreteCNNRNN, self).__init__(env, monitor_path, video=video, **usercfg)
+        self.env_runner.state_preprocessor = preprocess_image
+
+    def build_network(self):
+        self.rnn_state = None
+        # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
+        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
+        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
+
+        image_size = 80
+        image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
+
+        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
+        self.N = tf.placeholder(tf.int32, name="N")
+
+        # Convolution layer 1
+        depth = 16
+        patch_size = 4
+        self.w1 = tf.Variable(tf.truncated_normal([patch_size, patch_size, image_depth, depth], stddev=0.01))
+        self.b1 = tf.Variable(tf.zeros([depth]))
+        self.L1 = tf.nn.elu(tf.nn.conv2d(self.states, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
+
+        # Convolution layer 2
+        self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
+        self.b2 = tf.Variable(tf.zeros([depth]))
+        self.L2 = tf.nn.elu(tf.nn.conv2d(self.L1, self.w2, strides=[1, 2, 2, 1], padding="SAME") + self.b2)
+
+        # Flatten
+        shape = self.L2.get_shape().as_list()
+        reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+
+        n_states = tf.shape(self.states)[:1]
+
+        reshape = tf.expand_dims(flatten(reshape), [0])
+
+        enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
+        self.rnn_state_in = enc_cell.zero_state(1, tf.float32)
+        self.L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=enc_cell,
+                                                        inputs=reshape,
+                                                        sequence_length=n_states,
+                                                        initial_state=self.rnn_state_in,
+                                                        dtype=tf.float32)
+
+        self.probs = tf.contrib.layers.fully_connected(
+            inputs=self.L3[0],
+            num_outputs=self.env_runner.nA,
+            activation_fn=tf.nn.softmax,
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+            biases_initializer=tf.zeros_initializer())
+        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
+        eligibility = tf.log(good_probabilities) * self.adv_n
+        eligibility = tf.Print(eligibility, [eligibility], first_n=5)
+        loss = -tf.reduce_sum(eligibility)
+        self.summary_loss = loss
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        self.train = optimizer.minimize(loss)
+
 class REINFORCEContinuous(REINFORCE):
-    def __init__(self, env, rnn, monitor_path, video=True, **usercfg):
-        self.rnn = rnn
+    def __init__(self, env, RNN, monitor_path, video=True, **usercfg):
+        self.rnn = RNN
         super(REINFORCEContinuous, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
@@ -318,8 +379,6 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
 
         # Convolution layer 2
-        depth = 32
-        patch_size = 2
         self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
         self.b2 = tf.Variable(tf.zeros([depth]))
         self.L2 = tf.nn.relu(tf.nn.conv2d(self.L1, self.w2, strides=[1, 2, 2, 1], padding="SAME") + self.b2)

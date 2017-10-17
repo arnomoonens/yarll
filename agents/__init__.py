@@ -8,7 +8,7 @@ from agents.cem import CEM
 from agents.karpathy import Karpathy
 # from agents.karpathy_cnn import KPCNNLearner  # Not tested
 from agents.knowledge_transfer import KnowledgeTransfer
-from agents.reinforce import REINFORCEDiscrete, REINFORCEDiscreteCNN, REINFORCEContinuous, REINFORCEDiscreteRNN
+from agents.reinforce import REINFORCEDiscrete, REINFORCEDiscreteCNN, REINFORCEContinuous, REINFORCEDiscreteRNN, REINFORCEDiscreteCNNRNN
 from agents.sarsa_fa import SarsaFA
 
 register_agent("A2C", A2CDiscrete, state_dimensions="single", action_space="discrete")
@@ -23,5 +23,6 @@ register_agent("KnowledgeTransfer", KnowledgeTransfer, state_dimensions="single"
 register_agent("REINFORCE", REINFORCEDiscrete, state_dimensions="single", action_space="discrete")
 register_agent("REINFORCE", REINFORCEDiscreteRNN, state_dimensions="single", action_space="discrete", RNN=True)
 register_agent("REINFORCE", REINFORCEDiscreteCNN, state_dimensions="multi", action_space="discrete")
+register_agent("REINFORCE", REINFORCEDiscreteCNNRNN, state_dimensions="multi", action_space="discrete", RNN=True)
 register_agent("REINFORCE", REINFORCEContinuous, state_dimensions="single", action_space="continuous")
 register_agent("SarsaFA", SarsaFA, state_dimensions="single", action_space="discrete")

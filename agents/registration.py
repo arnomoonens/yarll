@@ -30,5 +30,9 @@ def make_agent(name, state_dimensions, action_space, RNN=False, **args):
                       agent_type["RNN"] == RNN))
         Agent = Agent["class"]
     except (KeyError, StopIteration):
-        raise ClassNotRegisteredError("The agent {} for state dimensionality {} and action space {} is not registered.".format(name, state_dimensions, action_space))
+        raise ClassNotRegisteredError("The agent {} for state dimensionality {}, action space {} and RNN={} is not registered.".format(
+            name,
+            state_dimensions,
+            action_space,
+            RNN))
     return Agent(**args)

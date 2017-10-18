@@ -222,12 +222,11 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         n_states = tf.shape(self.states)[:1]
 
         reshape = tf.expand_dims(flatten(reshape), [0])
-
-        enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
-        self.rnn_state_in = enc_cell.zero_state(1, tf.float32)
-        self.L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=enc_cell,
+        print(reshape)
+        self.enc_cell = tf.contrib.rnn.BasicLSTMCell(self.config["n_hidden_units"])
+        self.rnn_state_in = self.enc_cell.zero_state(1, tf.float32)
+        self.L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=self.enc_cell,
                                                         inputs=reshape,
-                                                        sequence_length=n_states,
                                                         initial_state=self.rnn_state_in,
                                                         dtype=tf.float32)
 
@@ -241,7 +240,6 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
 
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.adv_n
-        eligibility = tf.Print(eligibility, [eligibility], first_n=5)
         loss = -tf.reduce_sum(eligibility)
         self.summary_loss = loss
         optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)

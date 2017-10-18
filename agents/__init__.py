@@ -2,7 +2,7 @@ from agents.registration import register_agent, make_agent
 
 # All agents
 from agents.a2c import A2CDiscrete, A2CContinuous
-from agents.a3c import A3CDiscrete, A3CContinuous
+from agents.a3c import A3CDiscrete, A3CDiscreteCNN, A3CContinuous
 from agents.async_knowledge_transfer import AsyncKnowledgeTransfer
 from agents.cem import CEM
 from agents.karpathy import Karpathy
@@ -14,6 +14,7 @@ from agents.sarsa_fa import SarsaFA
 register_agent("A2C", A2CDiscrete, state_dimensions="single", action_space="discrete")
 register_agent("A2C", A2CContinuous, state_dimensions="single", action_space="continuous")
 register_agent("A3C", A3CDiscrete, state_dimensions="single", action_space="discrete")
+register_agent("A3C", A3CDiscreteCNN, state_dimensions="multi", action_space="discrete")
 register_agent("A3C", A3CContinuous, state_dimensions="single", action_space="continuous")
 register_agent("AsyncKnowledgeTransfer", AsyncKnowledgeTransfer, state_dimensions="single", action_space="discrete")
 register_agent("CEM", CEM, state_dimensions="single", action_space="discrete")

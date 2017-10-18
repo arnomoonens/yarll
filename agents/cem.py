@@ -92,12 +92,14 @@ class CEM(Agent):
         rew = self.do_episode(policy)
         return rew
 
-    def do_episode(self, policy):
+    def do_episode(self, policy, render=False):
         total_rew = 0
         ob = self.env.reset()
         for _ in range(self.config["num_steps"]):
             a = policy.act(ob)
-            (ob, reward, done, _info) = self.env.step(a)
+            ob, reward, done, _info = self.env.step(a)
+            if render:
+                self.env.render()
             total_rew += reward
             if done:
                 break
@@ -117,3 +119,4 @@ class CEM(Agent):
             self.theta_std = np.std(elite_thetas, axis=0)
             print("iteration {:d}. mean f: {:>8.3g}. max f: {:>8.3g}".format(iteration, np.mean(rewards), np.max(rewards)))
             self.do_episode(self.make_policy(self.theta_mean))
+        self.do_episode(self.make_policy(self.theta_mean), render=True)

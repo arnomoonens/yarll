@@ -15,6 +15,7 @@ from gym import wrappers
 
 from agents.agent import Agent
 from misc.utils import discount_rewards, preprocess_image
+from misc.network_ops import conv2d, mu_sigma_layer
 from misc.reporter import Reporter
 from agents.env_runner import EnvRunner
 
@@ -269,28 +270,7 @@ class REINFORCEContinuous(REINFORCE):
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
 
-        mu = tf.contrib.layers.fully_connected(
-            inputs=L1,
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-        mu = tf.squeeze(mu, name="mu")
-
-        sigma_L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.config["n_hidden_units"],
-            activation_fn=tf.tanh,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-        sigma = tf.contrib.layers.fully_connected(
-            inputs=sigma_L1,
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-        sigma = tf.squeeze(sigma)
-        sigma = tf.nn.softplus(sigma) + 1e-5
+        mu, sigma = mu_sigma_layer(L1, 1)
 
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample(1)
@@ -320,22 +300,7 @@ class REINFORCEContinuous(REINFORCE):
 
         L1 = L1[0]
 
-        mu = tf.contrib.layers.fully_connected(
-            inputs=L1,
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-        mu = tf.squeeze(mu, name="mu")
-
-        sigma = tf.contrib.layers.fully_connected(
-            inputs=L1,
-            num_outputs=1,
-            activation_fn=None,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-        sigma = tf.squeeze(sigma)
-        sigma = tf.nn.softplus(sigma) + 1e-5
+        mu, sigma = mu_sigma_layer(L1, 1)
 
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample(1)
@@ -368,18 +333,11 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         self.N = tf.placeholder(tf.int32, name="N")
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
-        # Convolution layer 1
-        depth = 16
-        patch_size = 4
-        self.w1 = tf.Variable(tf.truncated_normal([patch_size, patch_size, image_depth, depth], stddev=0.01))
-        self.b1 = tf.Variable(tf.zeros([depth]))
-        self.L1 = tf.nn.relu(tf.nn.conv2d(self.states, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
-        self.L1 = tf.nn.max_pool(self.L1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
+        x = self.states
+        # Convolution layers
+        for i in range(4):
+            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
 
-        # Convolution layer 2
-        self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
-        self.b2 = tf.Variable(tf.zeros([depth]))
-        self.L2 = tf.nn.relu(tf.nn.conv2d(self.L1, self.w2, strides=[1, 2, 2, 1], padding="SAME") + self.b2)
 
         # Flatten
         shape = self.L2.get_shape().as_list()

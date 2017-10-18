@@ -1,6 +1,62 @@
 # -*- coding: utf8 -*-
 
 import tensorflow as tf
+import numpy as np
+
+def flatten(x):
+    return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
+
+def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", dtype=tf.float32, collections=None):
+    """
+    2-dimensional convolutional layer.
+    Source: https://github.com/openai/universe-starter-agent/blob/a3fdfba297c8c24d62d3c53978fb6fb26f80e76e/model.py
+    """
+
+    with tf.variable_scope(name):
+        stride_shape = [1, stride[0], stride[1], 1]
+        filter_shape = [filter_size[0], filter_size[1], int(x.get_shape()[3]), num_filters]
+
+        # there are "num input feature maps * filter height * filter width"
+        # inputs to each hidden unit
+        fan_in = np.prod(filter_shape[:3])
+        # each unit in the lower layer receives a gradient from:
+        # "num output feature maps * filter height * filter width" /
+        #   pooling size
+        fan_out = np.prod(filter_shape[:2]) * num_filters
+        # initialize weights with random weights
+        w_bound = np.sqrt(6. / (fan_in + fan_out))
+
+        w = tf.get_variable("W", filter_shape, dtype, tf.random_uniform_initializer(-w_bound, w_bound),
+                            collections=collections)
+        b = tf.get_variable("b", [1, 1, 1, num_filters], initializer=tf.constant_initializer(0.0),
+                            collections=collections)
+        return tf.nn.conv2d(x, w, stride_shape, pad) + b
+
+def mu_sigma_layer(inputs, n_outputs):
+    """
+    Create a layer that makes a mu and sigma,
+    e.g. to use in continuous action spaces.
+    """
+
+    mu = tf.contrib.layers.fully_connected(
+        inputs=inputs,
+        num_outputs=n_outputs,
+        activation_fn=None,
+        weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+        biases_initializer=tf.zeros_initializer(),
+        scope="mu")
+    mu = tf.squeeze(mu, name="mu")
+
+    sigma = tf.contrib.layers.fully_connected(
+        inputs=inputs,
+        num_outputs=n_outputs,
+        activation_fn=None,
+        weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+        biases_initializer=tf.zeros_initializer(),
+        scope="sigma")
+    sigma = tf.squeeze(sigma)
+    sigma = tf.nn.softplus(sigma) + 1e-5
+    return mu, sigma
 
 def create_accumulative_gradients_op(net_vars, identifier=0):
     """Make an operation to create accumulative gradients"""

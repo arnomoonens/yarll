@@ -61,7 +61,7 @@ class CEM(Agent):
     """Cross-Entropy Method learner"""
     def __init__(self, env, monitor_path, video=True, **usercfg):
         super(CEM, self).__init__(**usercfg)
-        self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
+        self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.config.update(dict(
             num_steps=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),  # maximum length of episode
             n_iter=100,  # number of iterations of CEM

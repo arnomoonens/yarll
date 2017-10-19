@@ -204,12 +204,14 @@ class CriticNetwork(object):
 
 class A3CThread(Thread):
     """Single A3C learner thread."""
-    def __init__(self, master, thread_id, clip_gradients=False):
+    def __init__(self, master, thread_id, clip_gradients=True):
         super(A3CThread, self).__init__(name=thread_id)
         self.thread_id = thread_id
+        self.clip_gradients = clip_gradients
         self.env = make_environment(master.env_name)
         self.master = master
         self.config = master.config
+        self.state_preprocessor = None
         if thread_id == 0 and self.master.monitor:
             self.env = wrappers.Monitor(self.env, master.monitor_path, force=True, video_callable=(None if self.master.video else False))
 
@@ -219,23 +221,8 @@ class A3CThread(Thread):
         # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
 
-        optimizer = tf.train.AdamOptimizer(self.config["learning_rate"])
-
-        self.ac_sync_net = sync_networks_op(master.shared_ac_net, self.ac_net.vars, self.thread_id)
-        grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
-
-        if clip_gradients:
-            # Clipped gradients
-            gradient_clip_value = self.config["gradient_clip_value"]
-            processed_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in grads]
-        else:
-            # Non-clipped gradients: don't do anything
-            processed_grads = grads
-
-        # Apply gradients to the weights of the master network
-        # Only increase global_step counter once per update of the 2 networks
-        self.train_op = optimizer.apply_gradients(
-            zip(processed_grads, master.shared_ac_net.vars), global_step=master.global_step)
+        self.sync_net = self.create_sync_net_op()
+        self.train_op = self.make_trainer()
 
     def transform_actions(self, actions):
         return actions
@@ -251,11 +238,11 @@ class A3CThread(Thread):
 
     def get_trajectory(self, episode_max_length, render=False):
         """
-        Run agent-environment loop for one whole episode (trajectory)
+        Run agent-environment loop for one whole episode (trajectory).
         Return dictionary of results
         """
         state = self.env.reset()
-        state = preprocess_image(state)
+        state = state if self.state_preprocessor is None else self.state_preprocessor(state)
         self.rnn_state = None
         states = []
         actions = []
@@ -264,7 +251,7 @@ class A3CThread(Thread):
             action = self.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
             states.append(state)
             state, reward, done, _ = self.env.step(action)
-            state = preprocess_image(state)
+            state = state if self.state_preprocessor is None else self.state_preprocessor(state)
             reward = np.clip(reward, -1, 1)  # Clip reward
             actions.append(action)
             rewards.append(reward)
@@ -282,13 +269,7 @@ class A3CThread(Thread):
 
     def choose_action(self, state):
         """Choose an action."""
-        feed_dict = {
-            self.ac_net.states: [state]
-        }
-        if self.rnn_state is not None:
-            feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
-        action, self.rnn_state = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out], feed_dict=feed_dict)
-        return action
+        return self.master.session.run([self.actor_net.action], feed_dict={self.actor_net.states: [state]})[0]
 
     def run(self):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
@@ -297,27 +278,30 @@ class A3CThread(Thread):
         t = 1  # thread step counter
         while self.master.T < self.config["T_max"] and not self.master.stop_requested:
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
-            sess.run([self.ac_sync_net])
+            sess.run([self.sync_net])
             trajectory = self.get_trajectory(self.config["episode_max_length"])
             reward = sum(trajectory["reward"])
             trajectory["reward"][-1] = 0 if trajectory["done"] else self.get_critic_value(trajectory["state"][None, -1])[0]
             returns = discount_rewards(trajectory["reward"], self.config["gamma"])
-            fetches = [self.ac_net.summary_loss, self.train_op, self.master.global_step]
-            ac_net = self.ac_net
-            qw_new = self.master.session.run([ac_net.value], feed_dict={ac_net.states: trajectory["state"]})[0].flatten()
+            fetches = self.loss_fetches + [self.train_op, self.master.global_step]
+
+            qw_new = self.master.session.run([self.value], feed_dict={self.critic_states: trajectory["state"]})[0].flatten()
             all_action = self.transform_actions(trajectory["action"])  # Transform actions back to the output shape of the actor network (e.g. one-hot for discrete action space)
             results = sess.run(fetches, feed_dict={
-                ac_net.states: trajectory["state"],
-                ac_net.actions_taken: all_action,
-                ac_net.critic_feedback: qw_new,
-                ac_net.critic_rewards: returns,
-                ac_net.target: returns.reshape(-1, 1)
+                self.actor_states: trajectory["state"],
+                self.critic_states: trajectory["state"],
+                self.actions_taken: all_action,
+                self.critic_feedback: qw_new,
+                self.critic_rewards: returns,
+                self.critic_target: returns.reshape(-1, 1)
             })
-            summary = sess.run([self.master.summary_op], feed_dict={
-                               self.master.loss: results[0],
-                               self.master.reward: reward,
-                               self.master.episode_length: trajectory["steps"]
-                               })
+            feed_dict = {
+                self.master.reward: reward,
+                self.master.episode_length: trajectory["steps"]
+            }
+            feed_dict.update(dict(zip(self.master.losses, results)))
+            summary = sess.run([self.master.summary_op], feed_dict)
+
             self.writer.add_summary(summary[0], results[-1])
             self.writer.flush()
             t += 1
@@ -329,17 +313,63 @@ class A3CThreadDiscrete(A3CThread):
         super(A3CThreadDiscrete, self).__init__(master, thread_id)
 
     def build_networks(self):
-        self.actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.config["actor_n_hidden"], scope="local_actor_net")
-        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="local_critic_net")
+        self.actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.config["actor_n_hidden"], scope="thread{}".format(self.thread_id))
+        self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="thread{}".format(self.thread_id))
+        self.value = self.critic_net.value
+        self.actor_states = self.actor_net.states
+        self.critic_states = self.critic_net.states
+        self.actions_taken = self.actor_net.actions_taken
+        self.critic_feedback = self.actor_net.critic_feedback
+        self.critic_rewards = self.actor_net.critic_rewards
+        self.critic_target = self.critic_net.target
+        self.loss_fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss]
+
+    def create_sync_net_op(self):
+        actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
+        critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        return tf.group(actor_sync_net, critic_sync_net)
+
+    def make_trainer(self):
+        actor_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["actor_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+        critic_optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["critic_learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
+
+        self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
+        actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
+
+        self.critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        critic_grads = tf.gradients(self.critic_net.loss, self.critic_net.vars)
+
+        if self.clip_gradients:
+            # Clipped gradients
+            gradient_clip_value = self.config["gradient_clip_value"]
+            processed_actor_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in actor_grads]
+            processed_critic_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in critic_grads]
+        else:
+            # Non-clipped gradients: don't do anything
+            processed_actor_grads = actor_grads
+            processed_critic_grads = critic_grads
+
+        # Apply gradients to the weights of the master network
+        # Only increase global_step counter once per update of the 2 networks
+        apply_actor_gradients = actor_optimizer.apply_gradients(
+            zip(processed_actor_grads, self.master.shared_actor_net.vars), global_step=self.master.global_step)
+        apply_critic_gradients = critic_optimizer.apply_gradients(
+            zip(processed_critic_grads, self.master.shared_critic_net.vars))
+
+        return tf.group(apply_actor_gradients, apply_critic_gradients)
 
     def transform_actions(self, actions):
         possible_actions = np.arange(self.env.action_space.n)
         return (possible_actions == actions[:, None]).astype(np.float32)
 
-class A3CThreadDiscreteCNN(A3CThread):
+class A3CThreadDiscreteCNN(A3CThreadDiscrete):
     """A3CThread for a discrete action space."""
     def __init__(self, master, thread_id):
         super(A3CThreadDiscreteCNN, self).__init__(master, thread_id)
+        self.state_preprocessor = preprocess_image
+
+    def create_sync_net_op(self):
+        return sync_networks_op(self.master.shared_ac_net, self.ac_net.vars, self.thread_id)
 
     def build_networks(self):
         self.ac_net = ActorCriticNetworkDiscreteCNN(
@@ -348,10 +378,41 @@ class A3CThreadDiscreteCNN(A3CThread):
             self.config["actor_n_hidden"],
             scope="t{}_ac_net".format(self.thread_id),
             summary=False)
+        self.loss_fetches = [self.ac_net.summary_loss]
+        self.value = self.ac_net.value
+        self.actor_states = self.ac_net.states
+        self.critic_states = self.ac_net.states
+        self.actions_taken = self.ac_net.actions_taken
+        self.critic_feedback = self.ac_net.critic_feedback
+        self.critic_rewards = self.ac_net.critic_rewards
+        self.critic_target = self.ac_net.target
 
-    def transform_actions(self, actions):
-        possible_actions = np.arange(self.env.action_space.n)
-        return (possible_actions == actions[:, None]).astype(np.float32)
+    def make_trainer(self):
+        optimizer = tf.train.AdamOptimizer(self.config["learning_rate"])
+        grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
+
+        if self.clip_gradients:
+            # Clipped gradients
+            gradient_clip_value = self.config["gradient_clip_value"]
+            processed_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in grads]
+        else:
+            # Non-clipped gradients: don't do anything
+            processed_grads = grads
+
+        # Apply gradients to the weights of the master network
+        # Only increase global_step counter once per update of the 2 networks
+        return optimizer.apply_gradients(
+            zip(processed_grads, self.master.shared_ac_net.vars), global_step=self.master.global_step)
+
+    def choose_action(self, state):
+        """Choose an action."""
+        feed_dict = {
+            self.ac_net.states: [state]
+        }
+        if self.rnn_state is not None:
+            feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
+        action, self.rnn_state = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out], feed_dict=feed_dict)
+        return action
 
 class A3CThreadContinuous(A3CThread):
     """A3CThread for a continuous action space."""
@@ -361,6 +422,14 @@ class A3CThreadContinuous(A3CThread):
     def build_networks(self):
         self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.config["actor_n_hidden"], scope="local_actor_net")
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="local_critic_net")
+        self.loss_fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss]
+        self.value = self.critic_net.value
+        self.actor_states = self.actor_net.states
+        self.critic_states = self.critic_net.states
+        self.actions_taken = self.actor_net.actions_taken
+        self.critic_feedback = self.actor_net.critic_feedback
+        self.critic_rewards = self.actor_net.critic_rewards
+        self.critic_target = self.critic_net.target
 
 class A3C(Agent):
     """Asynchronous Advantage Actor Critic learner."""
@@ -379,10 +448,12 @@ class A3C(Agent):
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=1e-4,
+            actor_learning_rate=1e-4,
+            critic_learning_rate=1e-4,
             actor_n_hidden=20,
             critic_n_hidden=20,
             gradient_clip_value=40,
-            n_threads=2,  # Use as much threads as there are CPU threads on the current system
+            n_threads=min(16, multiprocessing.cpu_count()),  # Use as much threads as there are CPU threads on the current system
             T_max=8e5,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,
@@ -403,13 +474,12 @@ class A3C(Agent):
             log_device_placement=False,
             allow_soft_placement=True))
 
-        self.loss = tf.placeholder("float", name="loss")
-        loss_summary = tf.summary.scalar("loss", self.loss)
+        self.losses, loss_summaries = self.create_summary_losses()
         self.reward = tf.placeholder("float", name="reward")
         reward_summary = tf.summary.scalar("Reward", self.reward)
         self.episode_length = tf.placeholder("float", name="episode_length")
         episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length)
-        self.summary_op = tf.summary.merge([loss_summary, reward_summary, episode_length_summary])
+        self.summary_op = tf.summary.merge(loss_summaries + [reward_summary, episode_length_summary])
 
         self.jobs = []
         for thread_id in range(self.config["n_threads"]):
@@ -417,6 +487,9 @@ class A3C(Agent):
             self.jobs.append(job)
 
         self.session.run(tf.global_variables_initializer())
+
+    def make_thread(self, thread_id):
+        return self.thread_type(self, thread_id)
 
     def signal_handler(self, signal, frame):
         """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""
@@ -433,21 +506,35 @@ class A3C(Agent):
         if self.config["save_model"]:
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
+    def create_summary_losses(self):
+        self.actor_loss = tf.placeholder("float", name="actor_loss")
+        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss)
+        self.critic_loss = tf.placeholder("float", name="critic_loss")
+        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss)
+        return [self.actor_loss, self.critic_loss], [actor_loss_summary, critic_loss_summary]
+
 class A3CDiscrete(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
+        self.thread_type = A3CThreadDiscrete
         super(A3CDiscrete, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
-        self.shared_actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.config["actor_n_hidden"], scope="global_actor_net", summary=False)
-        self.shared_critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="global_critic_net", summary=False)
-
-    def make_thread(self, thread_id):
-        return A3CThreadDiscrete(self, thread_id)
+        self.shared_actor_net = ActorNetworkDiscrete(
+            self.env.observation_space.shape[0],
+            self.env.action_space.n,
+            self.config["actor_n_hidden"],
+            scope="global_actor_net",
+            summary=False)
+        self.shared_critic_net = CriticNetwork(self.env.observation_space.shape[0],
+                                               self.config["critic_n_hidden"],
+                                               scope="global_critic_net",
+                                               summary=False)
 
 class A3CDiscreteCNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
+        self.thread_type = A3CThreadDiscreteCNN
         super(A3CDiscreteCNN, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
@@ -458,17 +545,26 @@ class A3CDiscreteCNN(A3C):
             scope="global_ac_net",
             summary=False)
 
-    def make_thread(self, thread_id):
-        return A3CThreadDiscreteCNN(self, thread_id)
+    def create_summary_losses(self):
+        self.loss = tf.placeholder("float", name="loss")
+        loss_summary = tf.summary.scalar("loss", self.loss)
+        return [self.loss], [loss_summary]
 
 class A3CContinuous(A3C):
     """A3C for a continuous action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
+        self.thread_type = A3CThreadContinuous
         super(A3CContinuous, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
-        self.shared_actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.config["actor_n_hidden"], scope="global_actor_net", summary=False)
-        self.shared_critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="global_critic_net", summary=False)
-
-    def make_thread(self, thread_id):
-        return A3CThreadContinuous(self, thread_id)
+        self.shared_actor_net = ActorNetworkContinuous(
+            self.env.action_space,
+            self.env.observation_space.shape[0],
+            self.config["actor_n_hidden"],
+            scope="global_actor_net",
+            summary=False)
+        self.shared_critic_net = CriticNetwork(
+            self.env.observation_space.shape[0],
+            self.config["critic_n_hidden"],
+            scope="global_critic_net",
+            summary=False)

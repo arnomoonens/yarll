@@ -11,7 +11,6 @@ import os
 
 import tensorflow as tf
 from gym import wrappers
-# import gym_ple
 
 from agents.agent import Agent
 from misc.utils import discount_rewards, preprocess_image
@@ -44,6 +43,8 @@ class REINFORCE(Agent):
         self.config.update(usercfg)
 
         self.build_network()
+        self.make_trainer()
+
         init = tf.global_variables_initializer()
         # Launch the graph.
         self.session = tf.Session()
@@ -106,6 +107,14 @@ class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path, video=True, **usercfg):
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
+    def make_trainer(self):
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
+        eligibility = tf.log(good_probabilities) * self.adv_n
+        loss = -tf.reduce_sum(eligibility)
+        self.summary_loss = loss
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        self.train = optimizer.minimize(loss)
+
     def build_network(self):
         # Symbolic variables for observation, action, and advantage
         self.states = tf.placeholder(tf.float32, [None, self.env_runner.nO], name="states")  # Observation
@@ -128,15 +137,8 @@ class REINFORCEDiscrete(REINFORCE):
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.adv_n
-        self.loss = -tf.reduce_sum(eligibility, name="loss")
-        self.summary_loss = self.loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
-        self.train = optimizer.minimize(self.loss, name="train")
 
-
-class REINFORCEDiscreteRNN(REINFORCE):
+class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
 
@@ -165,14 +167,6 @@ class REINFORCEDiscreteRNN(REINFORCE):
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
-
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.adv_n
-        eligibility = tf.Print(eligibility, [eligibility], first_n=5)
-        loss = -tf.reduce_sum(eligibility)
-        self.summary_loss = loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
-        self.train = optimizer.minimize(loss)
 
     def new_trajectory(self):
         self.rnn_state = None
@@ -220,10 +214,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         shape = self.L2.get_shape().as_list()
         reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
-        n_states = tf.shape(self.states)[:1]
-
         reshape = tf.expand_dims(flatten(reshape), [0])
-        print(reshape)
         self.enc_cell = tf.contrib.rnn.BasicLSTMCell(self.config["n_hidden_units"])
         self.rnn_state_in = self.enc_cell.zero_state(1, tf.float32)
         self.L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=self.enc_cell,
@@ -239,13 +230,6 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
             biases_initializer=tf.zeros_initializer())
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.adv_n
-        loss = -tf.reduce_sum(eligibility)
-        self.summary_loss = loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
-        self.train = optimizer.minimize(loss)
-
 class REINFORCEContinuous(REINFORCE):
     def __init__(self, env, RNN, monitor_path, video=True, **usercfg):
         self.rnn = RNN
@@ -256,6 +240,15 @@ class REINFORCEContinuous(REINFORCE):
             self.build_network_rnn()
         else:
             self.build_network_normal()
+
+    def make_trainer(self):
+        loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
+        # Add cross entropy cost to encourage exploration
+        loss -= 1e-1 * self.normal_dist.entropy()
+        loss = tf.clip_by_value(loss, -1e10, 1e10)
+        self.summary_loss = tf.reduce_mean(loss)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
+        self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
     def build_network_normal(self):
         # Symbolic variables for observation, action, and advantage
@@ -275,14 +268,6 @@ class REINFORCEContinuous(REINFORCE):
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample(1)
         self.action = tf.clip_by_value(self.action, self.env.action_space.low[0], self.env.action_space.high[0])
-        loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
-        # Add cross entropy cost to encourage exploration
-        loss -= 1e-1 * self.normal_dist.entropy()
-        loss = tf.clip_by_value(loss, -1e10, 1e10)
-        self.summary_loss = tf.reduce_mean(loss)
-        # optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
-        self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
     def build_network_rnn(self):
         self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
@@ -305,14 +290,6 @@ class REINFORCEContinuous(REINFORCE):
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample(1)
         self.action = tf.clip_by_value(self.action, self.env.action_space.low[0], self.env.action_space.high[0])
-        loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
-        # Add cross entropy cost to encourage exploration
-        loss -= 1e-1 * self.normal_dist.entropy()
-        loss = tf.clip_by_value(loss, -1e10, 1e10)
-        self.summary_loss = tf.reduce_mean(loss)
-
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
-        self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
 
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
@@ -338,10 +315,9 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         for i in range(4):
             x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
 
-
         # Flatten
-        shape = self.L2.get_shape().as_list()
-        reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+        shape = x.get_shape().as_list()
+        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
         # Fully connected layer 1
         self.L3 = tf.contrib.layers.fully_connected(
@@ -360,10 +336,3 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
             biases_initializer=tf.zeros_initializer())
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
-
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.adv_n
-        loss = -tf.reduce_sum(eligibility)
-        self.summary_loss = loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
-        self.train = optimizer.minimize(loss)

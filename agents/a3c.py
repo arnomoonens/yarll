@@ -103,12 +103,14 @@ class ActorCriticNetworkDiscreteCNN(object):
                                                        dtype=tf.float32)
             L3 = tf.reshape(L3, [-1, lstm_size])
             # Fully connected for Actor
-            self.probs = tf.contrib.layers.fully_connected(
+            self.logits = tf.contrib.layers.fully_connected(
                 inputs=L3,
                 num_outputs=self.n_actions,
-                activation_fn=tf.nn.softmax,
+                activation_fn=None,
                 weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer())
+
+            self.probs = tf.nn.softmax(self.logits)
 
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
@@ -125,10 +127,13 @@ class ActorCriticNetworkDiscreteCNN(object):
             eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
                 * (self.critic_rewards - self.critic_feedback)
             self.actor_loss = -tf.reduce_sum(eligibility)
-            self.summary_actor_loss = self.actor_loss
 
-            self.critic_loss = tf.reduce_mean(tf.square(self.target - self.value))
-            self.summary_critic_loss = self.critic_loss
+            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(self.target - self.value))
+
+            log_probs = tf.nn.log_softmax(self.logits)
+            entropy = - tf.reduce_sum(self.probs * log_probs)
+            self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
+            self.summary_loss = self.critic_loss
 
             self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
@@ -214,31 +219,23 @@ class A3CThread(Thread):
         # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
 
-        actor_optimizer = tf.train.AdamOptimizer(self.config["actor_learning_rate"])
-        critic_optimizer = tf.train.AdamOptimizer(self.config["critic_learning_rate"])
+        optimizer = tf.train.AdamOptimizer(self.config["learning_rate"])
 
         self.ac_sync_net = sync_networks_op(master.shared_ac_net, self.ac_net.vars, self.thread_id)
-        actor_grads = tf.gradients(self.ac_net.actor_loss, self.ac_net.vars)
-        critic_grads = tf.gradients(self.ac_net.critic_loss, self.ac_net.vars)
+        grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
 
         if clip_gradients:
             # Clipped gradients
             gradient_clip_value = self.config["gradient_clip_value"]
-            processed_actor_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in actor_grads]
-            processed_critic_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in critic_grads]
+            processed_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in grads]
         else:
             # Non-clipped gradients: don't do anything
-            processed_actor_grads = actor_grads
-            processed_critic_grads = critic_grads
+            processed_grads = grads
 
         # Apply gradients to the weights of the master network
         # Only increase global_step counter once per update of the 2 networks
-        apply_actor_gradients = actor_optimizer.apply_gradients(
-            zip(processed_actor_grads, master.shared_ac_net.vars), global_step=master.global_step)
-        apply_critic_gradients = critic_optimizer.apply_gradients(
-            zip(processed_critic_grads, master.shared_ac_net.vars))
-
-        self.train_op = tf.group(apply_actor_gradients, apply_critic_gradients)
+        self.train_op = optimizer.apply_gradients(
+            zip(processed_grads, master.shared_ac_net.vars), global_step=master.global_step)
 
     def transform_actions(self, actions):
         return actions
@@ -305,7 +302,7 @@ class A3CThread(Thread):
             reward = sum(trajectory["reward"])
             trajectory["reward"][-1] = 0 if trajectory["done"] else self.get_critic_value(trajectory["state"][None, -1])[0]
             returns = discount_rewards(trajectory["reward"], self.config["gamma"])
-            fetches = [self.ac_net.summary_actor_loss, self.ac_net.summary_critic_loss, self.train_op, self.master.global_step]
+            fetches = [self.ac_net.summary_loss, self.train_op, self.master.global_step]
             ac_net = self.ac_net
             qw_new = self.master.session.run([ac_net.value], feed_dict={ac_net.states: trajectory["state"]})[0].flatten()
             all_action = self.transform_actions(trajectory["action"])  # Transform actions back to the output shape of the actor network (e.g. one-hot for discrete action space)
@@ -317,8 +314,7 @@ class A3CThread(Thread):
                 ac_net.target: returns.reshape(-1, 1)
             })
             summary = sess.run([self.master.summary_op], feed_dict={
-                               self.master.actor_loss: results[0],
-                               self.master.critic_loss: results[1],
+                               self.master.loss: results[0],
                                self.master.reward: reward,
                                self.master.episode_length: trajectory["steps"]
                                })
@@ -382,12 +378,11 @@ class A3C(Agent):
             gamma=0.99,  # Discount past rewards by a percentage
             decay=0.9,  # Decay of RMSProp optimizer
             epsilon=1e-9,  # Epsilon of RMSProp optimizer
-            actor_learning_rate=1e-4,
-            critic_learning_rate=1e-3,
+            learning_rate=1e-4,
             actor_n_hidden=20,
             critic_n_hidden=20,
             gradient_clip_value=40,
-            n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
+            n_threads=2,  # Use as much threads as there are CPU threads on the current system
             T_max=8e5,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,
@@ -408,15 +403,13 @@ class A3C(Agent):
             log_device_placement=False,
             allow_soft_placement=True))
 
-        self.critic_loss = tf.placeholder("float", name="critic_loss")
-        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss)
-        self.actor_loss = tf.placeholder("float", name="actor_loss")
-        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss)
+        self.loss = tf.placeholder("float", name="loss")
+        loss_summary = tf.summary.scalar("loss", self.loss)
         self.reward = tf.placeholder("float", name="reward")
         reward_summary = tf.summary.scalar("Reward", self.reward)
         self.episode_length = tf.placeholder("float", name="episode_length")
         episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length)
-        self.summary_op = tf.summary.merge([actor_loss_summary, critic_loss_summary, reward_summary, episode_length_summary])
+        self.summary_op = tf.summary.merge([loss_summary, reward_summary, episode_length_summary])
 
         self.jobs = []
         for thread_id in range(self.config["n_threads"]):

@@ -65,9 +65,75 @@ class ActorNetworkDiscrete(object):
             self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class ActorCriticNetworkDiscreteCNN(object):
-    """docstring for ActorNetworkDiscreteCNN"""
+    """docstring for ActorNetworkDiscreteCNNRNN"""
     def __init__(self, state_shape, n_actions, n_hidden, scope, summary=True):
         super(ActorCriticNetworkDiscreteCNN, self).__init__()
+        self.state_shape = state_shape
+        self.n_actions = n_actions
+        self.n_hidden = n_hidden
+        self.scope = scope
+        self.summary = summary
+
+        with tf.variable_scope("{}_actorcritic".format(scope)):
+            image_size = 80
+            image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
+
+            self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
+            self.N = tf.placeholder(tf.int32, name="N")
+            self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
+            self.target = tf.placeholder("float", name="critic_target")
+            self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
+            self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
+            self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
+
+            x = self.states
+            # Convolution layers
+            for i in range(4):
+                x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+
+            # Flatten
+            shape = x.get_shape().as_list()
+            reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+
+            # Fully connected for Actor
+            self.logits = tf.contrib.layers.fully_connected(
+                inputs=reshape,
+                num_outputs=self.n_actions,
+                activation_fn=None,
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                biases_initializer=tf.zeros_initializer())
+
+            self.probs = tf.nn.softmax(self.logits)
+
+            self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+
+            # Fully connected for Critic
+            self.value = tf.contrib.layers.fully_connected(
+                inputs=reshape,
+                num_outputs=1,
+                activation_fn=None,
+                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                biases_initializer=tf.zeros_initializer())
+
+            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, self.actions_taken), reduction_indices=[1])
+            # Replace probabilities that are zero with a small value and multiply by advantage:
+            eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
+                * (self.critic_rewards - self.critic_feedback)
+            self.actor_loss = -tf.reduce_sum(eligibility)
+
+            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(self.target - self.value))
+
+            log_probs = tf.nn.log_softmax(self.logits)
+            entropy = - tf.reduce_sum(self.probs * log_probs)
+            self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
+            self.summary_loss = self.critic_loss
+
+            self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
+class ActorCriticNetworkDiscreteCNNRNN(object):
+    """docstring for ActorNetworkDiscreteCNNRNN"""
+    def __init__(self, state_shape, n_actions, n_hidden, scope, summary=True):
+        super(ActorCriticNetworkDiscreteCNNRNN, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
         self.n_hidden = n_hidden
@@ -269,7 +335,7 @@ class A3CThread(Thread):
 
     def choose_action(self, state):
         """Choose an action."""
-        return self.master.session.run([self.actor_net.action], feed_dict={self.actor_net.states: [state]})[0]
+        return self.master.session.run([self.action], feed_dict={self.actor_states: [state]})[0]
 
     def run(self):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
@@ -315,6 +381,7 @@ class A3CThreadDiscrete(A3CThread):
     def build_networks(self):
         self.actor_net = ActorNetworkDiscrete(self.env.observation_space.shape[0], self.env.action_space.n, self.config["actor_n_hidden"], scope="thread{}".format(self.thread_id))
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="thread{}".format(self.thread_id))
+        self.action = self.actor_net.action
         self.value = self.critic_net.value
         self.actor_states = self.actor_net.states
         self.critic_states = self.critic_net.states
@@ -379,6 +446,7 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
             scope="t{}_ac_net".format(self.thread_id),
             summary=False)
         self.loss_fetches = [self.ac_net.summary_loss]
+        self.action = self.ac_net.action
         self.value = self.ac_net.value
         self.actor_states = self.ac_net.states
         self.critic_states = self.ac_net.states
@@ -404,6 +472,29 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         return optimizer.apply_gradients(
             zip(processed_grads, self.master.shared_ac_net.vars), global_step=self.master.global_step)
 
+class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
+    """A3CThread for a discrete action space."""
+    def __init__(self, master, thread_id):
+        super(A3CThreadDiscreteCNNRNN, self).__init__(master, thread_id)
+        self.state_preprocessor = preprocess_image
+
+    def build_networks(self):
+        self.ac_net = ActorCriticNetworkDiscreteCNNRNN(
+            self.env.observation_space.shape[0],
+            self.env.action_space.n,
+            self.config["actor_n_hidden"],
+            scope="t{}_ac_net".format(self.thread_id),
+            summary=False)
+        self.loss_fetches = [self.ac_net.summary_loss]
+        self.action = self.ac_net.action
+        self.value = self.ac_net.value
+        self.actor_states = self.ac_net.states
+        self.critic_states = self.ac_net.states
+        self.actions_taken = self.ac_net.actions_taken
+        self.critic_feedback = self.ac_net.critic_feedback
+        self.critic_rewards = self.ac_net.critic_rewards
+        self.critic_target = self.ac_net.target
+
     def choose_action(self, state):
         """Choose an action."""
         feed_dict = {
@@ -423,6 +514,7 @@ class A3CThreadContinuous(A3CThread):
         self.actor_net = ActorNetworkContinuous(self.env.action_space, self.env.observation_space.shape[0], self.config["actor_n_hidden"], scope="local_actor_net")
         self.critic_net = CriticNetwork(self.env.observation_space.shape[0], self.config["critic_n_hidden"], scope="local_critic_net")
         self.loss_fetches = [self.actor_net.summary_loss, self.critic_net.summary_loss]
+        self.action = self.actor_net.action
         self.value = self.critic_net.value
         self.actor_states = self.actor_net.states
         self.critic_states = self.critic_net.states
@@ -539,6 +631,25 @@ class A3CDiscreteCNN(A3C):
 
     def build_networks(self):
         self.shared_ac_net = ActorCriticNetworkDiscreteCNN(
+            state_shape=self.env.observation_space.shape[0],
+            n_actions=self.env.action_space.n,
+            n_hidden=self.config["actor_n_hidden"],
+            scope="global_ac_net",
+            summary=False)
+
+    def create_summary_losses(self):
+        self.loss = tf.placeholder("float", name="loss")
+        loss_summary = tf.summary.scalar("loss", self.loss)
+        return [self.loss], [loss_summary]
+
+class A3CDiscreteCNNRNN(A3CDiscreteCNN):
+    """A3C for a discrete action space"""
+    def __init__(self, env, monitor, monitor_path, **usercfg):
+        self.thread_type = A3CThreadDiscreteCNNRNN
+        super(A3CDiscreteCNNRNN, self).__init__(env, monitor, monitor_path, **usercfg)
+
+    def build_networks(self):
+        self.shared_ac_net = ActorCriticNetworkDiscreteCNNRNN(
             state_shape=self.env.observation_space.shape[0],
             n_actions=self.env.action_space.n,
             n_hidden=self.config["actor_n_hidden"],

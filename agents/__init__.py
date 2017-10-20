@@ -21,6 +21,12 @@ register_agent(name="A3C",
                action_space="discrete"
                )
 register_agent(name="A3C",
+               entry_point="agents.a3c:A3CDiscreteCNNRNN",
+               state_dimensions="multi",
+               action_space="discrete",
+               RNN=True
+               )
+register_agent(name="A3C",
                entry_point="agents.a3c:A3CContinuous",
                state_dimensions="single",
                action_space="continuous"

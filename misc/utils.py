@@ -5,6 +5,7 @@ from scipy import signal
 import numpy as np
 from os import path
 import json
+import tensorflow as tf
 
 def discount_rewards(x, gamma):
     """
@@ -59,3 +60,6 @@ def ge(minimum):
             raise argparse.ArgumentTypeError("{} must be an integer of at least 1.".format(value))
         return ivalue
     return f
+
+def flatten(x):
+    return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])

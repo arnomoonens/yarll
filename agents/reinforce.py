@@ -13,7 +13,7 @@ import tensorflow as tf
 from gym import wrappers
 
 from agents.agent import Agent
-from misc.utils import discount_rewards, preprocess_image
+from misc.utils import discount_rewards, preprocess_image, flatten
 from misc.network_ops import conv2d, mu_sigma_layer
 from misc.reporter import Reporter
 from agents.env_runner import EnvRunner
@@ -137,6 +137,48 @@ class REINFORCEDiscrete(REINFORCE):
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
+class REINFORCEDiscreteCNN(REINFORCEDiscrete):
+    def __init__(self, env, monitor_path, video=True, **usercfg):
+        usercfg["n_hidden_units"] = 200
+        super(REINFORCEDiscreteCNN, self).__init__(env, monitor_path, video=video, **usercfg)
+        self.config.update(usercfg)
+        self.env_runner.state_preprocessor = preprocess_image
+
+    def build_network(self):
+        image_size = 80
+        image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
+
+        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
+        self.a_n = tf.placeholder(tf.float32, name="a_n")
+        self.N = tf.placeholder(tf.int32, name="N")
+        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
+
+        x = self.states
+        # Convolution layers
+        for i in range(4):
+            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+
+        # Flatten
+        shape = x.get_shape().as_list()
+        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+
+        # Fully connected layer 1
+        self.L3 = tf.contrib.layers.fully_connected(
+            inputs=reshape,
+            num_outputs=self.config["n_hidden_units"],
+            activation_fn=tf.nn.relu,
+            weights_initializer=tf.random_normal_initializer(stddev=0.01),
+            biases_initializer=tf.zeros_initializer())
+
+        # Fully connected layer 2
+        self.probs = tf.contrib.layers.fully_connected(
+            inputs=self.L3,
+            num_outputs=self.env_runner.nA,
+            activation_fn=tf.nn.softmax,
+            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+            biases_initializer=tf.zeros_initializer())
+
+        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
@@ -188,7 +230,6 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
 
     def build_network(self):
         self.rnn_state = None
-        # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
@@ -198,21 +239,14 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
         self.N = tf.placeholder(tf.int32, name="N")
 
-        # Convolution layer 1
-        depth = 16
-        patch_size = 4
-        self.w1 = tf.Variable(tf.truncated_normal([patch_size, patch_size, image_depth, depth], stddev=0.01))
-        self.b1 = tf.Variable(tf.zeros([depth]))
-        self.L1 = tf.nn.elu(tf.nn.conv2d(self.states, self.w1, strides=[1, 2, 2, 1], padding="SAME") + self.b1)
-
-        # Convolution layer 2
-        self.w2 = tf.Variable(tf.truncated_normal([patch_size, patch_size, depth, depth], stddev=0.01))
-        self.b2 = tf.Variable(tf.zeros([depth]))
-        self.L2 = tf.nn.elu(tf.nn.conv2d(self.L1, self.w2, strides=[1, 2, 2, 1], padding="SAME") + self.b2)
+        x = self.states
+        # Convolution layers
+        for i in range(4):
+            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
 
         # Flatten
-        shape = self.L2.get_shape().as_list()
-        reshape = tf.reshape(self.L2, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+        shape = x.get_shape().as_list()
+        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
         reshape = tf.expand_dims(flatten(reshape), [0])
         self.enc_cell = tf.contrib.rnn.BasicLSTMCell(self.config["n_hidden_units"])
@@ -290,49 +324,3 @@ class REINFORCEContinuous(REINFORCE):
         self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample(1)
         self.action = tf.clip_by_value(self.action, self.env.action_space.low[0], self.env.action_space.high[0])
-
-def flatten(x):
-    return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
-
-class REINFORCEDiscreteCNN(REINFORCEDiscrete):
-    def __init__(self, env, monitor_path, video=True, **usercfg):
-        usercfg["n_hidden_units"] = 200
-        super(REINFORCEDiscreteCNN, self).__init__(env, monitor_path, video=video, **usercfg)
-        self.config.update(usercfg)
-        self.env_runner.state_preprocessor = preprocess_image
-
-    def build_network(self):
-        image_size = 80
-        image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
-
-        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
-        self.a_n = tf.placeholder(tf.float32, name="a_n")
-        self.N = tf.placeholder(tf.int32, name="N")
-        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
-
-        x = self.states
-        # Convolution layers
-        for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
-
-        # Flatten
-        shape = x.get_shape().as_list()
-        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
-
-        # Fully connected layer 1
-        self.L3 = tf.contrib.layers.fully_connected(
-            inputs=reshape,
-            num_outputs=self.config["n_hidden_units"],
-            activation_fn=tf.nn.relu,
-            weights_initializer=tf.random_normal_initializer(stddev=0.01),
-            biases_initializer=tf.zeros_initializer())
-
-        # Fully connected layer 2
-        self.probs = tf.contrib.layers.fully_connected(
-            inputs=self.L3,
-            num_outputs=self.env_runner.nA,
-            activation_fn=tf.nn.softmax,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")

@@ -81,10 +81,10 @@ class ActorCriticNetworkDiscreteCNN(object):
             self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
             self.N = tf.placeholder(tf.int32, name="N")
             self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
-            self.target = tf.placeholder("float", name="critic_target")
+            self.target = tf.placeholder("float", [None], name="critic_target")
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
             self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
-            self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
+            self.actions_taken = tf.placeholder(tf.float32, [None, n_actions], name="actions_taken")
 
             x = self.states
             # Convolution layers
@@ -115,16 +115,14 @@ class ActorCriticNetworkDiscreteCNN(object):
                 weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer())
 
-            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, self.actions_taken), reduction_indices=[1])
-            # Replace probabilities that are zero with a small value and multiply by advantage:
-            eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
-                * (self.critic_rewards - self.critic_feedback)
-            self.actor_loss = -tf.reduce_sum(eligibility)
+            log_probs = tf.log(self.logits)
+            td_diff = self.critic_rewards - self.critic_feedback
+            self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * td_diff)
 
-            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(self.target - self.value))
+            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(td_diff))
 
-            log_probs = tf.nn.log_softmax(self.logits)
-            entropy = - tf.reduce_sum(self.probs * log_probs)
+            entropy = - tf.reduce_sum(self.probs * tf.log(self.probs + 1e-8))
+
             self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
             self.summary_loss = self.critic_loss
 
@@ -147,7 +145,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
             self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
             self.N = tf.placeholder(tf.int32, name="N")
             self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
-            self.target = tf.placeholder("float", name="critic_target")
+            self.target = tf.placeholder("float", [None], name="critic_target")
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
             self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
             self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
@@ -188,16 +186,14 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
                 weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
                 biases_initializer=tf.zeros_initializer())
 
-            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, self.actions_taken), reduction_indices=[1])
-            # Replace probabilities that are zero with a small value and multiply by advantage:
-            eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
-                * (self.critic_rewards - self.critic_feedback)
-            self.actor_loss = -tf.reduce_sum(eligibility)
+            log_probs = tf.log(self.logits)
+            td_diff = self.critic_rewards - self.critic_feedback
+            self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * td_diff)
 
-            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(self.target - self.value))
+            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(td_diff))
 
-            log_probs = tf.nn.log_softmax(self.logits)
-            entropy = - tf.reduce_sum(self.probs * log_probs)
+            entropy = - tf.reduce_sum(self.probs * tf.log(self.probs + 1e-8))
+
             self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
             self.summary_loss = self.critic_loss
 
@@ -359,7 +355,7 @@ class A3CThread(Thread):
                 self.actions_taken: all_action,
                 self.critic_feedback: qw_new,
                 self.critic_rewards: returns,
-                self.critic_target: returns.reshape(-1, 1)
+                self.critic_target: returns
             })
             feed_dict = {
                 self.master.reward: reward,
@@ -459,7 +455,7 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         optimizer = tf.train.AdamOptimizer(self.config["learning_rate"])
         grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
 
-        if self.clip_gradients:
+        if False:
             # Clipped gradients
             gradient_clip_value = self.config["gradient_clip_value"]
             processed_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in grads]

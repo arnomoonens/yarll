@@ -13,7 +13,7 @@ from gym import wrappers
 from environment.registration import make_environment
 from agents.agent import Agent
 from misc.utils import discount_rewards, preprocess_image
-from misc.network_ops import sync_networks_op, conv2d, mu_sigma_layer, flatten
+from misc.network_ops import sync_networks_op, conv2d, mu_sigma_layer, flatten, normalized_columns_initializer
 
 logging.getLogger().setLevel("INFO")
 
@@ -100,7 +100,7 @@ class ActorCriticNetworkDiscreteCNN(object):
                 inputs=reshape,
                 num_outputs=self.n_actions,
                 activation_fn=None,
-                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                weights_initializer=normalized_columns_initializer(0.01),
                 biases_initializer=tf.zeros_initializer())
 
             self.probs = tf.nn.softmax(self.logits)
@@ -112,7 +112,7 @@ class ActorCriticNetworkDiscreteCNN(object):
                 inputs=reshape,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                weights_initializer=normalized_columns_initializer(1.0),
                 biases_initializer=tf.zeros_initializer())
 
             log_probs = tf.log(self.logits)
@@ -171,7 +171,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
                 inputs=L3,
                 num_outputs=self.n_actions,
                 activation_fn=None,
-                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                weights_initializer=normalized_columns_initializer(0.01),
                 biases_initializer=tf.zeros_initializer())
 
             self.probs = tf.nn.softmax(self.logits)
@@ -183,7 +183,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
                 inputs=L3,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+                weights_initializer=normalized_columns_initializer(1.0),
                 biases_initializer=tf.zeros_initializer())
 
             log_probs = tf.log(self.logits)

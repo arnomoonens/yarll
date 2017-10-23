@@ -6,6 +6,13 @@ import numpy as np
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
 
+def normalized_columns_initializer(std=1.0):
+    def _initializer(shape, dtype=None, partition_info=None):
+        out = np.random.randn(*shape).astype(np.float32)
+        out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
+        return tf.constant(out)
+    return _initializer
+
 def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", dtype=tf.float32, collections=None):
     """
     2-dimensional convolutional layer.

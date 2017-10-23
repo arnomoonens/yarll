@@ -10,7 +10,7 @@ import argparse
 import re
 import operator
 import logging
-from tensorflow.python.summary.event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
+from tensorboard.backend.event_processing.plugin_event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
 
 from misc.utils import ge
 from misc.exceptions import WrongArgumentsError
@@ -133,9 +133,9 @@ def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None, save_
 def tf_scalar_data(em):
     """Process scalar data of TensorFlow summaries."""
     runs = list(em.Runs().keys())
-    scalars = em.Runs()[runs[0]]["scalars"]  # Assumes that the scalars of every run are the same
+    scalars = em.Runs()[runs[0]]["tensors"]  # Assumes that the scalars of every run are the same
 
-    pattern = re.compile("task(\d+)$")
+    pattern = re.compile("\w+(\d+)$")
     data = {}
     for scalar in scalars:
         scalar_data = {}
@@ -146,8 +146,9 @@ def tf_scalar_data(em):
             else:
                 values = []
                 epochs = []
-                for s in em.Scalars(run, scalar):
-                    values.append(s.value)
+                accum = em.GetAccumulator(run)
+                for s in accum.Tensors(scalar):
+                    values.append(s.tensor_proto.float_val[0])
                     epochs.append(s.step)
                 scalar_data[task] = {
                     "epochs": epochs,

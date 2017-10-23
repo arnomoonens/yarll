@@ -638,7 +638,7 @@ class A3CDiscreteCNN(A3C):
         loss_summary = tf.summary.scalar("loss", self.loss)
         return [self.loss], [loss_summary]
 
-class A3CDiscreteCNNRNN(A3CDiscreteCNN):
+class A3CDiscreteCNNRNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
         self.thread_type = A3CThreadDiscreteCNNRNN

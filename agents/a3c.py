@@ -56,11 +56,8 @@ class ActorNetworkDiscrete(object):
 
             self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-            good_probabilities = tf.reduce_sum(tf.multiply(self.probs, self.actions_taken), reduction_indices=[1])
-            # Replace probabilities that are zero with a small value and multiply by advantage:
-            eligibility = tf.log(tf.where(tf.equal(good_probabilities, tf.fill(tf.shape(good_probabilities), 0.0)), tf.fill(tf.shape(good_probabilities), 1e-30), good_probabilities)) \
-                * (self.critic_rewards - self.critic_feedback)
-            self.loss = tf.negative(tf.reduce_mean(eligibility), name="loss")
+            self.loss = tf.negative(tf.reduce_sum(tf.reduce_sum(tf.log(self.probs) * self.actions_taken, [1]) * (self.critic_rewards - self.critic_feedback)), name="loss")
+
             self.summary_loss = self.loss  # Loss to show as a summary
             self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
@@ -115,7 +112,7 @@ class ActorCriticNetworkDiscreteCNN(object):
                 weights_initializer=normalized_columns_initializer(1.0),
                 biases_initializer=tf.zeros_initializer())
 
-            log_probs = tf.log(self.logits)
+            log_probs = tf.log(self.probs)
             td_diff = self.critic_rewards - self.critic_feedback
             self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * td_diff)
 
@@ -186,7 +183,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
                 weights_initializer=normalized_columns_initializer(1.0),
                 biases_initializer=tf.zeros_initializer())
 
-            log_probs = tf.log(self.logits)
+            log_probs = tf.log(self.probs)
             td_diff = self.critic_rewards - self.critic_feedback
             self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * td_diff)
 

@@ -549,8 +549,8 @@ class A3C(Agent):
 
         self.build_networks()
         if self.config["save_model"]:
-            tf.add_to_collection("action", self.shared_ac_net.action)
-            tf.add_to_collection("states", self.shared_ac_net.states)
+            tf.add_to_collection("action", self.action)
+            tf.add_to_collection("states", self.states)
             self.saver = tf.train.Saver()
 
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
@@ -611,6 +611,8 @@ class A3CDiscrete(A3C):
             self.config["actor_n_hidden"],
             scope="global_actor_net",
             summary=False)
+        self.states = self.shared_actor_net.states
+        self.action = self.shared_actor_net.action
         self.shared_critic_net = CriticNetwork(self.env.observation_space.shape[0],
                                                self.config["critic_n_hidden"],
                                                scope="global_critic_net",
@@ -629,6 +631,8 @@ class A3CDiscreteCNN(A3C):
             n_hidden=self.config["actor_n_hidden"],
             scope="global_ac_net",
             summary=False)
+        self.states = self.shared_ac_net.states
+        self.action = self.shared_ac_net.action
 
     def create_summary_losses(self):
         self.loss = tf.placeholder("float", name="loss")
@@ -640,6 +644,7 @@ class A3CDiscreteCNNRNN(A3C):
     def __init__(self, env, monitor, monitor_path, **usercfg):
         self.thread_type = A3CThreadDiscreteCNNRNN
         super(A3CDiscreteCNNRNN, self).__init__(env, monitor, monitor_path, **usercfg)
+        self.config["RNN"] = True
 
     def build_networks(self):
         self.shared_ac_net = ActorCriticNetworkDiscreteCNNRNN(
@@ -648,6 +653,8 @@ class A3CDiscreteCNNRNN(A3C):
             n_hidden=self.config["actor_n_hidden"],
             scope="global_ac_net",
             summary=False)
+        self.states = self.shared_ac_net.states
+        self.action = self.shared_ac_net.action
 
     def create_summary_losses(self):
         self.loss = tf.placeholder("float", name="loss")
@@ -667,6 +674,8 @@ class A3CContinuous(A3C):
             self.config["actor_n_hidden"],
             scope="global_actor_net",
             summary=False)
+        self.states = self.shared_actor_net.states
+        self.action = self.shared_actor_net.action
         self.shared_critic_net = CriticNetwork(
             self.env.observation_space.shape[0],
             self.config["critic_n_hidden"],

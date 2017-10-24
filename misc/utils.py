@@ -42,7 +42,7 @@ def save_config(directory, config, envs):
             "commit": str(repo.head.target)
         }
         config["git"] = git
-    except:
+    except ImportError:
         pass
     with open(path.join(directory, "config.json"), "w") as outfile:
         json.dump(config, outfile)

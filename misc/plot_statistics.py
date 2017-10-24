@@ -3,7 +3,6 @@
 
 import os
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 import json
 import argparse
@@ -12,10 +11,11 @@ import operator
 import logging
 from tensorboard.backend.event_processing.plugin_event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
 
-from misc.utils import ge
-from misc.exceptions import WrongArgumentsError
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from misc.utils import ge  # noqa
+from misc.exceptions import WrongArgumentsError  # noqa
 
-import matplotlib
+import matplotlib  # noqa
 gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
 for gui in gui_env:
     try:
@@ -134,7 +134,7 @@ def tf_scalar_data(em):
     """Process scalar data of TensorFlow summaries."""
     runs = list(em.Runs().keys())
     scalars = em.Runs()[runs[0]]["tensors"]  # Assumes that the scalars of every run are the same
-
+    print(em.Runs())
     pattern = re.compile("\w+(\d+)$")
     data = {}
     for scalar in scalars:

@@ -7,6 +7,9 @@ import numpy as np
 
 from environment import Environment
 from misc.exceptions import ClassNotRegisteredError
+from misc.utils import AtariRescale42x42
+from universe.wrappers import Unvectorize, Vectorize
+
 
 environment_registry = {}
 
@@ -18,9 +21,17 @@ def make_environment(name, **args):
     """Make an environment of a given name, possibly using extra arguments."""
     env = environment_registry.get(name, Environment)
     if name in environment_registry:
-        return env(**args)
+        env = env(**args)
     else:
-        return env(name, **args)
+        env = env(name, **args)
+    if "atari.atari_env" in env.unwrapped.__module__:
+        to_dict = env.to_dict
+        env = Vectorize(env)
+        env = AtariRescale42x42(env)
+        env = Unvectorize(env)
+        env.to_dict = to_dict
+    return env
+
 
 def make_environments(descriptions):
     """Make environments using a list of descriptions."""

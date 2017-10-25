@@ -5,6 +5,9 @@ from scipy import signal
 import numpy as np
 from os import path
 import json
+import cv2
+from gym.spaces.box import Box
+from universe import vectorized
 import tensorflow as tf
 
 def discount_rewards(x, gamma):
@@ -21,6 +24,28 @@ def rgb2gray(rgb):
     Uses the formula Y' = 0.299*R + 0.587*G + 0.114*B
     """
     return np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
+
+def _process_frame42(frame):
+    frame = frame[34:34 + 160, :160]
+    # Resize by half, then down to 42x42 (essentially mipmapping). If
+    # we resize directly we lose pixels that, when mapped to 42x42,
+    # aren't close enough to the pixel boundary.
+    frame = cv2.resize(frame, (80, 80))
+    frame = cv2.resize(frame, (42, 42))
+    frame = frame.mean(2)
+    frame = frame.astype(np.float32)
+    frame *= (1.0 / 255.0)
+    frame = np.reshape(frame, [42, 42, 1])
+    return frame
+
+class AtariRescale42x42(vectorized.ObservationWrapper):
+    def __init__(self, env=None):
+        super(AtariRescale42x42, self).__init__(env)
+        self.observation_space = Box(0.0, 1.0, [42, 42, 1])
+
+    def _observation(self, observation_n):
+        return [_process_frame42(observation) for observation in observation_n]
+
 
 def preprocess_image(img):
     """

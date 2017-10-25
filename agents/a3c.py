@@ -78,6 +78,7 @@ class ActorCriticNetworkDiscreteCNN(object):
             self.target = tf.placeholder("float", [None], name="critic_target")
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
             self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
+            self.adv = tf.placeholder(tf.float32, name="advantage")
             self.actions_taken = tf.placeholder(tf.float32, [None, n_actions], name="actions_taken")
 
             x = self.states
@@ -111,7 +112,7 @@ class ActorCriticNetworkDiscreteCNN(object):
 
             log_probs = tf.log(self.probs)
             td_diff = self.critic_rewards - self.critic_feedback
-            self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * td_diff)
+            self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
 
             self.critic_loss = 0.5 * tf.reduce_mean(tf.square(td_diff))
 
@@ -140,6 +141,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
             self.target = tf.placeholder("float", [None], name="critic_target")
             self.critic_feedback = tf.placeholder(tf.float32, name="critic_feedback")
             self.critic_rewards = tf.placeholder(tf.float32, name="critic_rewards")
+            self.adv = tf.placeholder(tf.float32, name="advantage")
             self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
 
             x = self.states
@@ -180,7 +182,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
 
             log_probs = tf.log(self.probs)
             td_diff = self.critic_rewards - self.critic_feedback
-            self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * td_diff)
+            self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
 
             self.critic_loss = 0.5 * tf.reduce_mean(tf.square(td_diff))
 
@@ -299,18 +301,21 @@ class A3CThread(Thread):
         states = []
         actions = []
         rewards = []
+        values = []
         for i in range(episode_max_length):
-            action = self.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
+            action, value = self.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
             states.append(state)
             state, reward, done, _ = self.env.step(action)
             reward = np.clip(reward, -1, 1)  # Clip reward
             actions.append(action)
+            values.append(value)
             rewards.append(reward)
             if done:
                 break
             if render:
                 self.env.render()
         return {
+            "value": np.array(values),
             "reward": np.array(rewards),
             "state": np.array(states),
             "action": np.array(actions),
@@ -320,7 +325,11 @@ class A3CThread(Thread):
 
     def choose_action(self, state):
         """Choose an action."""
-        return self.master.session.run([self.action], feed_dict={self.actor_states: [state]})[0]
+        feed_dict = {
+            self.actor_states: [state],
+            self.critic_states: [state]
+        }
+        return self.master.session.run([self.action, self.value], feed_dict=feed_dict)
 
     def run(self):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
@@ -334,6 +343,9 @@ class A3CThread(Thread):
             reward = sum(trajectory["reward"])
             trajectory["reward"][-1] = 0 if trajectory["done"] else self.get_critic_value(trajectory["state"][None, -1])[0]
             returns = discount_rewards(trajectory["reward"], self.config["gamma"])
+
+            delta_t = trajectory["reward"] + self.config["gamma"] * trajectory["value"][1:] - trajectory["value"][:-1]
+            batch_adv = discount_rewards(delta_t, self.config["gamma"])
             fetches = self.loss_fetches + [self.train_op, self.master.global_step]
 
             qw_new = self.master.session.run([self.value], feed_dict={self.critic_states: trajectory["state"]})[0].flatten()
@@ -344,7 +356,8 @@ class A3CThread(Thread):
                 self.actions_taken: all_action,
                 self.critic_feedback: qw_new,
                 self.critic_rewards: returns,
-                self.critic_target: returns
+                self.critic_target: returns,
+                self.adv: batch_adv
             })
             feed_dict = {
                 self.master.reward: reward,
@@ -438,9 +451,10 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         self.critic_feedback = self.ac_net.critic_feedback
         self.critic_rewards = self.ac_net.critic_rewards
         self.critic_target = self.ac_net.target
+        self.adv = self.ac_net.adv
 
     def make_trainer(self):
-        optimizer = tf.train.AdamOptimizer(self.config["learning_rate"])
+        optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="t{}_optim".format(self.thread_id))
         grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
 
         if False:
@@ -477,6 +491,7 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         self.critic_feedback = self.ac_net.critic_feedback
         self.critic_rewards = self.ac_net.critic_rewards
         self.critic_target = self.ac_net.target
+        self.adv = self.ac_net.adv
 
     def choose_action(self, state):
         """Choose an action."""
@@ -485,8 +500,8 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         }
         if self.rnn_state is not None:
             feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
-        action, self.rnn_state = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out], feed_dict=feed_dict)
-        return action
+        action, self.rnn_state, value = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out, self.value], feed_dict=feed_dict)
+        return action, value
 
 class A3CThreadContinuous(A3CThread):
     """A3CThread for a continuous action space."""

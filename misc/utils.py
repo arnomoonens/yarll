@@ -63,8 +63,9 @@ def save_config(directory, config, envs):
         import pygit2
         repo = pygit2.Repository(path.abspath(path.join(path.dirname(path.realpath(__file__)), "..")))
         git = {
-            "branch": repo.head.name,
-            "commit": str(repo.head.target)
+            "head": repo.head.shorthand,
+            "commit": str(repo.head.target),
+            "message": repo.head.get_object().message
         }
         config["git"] = git
     except ImportError:

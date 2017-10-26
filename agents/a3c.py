@@ -111,10 +111,9 @@ class ActorCriticNetworkDiscreteCNN(object):
                 biases_initializer=tf.zeros_initializer())
 
             log_probs = tf.log(self.probs)
-            td_diff = self.critic_rewards - self.critic_feedback
             self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
 
-            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(td_diff))
+            self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.critic_feedback))
 
             entropy = - tf.reduce_sum(self.probs * tf.log(self.probs + 1e-8))
 
@@ -181,10 +180,9 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
                 biases_initializer=tf.zeros_initializer())
 
             log_probs = tf.log(self.probs)
-            td_diff = self.critic_rewards - self.critic_feedback
             self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
 
-            self.critic_loss = 0.5 * tf.reduce_sum(tf.square(td_diff))
+            self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.critic_feedback))
 
             entropy = - tf.reduce_sum(self.probs * tf.log(self.probs + 1e-8))
 
@@ -348,13 +346,12 @@ class A3CThread(Thread):
             batch_adv = discount_rewards(delta_t, self.config["gamma"])
             fetches = self.loss_fetches + [self.train_op, self.master.global_step]
 
-            qw_new = self.master.session.run([self.value], feed_dict={self.critic_states: trajectory["state"]})[0].flatten()
             all_action = self.transform_actions(trajectory["action"])  # Transform actions back to the output shape of the actor network (e.g. one-hot for discrete action space)
             results = sess.run(fetches, feed_dict={
                 self.actor_states: trajectory["state"],
                 self.critic_states: trajectory["state"],
                 self.actions_taken: all_action,
-                self.critic_feedback: qw_new,
+                self.critic_feedback: returns[:-1],
                 self.critic_rewards: returns,
                 self.critic_target: returns,
                 self.adv: batch_adv

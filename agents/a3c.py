@@ -454,18 +454,12 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="t{}_optim".format(self.thread_id))
         grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
 
-        if False:
-            # Clipped gradients
-            gradient_clip_value = self.config["gradient_clip_value"]
-            processed_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in grads]
-        else:
-            # Non-clipped gradients: don't do anything
-            processed_grads = grads
+        grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         # Apply gradients to the weights of the master network
         # Only increase global_step counter once per update of the 2 networks
         return optimizer.apply_gradients(
-            zip(processed_grads, self.master.shared_ac_net.vars), global_step=self.master.global_step)
+            zip(grads, self.master.shared_ac_net.vars), global_step=self.master.global_step)
 
 class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
     """A3CThread for a discrete action space."""

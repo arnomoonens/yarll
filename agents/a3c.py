@@ -184,7 +184,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
             td_diff = self.critic_rewards - self.critic_feedback
             self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
 
-            self.critic_loss = 0.5 * tf.reduce_mean(tf.square(td_diff))
+            self.critic_loss = 0.5 * tf.reduce_sum(tf.square(td_diff))
 
             entropy = - tf.reduce_sum(self.probs * tf.log(self.probs + 1e-8))
 
@@ -543,7 +543,7 @@ class A3C(Agent):
             actor_n_hidden=20,
             critic_n_hidden=20,
             gradient_clip_value=40,
-            n_threads=min(16, multiprocessing.cpu_count()),  # Use as much threads as there are CPU threads on the current system
+            n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
             T_max=8e5,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,

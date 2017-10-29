@@ -13,6 +13,11 @@ def normalized_columns_initializer(std=1.0):
         return tf.constant(out)
     return _initializer
 
+def linear(x, size, name, initializer=None, bias_init=0):
+    w = tf.get_variable(name + "/w", [x.get_shape()[1], size], initializer=initializer)
+    b = tf.get_variable(name + "/b", [size], initializer=tf.constant_initializer(bias_init))
+    return tf.matmul(x, w) + b
+
 def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", dtype=tf.float32, collections=None):
     """
     2-dimensional convolutional layer.

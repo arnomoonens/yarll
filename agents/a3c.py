@@ -322,10 +322,11 @@ class A3CThread(Thread):
                 self.master.episode_length: trajectory["steps"]
             })
 
+            n_states = states.shape[0]
             summary = sess.run([self.master.summary_op], feed_dict={
-                               self.master.loss: results[1],
-                               self.master.actor_loss: results[2],
-                               self.master.critic_loss: results[3],
+                               self.master.loss: results[1] / n_states,
+                               self.master.actor_loss: results[2] / n_states,
+                               self.master.critic_loss: results[3] / n_states,
                                self.master.reward: sum(trajectory["reward"]),
                                self.master.episode_length: trajectory["steps"]
                                })

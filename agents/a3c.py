@@ -278,6 +278,7 @@ class RunnerThread(threading.Thread):
         self.policy = policy
         self.n_local_steps = n_local_steps
         self.render = render
+        self.stop_requested = False
 
         self.queue = queue.Queue(5)
 
@@ -291,7 +292,7 @@ class RunnerThread(threading.Thread):
 
     def _run(self):
         trajectory_provider = env_runner(self.env, self.policy, self.n_local_steps, self.render)
-        while True:
+        while not self.stop_requested:
             # the timeout variable exists because apparently, if one worker dies, the other workers
             # won't die with it, unless the timeout is set to some large number.  This is an empirical
             # observation.
@@ -392,6 +393,7 @@ class A3CThread(threading.Thread):
             self.writer.flush()
             t += 1
             self.master.T += trajectory.steps
+        self.runner.stop_requested = True
 
 class A3CThreadDiscrete(A3CThread):
     """A3CThread for a discrete action space."""

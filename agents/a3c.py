@@ -244,11 +244,13 @@ class Trajectory(object):
         self.terminal = other.terminal
         self.steps += other.steps
 
-def env_runner(env, policy, n_steps, render=False):
+def env_runner(env, policy, n_steps, render=False, summary_writer=None):
     """
     Run agent-environment loop for maximally n_steps.
     Yield dictionary of results.
     """
+    episode_steps = 0
+    episode_reward = 0
     state = env.reset()
     policy.rnn_state = None
     timestep_limit = env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')
@@ -259,8 +261,18 @@ def env_runner(env, policy, n_steps, render=False):
         for i in range(n_steps):
             action, value = policy.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
             state, reward, terminal, _ = env.step(policy.get_env_action(action))
+            episode_steps += 1
+            episode_reward += reward
             trajectory.add(state, action, reward, value, terminal)
             if terminal or trajectory.steps >= timestep_limit:
+                if summary_writer is not None:
+                    summary = tf.Summary()
+                    summary.value.add(tag="global/Episode_length", simple_value=float(episode_steps))
+                    summary.value.add(tag="global/Reward", simple_value=float(episode_reward))
+                    summary_writer.add_summary(summary, policy.master.global_step.eval())
+                    summary_writer.flush()
+                episode_steps = 0
+                episode_reward = 0
                 state = env.reset()
                 break
             if render:
@@ -272,7 +284,7 @@ class RunnerThread(threading.Thread):
     Thread that collects trajectories from the environment
     and puts them on a queue.
     """
-    def __init__(self, env, policy, n_local_steps, render):
+    def __init__(self, env, policy, n_local_steps, render=False):
         super(RunnerThread, self).__init__()
         self.env = env
         self.policy = policy
@@ -282,8 +294,9 @@ class RunnerThread(threading.Thread):
 
         self.queue = queue.Queue(5)
 
-    def start_runner(self, sess):
+    def start_runner(self, sess, summary_writer):
         self.sess = sess
+        self.summary_writer = summary_writer
         self.start()
 
     def run(self):
@@ -291,7 +304,7 @@ class RunnerThread(threading.Thread):
             self._run()
 
     def _run(self):
-        trajectory_provider = env_runner(self.env, self.policy, self.n_local_steps, self.render)
+        trajectory_provider = env_runner(self.env, self.policy, self.n_local_steps, self.render, self.summary_writer)
         while not self.stop_requested:
             # the timeout variable exists because apparently, if one worker dies, the other workers
             # won't die with it, unless the timeout is set to some large number.  This is an empirical
@@ -322,9 +335,6 @@ class A3CThread(threading.Thread):
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
 
         self.runner = RunnerThread(self.env, self, 20, thread_id == 0 and self.master.video)
-
-    def transform_actions(self, actions):
-        return actions
 
     def get_critic_value(self, states):
         return self.master.session.run(self.value, feed_dict={self.critic_states: states})
@@ -358,7 +368,7 @@ class A3CThread(threading.Thread):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
         # Assume thread-specific parameter vectors θ' and θ'v
         sess = self.master.session
-        self.runner.start_runner(sess)
+        self.runner.start_runner(sess, self.writer)
         t = 1  # thread step counter
         while self.master.T < self.config["T_max"] and not self.master.stop_requested:
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
@@ -383,8 +393,8 @@ class A3CThread(threading.Thread):
             })
             n_states = states.shape[0]
             feed_dict = {
-                self.master.reward: sum(trajectory.rewards),
-                self.master.episode_length: trajectory.steps
+                # self.master.reward: sum(trajectory.rewards),
+                # self.master.episode_length: trajectory.steps
             }
             losses = zip(self.master.losses, map(lambda x: x / n_states, results))
             feed_dict.update(losses)
@@ -444,10 +454,6 @@ class A3CThreadDiscrete(A3CThread):
             zip(processed_critic_grads, self.master.shared_critic_net.vars))
 
         return tf.group(apply_actor_gradients, apply_critic_gradients)
-
-    def transform_actions(self, actions):
-        possible_actions = np.arange(self.env.action_space.n)
-        return (possible_actions == actions[:, None]).astype(np.float32)
 
 class A3CThreadDiscreteCNN(A3CThreadDiscrete):
     """A3CThread for a discrete action space."""
@@ -611,23 +617,24 @@ class A3C(Agent):
         self.config.update(usercfg)
         self.stop_requested = False
 
-        self.build_networks()
-
-        if self.config["save_model"]:
-            tf.add_to_collection("action", self.action)
-            tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
-
         self.session = tf.Session(config=tf.ConfigProto(
             log_device_placement=False,
             allow_soft_placement=True))
 
-        self.losses, loss_summaries = self.create_summary_losses()
-        self.reward = tf.placeholder("float", name="reward")
-        reward_summary = tf.summary.scalar("Reward", self.reward)
-        self.episode_length = tf.placeholder("float", name="episode_length")
-        episode_length_summary = tf.summary.scalar("Episode_length", self.episode_length)
-        self.summary_op = tf.summary.merge(loss_summaries + [reward_summary, episode_length_summary])
+        with tf.variable_scope("global"):
+            self.build_networks()
+
+            if self.config["save_model"]:
+                tf.add_to_collection("action", self.action)
+                tf.add_to_collection("states", self.states)
+                self.saver = tf.train.Saver()
+
+            self.losses, loss_summaries = self.create_summary_losses()
+            self.reward = tf.placeholder("float", name="reward")
+            tf.summary.scalar("Reward", self.reward)
+            self.episode_length = tf.placeholder("float", name="episode_length")
+            tf.summary.scalar("Episode_length", self.episode_length)
+            self.summary_op = tf.summary.merge(loss_summaries)
 
         self.jobs = []
         for thread_id in range(self.config["n_threads"]):
@@ -741,15 +748,14 @@ class A3CContinuous(A3C):
         super(A3CContinuous, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
-        with tf.variable_scope("global"):
-            self.shared_actor_net = ActorNetworkContinuous(
-                self.env.action_space,
-                list(self.env.observation_space.shape),
-                self.config["actor_n_hidden"],
-                summary=False)
-            self.states = self.shared_actor_net.states
-            self.action = self.shared_actor_net.action
-            self.shared_critic_net = CriticNetwork(list(self.env.observation_space.shape),
-                                                   self.config["critic_n_hidden"],
-                                                   summary=False)
-            self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
+        self.shared_actor_net = ActorNetworkContinuous(
+            self.env.action_space,
+            list(self.env.observation_space.shape),
+            self.config["actor_n_hidden"],
+            summary=False)
+        self.states = self.shared_actor_net.states
+        self.action = self.shared_actor_net.action
+        self.shared_critic_net = CriticNetwork(list(self.env.observation_space.shape),
+                                               self.config["critic_n_hidden"],
+                                               summary=False)
+        self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)

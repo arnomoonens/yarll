@@ -260,10 +260,11 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
 
         for i in range(n_steps):
             action, value = policy.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
-            state, reward, terminal, _ = env.step(policy.get_env_action(action))
+            new_state, reward, terminal, _ = env.step(policy.get_env_action(action))
             episode_steps += 1
             episode_reward += reward
             trajectory.add(state, action, reward, value, terminal)
+            state = new_state
             if terminal or episode_steps >= timestep_limit:
                 if episode_steps >= timestep_limit or not env.metadata.get('semantics.autoreset'):
                     state = env.reset()
@@ -388,9 +389,7 @@ class A3CThread(threading.Thread):
                 self.critic_states: states,
                 self.actions_taken: np.asarray(trajectory.actions),
                 self.adv: batch_adv,
-                self.r: np.asarray(batch_r),
-                self.master.reward: np.sum(trajectory.rewards),
-                self.master.episode_length: trajectory.steps
+                self.r: np.asarray(batch_r)
             })
             n_states = states.shape[0]
             feed_dict = {

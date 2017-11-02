@@ -264,7 +264,9 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
             episode_steps += 1
             episode_reward += reward
             trajectory.add(state, action, reward, value, terminal)
-            if terminal or trajectory.steps >= timestep_limit:
+            if terminal or episode_steps >= timestep_limit:
+                if episode_steps >= timestep_limit or not env.metadata.get('semantics.autoreset'):
+                    state = env.reset()
                 if summary_writer is not None:
                     summary = tf.Summary()
                     summary.value.add(tag="global/Episode_length", simple_value=float(episode_steps))
@@ -273,7 +275,6 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
                     summary_writer.flush()
                 episode_steps = 0
                 episode_reward = 0
-                state = env.reset()
                 break
             if render:
                 env.render()

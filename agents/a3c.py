@@ -266,6 +266,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
             trajectory.add(state, action, reward, value, terminal)
             state = new_state
             if terminal or episode_steps >= timestep_limit:
+                policy.rnn_state = None
                 if episode_steps >= timestep_limit or not env.metadata.get('semantics.autoreset'):
                     state = env.reset()
                 if summary_writer is not None:
@@ -482,15 +483,6 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         r = ac_net.r
         return action, value, actor_states, critic_states, actions_taken, [loss, actor_loss, critic_loss], adv, r, n_steps
 
-    def get_critic_value(self, states):
-        feed_dict = {
-            self.critic_states: states
-        }
-        if self.rnn_state is not None:
-            feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
-        value, self.rnn_state = self.master.session.run([self.ac_net.value, self.ac_net.rnn_state_out], feed_dict=feed_dict)
-        return value
-
     def make_trainer(self):
         optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
@@ -506,6 +498,7 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
     """A3CThread for a discrete action space."""
     def __init__(self, master, thread_id):
         super(A3CThreadDiscreteCNNRNN, self).__init__(master, thread_id)
+        self.rnn_state = None
 
     def build_networks(self):
         self.ac_net = ac_net = ActorCriticNetworkDiscreteCNNRNN(
@@ -535,6 +528,15 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
             feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
         action, self.rnn_state, value = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out, self.value], feed_dict=feed_dict)
         return action, value
+
+    def get_critic_value(self, states):
+        feed_dict = {
+            self.critic_states: states
+        }
+        if self.rnn_state is not None:
+            feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
+        value, self.rnn_state = self.master.session.run([self.ac_net.value, self.ac_net.rnn_state_out], feed_dict=feed_dict)
+        return value
 
 class A3CThreadContinuous(A3CThread):
     """A3CThread for a continuous action space."""

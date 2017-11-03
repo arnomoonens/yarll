@@ -405,8 +405,8 @@ class A3CThread(threading.Thread):
                 self.adv: batch_adv,
                 self.r: np.asarray(batch_r)
             }
-            feature = trajectory.features[0]
-            if isinstance(self, A3CDiscreteCNNRNN):
+            feature = trajectory.features[0][0]
+            if feature != []:
                 feed_dict[self.ac_net.rnn_state_in] = feature
             results = sess.run(fetches, feed_dict)
             n_states = states.shape[0]

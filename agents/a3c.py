@@ -127,6 +127,10 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
 
         lstm_size = 256
         self.enc_cell = tf.contrib.rnn.BasicLSTMCell(lstm_size)
+        lstm_state_size = self.enc_cell.state_size
+        c_init = np.zeros((1, lstm_state_size.c), np.float32)
+        h_init = np.zeros((1, lstm_state_size.h), np.float32)
+        self.state_init = [c_init, h_init]
         self.rnn_state_in = self.enc_cell.zero_state(1, tf.float32)
         L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=self.enc_cell,
                                                    inputs=reshape,
@@ -219,15 +223,17 @@ class Trajectory(object):
         self.actions = []
         self.rewards = []
         self.values = []
+        self.features = []
         self.terminal = False
         self.steps = 0
 
-    def add(self, state, action, reward, value, terminal):
+    def add(self, state, action, reward, value, features, terminal):
         """Add a single transition to the trajectory."""
         self.states.append(state)
         self.actions.append(action)
         self.rewards.append(reward)
         self.values.append(value)
+        self.features.append(features)
         self.terminal = terminal
         self.steps += 1
 
@@ -241,6 +247,7 @@ class Trajectory(object):
         self.actions.extend(other.actions)
         self.rewards.extend(other.rewards)
         self.values.extend(other.values)
+        self.features.extend(other.features)
         self.terminal = other.terminal
         self.steps += other.steps
 
@@ -252,21 +259,24 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
     episode_steps = 0
     episode_reward = 0
     state = env.reset()
-    policy.rnn_state = None
+    policy.rnn_state = policy.initial_features
     timestep_limit = env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')
 
     while True:
         trajectory = Trajectory()
 
         for i in range(n_steps):
-            action, value = policy.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
+            fetched = policy.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
+            action = fetched[0]
+            value = fetched[1]
+            features = fetched[2:]
             new_state, reward, terminal, _ = env.step(policy.get_env_action(action))
             episode_steps += 1
             episode_reward += reward
-            trajectory.add(state, action, reward, value, terminal)
+            trajectory.add(state, action, reward, value, features, terminal)
             state = new_state
             if terminal or episode_steps >= timestep_limit:
-                policy.rnn_state = None
+                policy.rnn_state = policy.initial_features
                 if episode_steps >= timestep_limit or not env.metadata.get('semantics.autoreset'):
                     state = env.reset()
                 if summary_writer is not None:
@@ -327,13 +337,15 @@ class A3CThread(threading.Thread):
         if thread_id == 0 and self.master.monitor:
             self.env = wrappers.Monitor(self.env, master.monitor_path, force=True, video_callable=(None if self.master.video else False))
 
+        # Only used (and overwritten) by agents that use an RNN
+        self.initial_features = None
+
         # Build actor and critic networks
         with tf.variable_scope("t{}_net".format(self.thread_id)):
             self.action, self.value, self.actor_states, self.critic_states, self.actions_taken, self.losses, self.adv, self.r, self.n_steps = self.build_networks()
             self.sync_net = self.create_sync_net_op()
             inc_step = self.master.global_step.assign_add(self.n_steps)
             self.train_op = tf.group(self.make_trainer(), inc_step)
-
         # Write the summary of each thread in a different directory
         self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
 
@@ -351,7 +363,8 @@ class A3CThread(threading.Thread):
             self.actor_states: [state],
             self.critic_states: [state]
         }
-        return self.master.session.run([self.action, self.value], feed_dict=feed_dict)
+        action, value = self.master.session.run([self.action, self.value], feed_dict=feed_dict)
+        return action, value, []
 
     def pull_batch_from_queue(self):
         """
@@ -385,20 +398,19 @@ class A3CThread(threading.Thread):
             batch_adv = discount_rewards(delta_t, self.config["gamma"])
             fetches = self.losses + [self.train_op, self.master.global_step]
             states = np.asarray(trajectory.states)
-            results = sess.run(fetches, feed_dict={
+            feed_dict = {
                 self.actor_states: states,
                 self.critic_states: states,
                 self.actions_taken: np.asarray(trajectory.actions),
                 self.adv: batch_adv,
                 self.r: np.asarray(batch_r)
-            })
-            n_states = states.shape[0]
-            feed_dict = {
-                # self.master.reward: sum(trajectory.rewards),
-                # self.master.episode_length: trajectory.steps
             }
-            losses = zip(self.master.losses, map(lambda x: x / n_states, results))
-            feed_dict.update(losses)
+            feature = trajectory.features[0]
+            if isinstance(self, A3CDiscreteCNNRNN):
+                feed_dict[self.ac_net.rnn_state_in] = feature
+            results = sess.run(fetches, feed_dict)
+            n_states = states.shape[0]
+            feed_dict = dict(zip(self.master.losses, map(lambda x: x / n_states, results)))
             summary = sess.run([self.master.summary_op], feed_dict)
             self.writer.add_summary(summary[0], results[-1])
             self.writer.flush()
@@ -517,6 +529,7 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         critic_loss = ac_net.critic_loss
         adv = ac_net.adv
         r = ac_net.r
+        self.initial_features = ac_net.state_init
         return action, value, actor_states, critic_states, actions_taken, [loss, actor_loss, critic_loss], adv, r, n_steps
 
     def choose_action(self, state):
@@ -527,7 +540,7 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         if self.rnn_state is not None:
             feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
         action, self.rnn_state, value = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out, self.value], feed_dict=feed_dict)
-        return action, value
+        return action, value, self.rnn_state
 
     def get_critic_value(self, states):
         feed_dict = {

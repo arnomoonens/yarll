@@ -673,8 +673,8 @@ class A3C(Agent):
             job.start()
         for job in self.jobs:
             job.join()
-        # if self.config["save_model"]:
-        #     self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
+        if self.config["save_model"]:
+            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
     def create_summary_losses(self):
         self.actor_loss = tf.placeholder("float", name="actor_loss")

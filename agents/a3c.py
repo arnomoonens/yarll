@@ -259,22 +259,23 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
     episode_steps = 0
     episode_reward = 0
     state = env.reset()
-    policy.rnn_state = policy.initial_features
+    features = policy.initial_features
     timestep_limit = env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')
 
     while True:
         trajectory = Trajectory()
 
         for i in range(n_steps):
-            fetched = policy.choose_action(state)  # Predict the next action (using a neural network) depending on the current state
+            fetched = policy.choose_action(state, features)  # Predict the next action (using a neural network) depending on the current state
             action = fetched[0]
             value = fetched[1]
-            features = fetched[2:]
+            new_features = fetched[2:]
             new_state, reward, terminal, _ = env.step(policy.get_env_action(action))
             episode_steps += 1
             episode_reward += reward
-            trajectory.add(state, action, reward, value, features, terminal)
+            trajectory.add(state, action, reward, value, new_features, terminal)
             state = new_state
+            features = new_features
             if terminal or episode_steps >= timestep_limit:
                 policy.rnn_state = policy.initial_features
                 if episode_steps >= timestep_limit or not env.metadata.get('semantics.autoreset'):
@@ -351,13 +352,13 @@ class A3CThread(threading.Thread):
 
         self.runner = RunnerThread(self.env, self, 20, thread_id == 0 and self.master.video)
 
-    def get_critic_value(self, states):
-        return self.master.session.run(self.value, feed_dict={self.critic_states: states})
+    def get_critic_value(self, states, *rest):
+        return self.master.session.run(self.value, feed_dict={self.critic_states: states})[0]
 
     def get_env_action(self, action):
         return np.argmax(action)
 
-    def choose_action(self, state):
+    def choose_action(self, state, *rest):
         """Choose an action."""
         feed_dict = {
             self.actor_states: [state],
@@ -369,7 +370,7 @@ class A3CThread(threading.Thread):
     def pull_batch_from_queue(self):
         """
         Take a trajectory from the queue.
-        Also immediately try to extend it if episode
+        Also immediately try to extend it if the episode
         wasn't over and more transitions are available
         """
         trajectory = self.runner.queue.get(timeout=600.0)
@@ -390,7 +391,7 @@ class A3CThread(threading.Thread):
             # Synchronize thread-specific parameters θ' = θ and θ'v = θv
             sess.run(self.sync_net)
             trajectory = self.pull_batch_from_queue()
-            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1])[0]
+            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1][0])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])
             vpred_t = np.asarray(trajectory.values + [v])
             delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
@@ -532,24 +533,23 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         self.initial_features = ac_net.state_init
         return action, value, actor_states, critic_states, actions_taken, [loss, actor_loss, critic_loss], adv, r, n_steps
 
-    def choose_action(self, state):
+    def choose_action(self, state, features):
         """Choose an action."""
         feed_dict = {
             self.actor_states: [state]
         }
         if self.rnn_state is not None:
-            feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
-        action, self.rnn_state, value = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out, self.value], feed_dict=feed_dict)
-        return action, value, self.rnn_state
+            feed_dict[self.ac_net.rnn_state_in] = features
+        action, rnn_state, value = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out, self.value], feed_dict=feed_dict)
+        return action, value, rnn_state
 
-    def get_critic_value(self, states):
+    def get_critic_value(self, states, features):
         feed_dict = {
             self.critic_states: states
         }
         if self.rnn_state is not None:
-            feed_dict[self.ac_net.rnn_state_in] = self.rnn_state
-        value, self.rnn_state = self.master.session.run([self.ac_net.value, self.ac_net.rnn_state_out], feed_dict=feed_dict)
-        return value
+            feed_dict[self.ac_net.rnn_state_in] = features
+        return self.master.session.run(self.value, feed_dict=feed_dict)[0]
 
 class A3CThreadContinuous(A3CThread):
     """A3CThread for a continuous action space."""

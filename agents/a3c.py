@@ -132,11 +132,16 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         h_init = np.zeros((1, lstm_state_size.h), np.float32)
         self.state_init = [c_init, h_init]
         self.rnn_state_in = self.enc_cell.zero_state(1, tf.float32)
+        tf.add_to_collection("rnn_state_in_c", self.rnn_state_in.c)
+        tf.add_to_collection("rnn_state_in_h", self.rnn_state_in.h)
         L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=self.enc_cell,
                                                    inputs=reshape,
                                                    initial_state=self.rnn_state_in,
                                                    dtype=tf.float32)
+        tf.add_to_collection("rnn_state_out_c", self.rnn_state_out.c)
+        tf.add_to_collection("rnn_state_out_h", self.rnn_state_out.h)
         L3 = tf.reshape(L3, [-1, lstm_size])
+
         # Fully connected for Actor
 
         self.logits = linear(L3, n_actions, "actionlogits", normalized_columns_initializer(0.01))

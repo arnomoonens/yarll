@@ -1,5 +1,5 @@
-protobuf==3.2.0
-numpy==1.12.1
-gym==0.8.1
-tensorflow==1.0.1
-matplotlib==2.0.0
+protobuf
+numpy
+gym>=0.8.0
+tensorflow>=1.0.1
+matplotlib

@@ -270,7 +270,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
     while True:
         trajectory = Trajectory()
 
-        for i in range(n_steps):
+        for _ in range(n_steps):
             fetched = policy.choose_action(state, features)  # Predict the next action (using a neural network) depending on the current state
             action = fetched[0]
             value = fetched[1]
@@ -468,7 +468,7 @@ class A3CThreadDiscrete(A3CThread):
         # Apply gradients to the weights of the master network
         # Only increase global_step counter once per update of the 2 networks
         apply_actor_gradients = actor_optimizer.apply_gradients(
-            zip(processed_actor_grads, self.master.shared_actor_net.vars), global_step=self.master.global_step)
+            zip(processed_actor_grads, self.master.shared_actor_net.vars))
         apply_critic_gradients = critic_optimizer.apply_gradients(
             zip(processed_critic_grads, self.master.shared_critic_net.vars))
 
@@ -510,7 +510,7 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         # Apply gradients to the weights of the master network
         # Only increase global_step counter once per update of the 2 networks
         return optimizer.apply_gradients(
-            zip(grads, self.master.shared_ac_net.vars), global_step=self.master.global_step)
+            zip(grads, self.master.shared_ac_net.vars))
 
 class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
     """A3CThread for a discrete action space."""
@@ -597,7 +597,7 @@ class A3CThreadContinuous(A3CThread):
         # Apply gradients to the weights of the master network
         # Only increase global_step counter once per update of the 2 networks
         apply_actor_gradients = actor_optimizer.apply_gradients(
-            zip(processed_actor_grads, self.master.shared_actor_net.vars), global_step=self.master.global_step)
+            zip(processed_actor_grads, self.master.shared_actor_net.vars))
         apply_critic_gradients = critic_optimizer.apply_gradients(
             zip(processed_critic_grads, self.master.shared_critic_net.vars))
 
@@ -679,6 +679,7 @@ class A3C(Agent):
         for job in self.jobs:
             job.join()
         if self.config["save_model"]:
+            logging.info("Saving model")
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
     def create_summary_losses(self):

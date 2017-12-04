@@ -195,7 +195,7 @@ class ActorNetworkContinuous(object):
             self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class CriticNetwork(object):
-    """Neural network for the Critic of an Actor-Critic algorithm"""
+    """Neural network for the Critic of an Actor-Critic algorithm."""
     def __init__(self, state_shape, n_hidden, summary=True):
         super(CriticNetwork, self).__init__()
         self.state_shape = state_shape

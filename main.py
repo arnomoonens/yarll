@@ -2,6 +2,7 @@
 # -*- coding: utf8 -*-
 
 import argparse
+import datetime
 import os
 from gym.spaces import Discrete
 
@@ -32,6 +33,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None):
     config = agent.config.copy()
     if description is not None:
         config["description"] = description
+    config["start_time"] = datetime.datetime.now().astimezone().isoformat()
     save_config(monitor_path, config, [env.to_dict() for env in envs])
     agent.learn()
 

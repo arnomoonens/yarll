@@ -15,7 +15,7 @@ Different algorithms have currently been implemented:
 - [(Sequential) knowledge transfer](./agents/knowledge_transfer.py)
 - [Asynchronous knowledge transfer](./agents/async_knowledge_transfer.py)
 
-### Sarsa + function apprixmation
+### Sarsa + function approximation
 The following parts are combined to learn to act in the [_Mountain Car_ environment](https://gym.openai.com/envs/MountainCar-v0):
 - Sarsa
 - Eligibility traces
@@ -77,4 +77,6 @@ python misc/plot_statistics.py <path_to_stats>
 - A _json_ file generated using `gym.wrappers.Monitor`, in case it plots the episode lengths and total reward per episode.
 - A directory containing _TensorFlow_ scalar summaries for different tasks, in which case all of the found scalars are plot.
 
-Help about other arguments (e.g. for using smoothing) can be found by executing `python misc/plot_statistics.py -h`
+Help about other arguments (e.g. for using smoothing) can be found by executing `python misc/plot_statistics.py -h`.
+
+Alternatively, it is also possible to use _Tensorboard_ to show statistics in the browser by passing the directory with the scalar summaries as `logdir` argument.

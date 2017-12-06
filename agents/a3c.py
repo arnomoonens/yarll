@@ -282,7 +282,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
             state = new_state
             features = new_features
             if terminal or episode_steps >= timestep_limit:
-                policy.rnn_state = policy.initial_features
+                features = policy.initial_features
                 if episode_steps >= timestep_limit or not env.metadata.get('semantics.autoreset'):
                     state = env.reset()
                 if summary_writer is not None:
@@ -516,7 +516,6 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
     """A3CThread for a discrete action space."""
     def __init__(self, master, thread_id):
         super(A3CThreadDiscreteCNNRNN, self).__init__(master, thread_id)
-        self.rnn_state = None
 
     def build_networks(self):
         self.ac_net = ac_net = ActorCriticNetworkDiscreteCNNRNN(
@@ -543,8 +542,7 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         feed_dict = {
             self.actor_states: [state]
         }
-        if self.rnn_state is not None:
-            feed_dict[self.ac_net.rnn_state_in] = features
+        feed_dict[self.ac_net.rnn_state_in] = features
         action, rnn_state, value = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out, self.value], feed_dict=feed_dict)
         return action, value, rnn_state
 
@@ -552,8 +550,7 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         feed_dict = {
             self.critic_states: states
         }
-        if self.rnn_state is not None:
-            feed_dict[self.ac_net.rnn_state_in] = features
+        feed_dict[self.ac_net.rnn_state_in] = features
         return self.master.session.run(self.value, feed_dict=feed_dict)[0]
 
 class A3CThreadContinuous(A3CThread):

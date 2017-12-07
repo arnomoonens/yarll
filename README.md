@@ -79,4 +79,4 @@ python misc/plot_statistics.py <path_to_stats>
 
 Help about other arguments (e.g. for using smoothing) can be found by executing `python misc/plot_statistics.py -h`.
 
-Alternatively, it is also possible to use _Tensorboard_ to show statistics in the browser by passing the directory with the scalar summaries as `logdir` argument.
+Alternatively, it is also possible to use [_Tensorboard_](https://www.tensorflow.org/get_started/summaries_and_tensorboard) to show statistics in the browser by passing the directory with the scalar summaries as `--logdir` argument.

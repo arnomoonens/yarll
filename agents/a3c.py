@@ -499,7 +499,7 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         critic_loss = ac_net.critic_loss
         adv = ac_net.adv
         r = ac_net.r
-        return action, value, actor_states, critic_states, actions_taken, [loss, actor_loss, critic_loss], adv, r, n_steps
+        return action, value, actor_states, critic_states, actions_taken, [actor_loss, critic_loss, loss], adv, r, n_steps
 
     def make_trainer(self):
         optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
@@ -535,7 +535,7 @@ class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
         adv = ac_net.adv
         r = ac_net.r
         self.initial_features = ac_net.state_init
-        return action, value, actor_states, critic_states, actions_taken, [loss, actor_loss, critic_loss], adv, r, n_steps
+        return action, value, actor_states, critic_states, actions_taken, [actor_loss, critic_loss, loss], adv, r, n_steps
 
     def choose_action(self, state, features):
         """Choose an action."""

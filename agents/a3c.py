@@ -693,18 +693,17 @@ class A3CDiscrete(A3C):
         super(A3CDiscrete, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
-        with tf.variable_scope("global"):
-            self.shared_actor_net = ActorNetworkDiscrete(
-                list(self.env.observation_space.shape),
-                self.env.action_space.n,
-                self.config["actor_n_hidden"],
-                summary=False)
-            self.states = self.shared_actor_net.states
-            self.action = self.shared_actor_net.action
-            self.shared_critic_net = CriticNetwork(list(self.env.observation_space.shape),
-                                                   self.config["critic_n_hidden"],
-                                                   summary=False)
-            self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
+        self.shared_actor_net = ActorNetworkDiscrete(
+            list(self.env.observation_space.shape),
+            self.env.action_space.n,
+            self.config["actor_n_hidden"],
+            summary=False)
+        self.states = self.shared_actor_net.states
+        self.action = self.shared_actor_net.action
+        self.shared_critic_net = CriticNetwork(list(self.env.observation_space.shape),
+                                               self.config["critic_n_hidden"],
+                                               summary=False)
+        self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
 class A3CDiscreteCNN(A3C):
     """A3C for a discrete action space"""
@@ -713,15 +712,14 @@ class A3CDiscreteCNN(A3C):
         super(A3CDiscreteCNN, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
-        with tf.variable_scope("global"):
-            self.shared_ac_net = ActorCriticNetworkDiscreteCNN(
-                state_shape=list(self.env.observation_space.shape),
-                n_actions=self.env.action_space.n,
-                n_hidden=self.config["actor_n_hidden"],
-                summary=False)
-            self.states = self.shared_ac_net.states
-            self.action = self.shared_ac_net.action
-            self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
+        self.shared_ac_net = ActorCriticNetworkDiscreteCNN(
+            state_shape=list(self.env.observation_space.shape),
+            n_actions=self.env.action_space.n,
+            n_hidden=self.config["actor_n_hidden"],
+            summary=False)
+        self.states = self.shared_ac_net.states
+        self.action = self.shared_ac_net.action
+        self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
     def create_summary_losses(self):
         self.actor_loss = tf.placeholder("float", name="actor_loss")
@@ -740,15 +738,14 @@ class A3CDiscreteCNNRNN(A3C):
         self.config["RNN"] = True
 
     def build_networks(self):
-        with tf.variable_scope("global"):
-            self.shared_ac_net = ActorCriticNetworkDiscreteCNNRNN(
-                state_shape=list(self.env.observation_space.shape),
-                n_actions=self.env.action_space.n,
-                n_hidden=self.config["actor_n_hidden"],
-                summary=False)
-            self.states = self.shared_ac_net.states
-            self.action = self.shared_ac_net.action
-            self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
+        self.shared_ac_net = ActorCriticNetworkDiscreteCNNRNN(
+            state_shape=list(self.env.observation_space.shape),
+            n_actions=self.env.action_space.n,
+            n_hidden=self.config["actor_n_hidden"],
+            summary=False)
+        self.states = self.shared_ac_net.states
+        self.action = self.shared_ac_net.action
+        self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
     def create_summary_losses(self):
         self.actor_loss = tf.placeholder("float", name="actor_loss")

@@ -15,6 +15,11 @@ Different algorithms have currently been implemented:
 - [(Sequential) knowledge transfer](./agents/knowledge_transfer.py)
 - [Asynchronous knowledge transfer](./agents/async_knowledge_transfer.py)
 
+## Asynchronous Advantage Actor Critic (A3C)
+The code for this algorithm can be found [here](./agents/a3c.py).
+Example run after training using 16 threads for a total of 5 million timesteps on the _PongDeterministic-v4_ environment:
+![Pong example run](./results/pong.gif)
+
 ### Sarsa + function approximation
 The following parts are combined to learn to act in the [_Mountain Car_ environment](https://gym.openai.com/envs/MountainCar-v0):
 - Sarsa

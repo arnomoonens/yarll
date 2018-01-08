@@ -18,7 +18,15 @@ Different algorithms have currently been implemented:
 ## Asynchronous Advantage Actor Critic (A3C)
 The code for this algorithm can be found [here](./agents/a3c.py).
 Example run after training using 16 threads for a total of 5 million timesteps on the _PongDeterministic-v4_ environment:
+
 ![Pong example run](./results/pong.gif)
+
+Total reward per episode when applying this algorithm on the [_CartPole-v0_ environment](https://gym.openai.com/envs/CartPole-v0):
+![Total reward per episode using A3C](./results/a3c-cartpole-v0-rewards.png)
+
+This only shows the results of one of the A3C threads.
+Results of another execution are also posted on the [OpenAI Gym](https://gym.openai.com/evaluations/eval_deHd1IsvTQeWAnEaSvvkg).
+Results of an execution using the _Acrobot-v1_ environment can also be found [on OpenAI Gym](https://gym.openai.com/evaluations/eval_Ig1wrPzQlGipmBAhZ5Tw).
 
 ### Sarsa + function approximation
 The following parts are combined to learn to act in the [_Mountain Car_ environment](https://gym.openai.com/envs/MountainCar-v0):
@@ -53,13 +61,6 @@ Total reward per episode when applying this algorithm on the [_CartPole-v0_ envi
 
 [OpenAI Gym page](https://gym.openai.com/evaluations/eval_8lGn053RQref7asqoiPPw)
 
-### Asynchronous Advantage Actor Critic
-Total reward per episode when applying this algorithm on the [_CartPole-v0_ environment](https://gym.openai.com/envs/CartPole-v0):
-![Total reward per episode using A3C](./results/a3c-cartpole-v0-rewards.png)
-
-This only shows the results of one of the A3C threads.
-Results of another execution are also posted on the [OpenAI Gym](https://gym.openai.com/evaluations/eval_deHd1IsvTQeWAnEaSvvkg).
-Results of an execution using the _Acrobot-v1_ environment can also be found [on OpenAI Gym](https://gym.openai.com/evaluations/eval_Ig1wrPzQlGipmBAhZ5Tw).
 ## How to run
 First, install the requirements using [pip](https://pypi.python.org/pypi/pip):
 ```

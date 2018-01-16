@@ -446,8 +446,12 @@ class A3CThreadDiscrete(A3CThread):
         return tf.group(actor_sync_net, critic_sync_net)
 
     def make_trainer(self):
-        actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-        critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
+        if self.config["shared_optimizer"]:
+            actor_optimizer = self.master.actor_optimizer
+            critic_optimizer = self.master.critic_optimizer
+        else:
+            actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
+            critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
 
         self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
         actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
@@ -502,7 +506,10 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         return action, value, actor_states, critic_states, actions_taken, [actor_loss, critic_loss, loss], adv, r, n_steps
 
     def make_trainer(self):
-        optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
+        if self.config["shared_optimizer"]:
+            optimizer = self.master.optimizer
+        else:
+            optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
 
         grads, _ = tf.clip_by_global_norm(grads, 40.0)
@@ -572,8 +579,12 @@ class A3CThreadContinuous(A3CThread):
         return action
 
     def make_trainer(self):
-        actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-        critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
+        if self.config["shared_optimizer"]:
+            actor_optimizer = self.master.actor_optimizer
+            critic_optimizer = self.master.critic_optimizer
+        else:
+            actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
+            critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
 
         self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
         actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
@@ -627,6 +638,7 @@ class A3C(Agent):
             gradient_clip_value=40,
             n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
             T_max=8e5,
+            shared_optimizer=False,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,
             save_model=False
@@ -703,6 +715,9 @@ class A3CDiscrete(A3C):
         self.shared_critic_net = CriticNetwork(list(self.env.observation_space.shape),
                                                self.config["critic_n_hidden"],
                                                summary=False)
+        if self.config["shared_optimizer"]:
+            self.actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
+            self.critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
 class A3CDiscreteCNN(A3C):
@@ -719,6 +734,8 @@ class A3CDiscreteCNN(A3C):
             summary=False)
         self.states = self.shared_ac_net.states
         self.action = self.shared_ac_net.action
+        if self.config["shared_optimizer"]:
+            self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
     def create_summary_losses(self):
@@ -745,6 +762,8 @@ class A3CDiscreteCNNRNN(A3C):
             summary=False)
         self.states = self.shared_ac_net.states
         self.action = self.shared_ac_net.action
+        if self.config["shared_optimizer"]:
+            self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
     def create_summary_losses(self):
@@ -773,4 +792,7 @@ class A3CContinuous(A3C):
         self.shared_critic_net = CriticNetwork(list(self.env.observation_space.shape),
                                                self.config["critic_n_hidden"],
                                                summary=False)
+        if self.config["shared_optimizer"]:
+            self.actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
+            self.critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)

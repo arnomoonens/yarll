@@ -1,6 +1,6 @@
 # -*- coding: utf8 -*-
 
-from environment import Environment
+from .environment import Environment
 
 class Acrobot(Environment):
     """Acrobot-v1 environment wrapper."""
@@ -47,20 +47,10 @@ class Acrobot(Environment):
     def change_parameters(self, link_length_1=None, link_length_2=None, link_mass_1=None, link_mass_2=None):
         """Change a Acrobot environment using a different length and/or masspole."""
         if link_length_1 is not None:
-            self.env.env.LINK_LENGTH_1 = link_length_1
+            self.env.LINK_LENGTH_1 = link_length_1
         if link_length_2 is not None:
-            self.env.env.LINK_LENGTH_2 = link_length_2
+            self.env.LINK_LENGTH_2 = link_length_2
         if link_mass_1 is not None:
-            self.env.env.LINK_MASS_1 = link_mass_1
+            self.env.LINK_MASS_1 = link_mass_1
         if link_mass_2 is not None:
-            self.env.env.LINK_MASS_2 = link_mass_2
-
-    def to_dict(self):
-        """
-        Extract the name and other important aspects of the environment.
-        By default, these include the changeable parameters.
-        """
-        d = {"name": self.name}
-        for p in self.changeable_parameters:
-            d[p["name"]] = self.env.env.__getattribute__(p["name"].upper())
-        return d
+            self.env.LINK_MASS_2 = link_mass_2

@@ -10,7 +10,7 @@ import argparse
 import tensorflow as tf
 from gym import wrappers
 
-from environment.registration import make_environment
+from environment.registration import make
 
 class ModelRunner(object):
     """
@@ -70,7 +70,7 @@ parser.add_argument("--iterations", default=100, type=int, help="Number of itera
 
 def main():
     args = parser.parse_args()
-    env = make_environment(args.environment)
+    env = make(args.environment)
     runner = ModelRunner(env, args.model_directory, args.save_directory, n_iter=args.iterations)
     try:
         runner.env = wrappers.Monitor(runner.env, args.save_directory, video_callable=False, force=True)

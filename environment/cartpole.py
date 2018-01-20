@@ -1,6 +1,6 @@
 # -*- coding: utf8 -*-
 
-from environment import Environment
+from .environment import Environment
 
 class CartPole(Environment):
     """Cartpole-v0 environment wrapper."""
@@ -36,10 +36,10 @@ class CartPole(Environment):
     def change_parameters(self, length=None, masspole=None, masscart=None):
         """Change a CartPole environment using a different length and/or masspole."""
         if length is not None:
-            self.env.env.length = length
+            self.env.length = length
         if masspole is not None:
-            self.env.env.masspole = masspole
+            self.env.masspole = masspole
         if masscart is not None:
-            self.env.env.masscart = masscart
-        self.env.env.total_mass = self.env.env.masspole + self.env.env.masscart  # Recalculate
-        self.env.env.polemass_length = self.env.env.masspole * self.env.env.length  # Recalculate
+            self.env.masscart = masscart
+        self.env.total_mass = self.env.masspole + self.env.masscart  # Recalculate
+        self.env.polemass_length = self.env.masspole * self.env.length  # Recalculate

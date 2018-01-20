@@ -5,48 +5,66 @@
 # Else, we make just make one using the Environment class.
 import numpy as np
 
-from environment import Environment
-from misc.exceptions import ClassNotRegisteredError
+import gym
 from misc.utils import AtariRescale42x42
 from universe.wrappers import Unvectorize, Vectorize
 
+class EnvSpec(gym.envs.registration.EnvSpec):
+    """
+    Modified version of `gym.envs.registration.EnvSpec`
+    to allow env initalization with different parameters.
+    """
 
-environment_registry = {}
+    def make(self, **kwargs):
+        """Instantiates an instance of the environment with appropriate kwargs"""
+        if self._entry_point is None:
+            raise gym.error.Error('Attempting to make deprecated env {}. (HINT: is there a newer registered version of this env?)'.format(self.id))
 
-def register_environment(name, cls):
-    """Register an enviroment of a name with a class to be instantiated."""
-    environment_registry[name] = cls
+        elif callable(self._entry_point):
+            env = self._entry_point()
+        else:
+            cls = gym.envs.registration.load(self._entry_point)
+            all_kwargs = self._kwargs
+            all_kwargs.update(kwargs)
+            env = cls(**all_kwargs)
 
-def make_environment(name, **args):
-    """Make an environment of a given name, possibly using extra arguments."""
-    env = environment_registry.get(name, Environment)
-    if name in environment_registry:
-        env = env(**args)
-    else:
-        env = env(name, **args)
+        # Make the enviroment aware of which spec it came from.
+        env.unwrapped._spec = self
+
+        return env
+
+def make(id, **kwargs):
+    spec = gym.envs.registry.spec(id)
+    env = spec.make(**kwargs)
     if "atari.atari_env" in env.unwrapped.__module__:
-        to_dict = env.to_dict
         env = Vectorize(env)
         env = AtariRescale42x42(env)
         env = Unvectorize(env)
-        env.to_dict = to_dict
-    return env
 
+        def to_dict():
+            return {"id": id}
+        env.to_dict = to_dict
+    if (env.spec.timestep_limit is not None) and not spec.tags.get('vnc'):
+        from gym.wrappers.time_limit import TimeLimit
+        env = TimeLimit(env,
+                        max_episode_steps=env.spec.max_episode_steps,
+                        max_episode_seconds=env.spec.max_episode_seconds)
+        env.to_dict = env.env.to_dict
+    return env
 
 def make_environments(descriptions):
     """Make environments using a list of descriptions."""
-    return [make_environment(**d) for d in descriptions]
+    return [make(**d) for d in descriptions]
 
-def make_random_environments(env_name, n_envs):
+def make_random_environments(id, n_envs):
     """Make n_envs random environments of the env_name class."""
-    if env_name not in environment_registry:
-        raise ClassNotRegisteredError("Class {} must be registered in order to be randomly instantiated.".format(env_name))
-    cls = environment_registry.get(env_name)
+    spec = gym.envs.registry.spec(id)
+    cls = gym.envs.registration.load(spec._entry_point)
     envs = []
     for _ in range(n_envs):
-        params = {}
+        args = {"id": id}
         for p in cls.changeable_parameters:
             if p["type"] == "range":
-                params[p["name"]] = np.random.uniform(p["low"], p["high"])  # Assume for now only range parameters are used
-        envs.append(cls(**params))
+                args[p["name"]] = np.random.uniform(p["low"], p["high"])  # Assume for now only range parameters are used
+        envs.append(make(**args))
     return envs

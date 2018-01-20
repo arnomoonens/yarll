@@ -8,7 +8,7 @@ class Environment(Wrapper):
     changeable_parameters = []
 
     def __init__(self, name, add_at_iteration=0, change_variables="all", **kwargs):
-        super(Environment, self).__init__(make(name))
+        super(Environment, self).__init__(make("Old" + name).env)
         self.name = name
         self.add_at_iteration = add_at_iteration
         self.args = kwargs
@@ -21,5 +21,5 @@ class Environment(Wrapper):
         """
         d = {"name": self.name}
         for p in self.changeable_parameters:
-            d[p["name"]] = self.env.env.__getattribute__(p["name"])
+            d[p["name"]] = self.__getattribute__(p["name"])
         return d

@@ -14,7 +14,7 @@ class EnvRunner(object):
         self.policy = policy
         self.config = dict(
             batch_update="timesteps",
-            episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
+            episode_max_length=env.spec.max_episode_steps,
             timesteps_per_batch=10000,
             n_iter=100,
             repeat_n_actions=1

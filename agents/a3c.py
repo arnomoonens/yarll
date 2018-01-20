@@ -11,7 +11,7 @@ import queue
 
 from gym import wrappers
 
-from environment.registration import make_environment
+from environment.registration import make
 from agents.agent import Agent
 from misc.utils import discount_rewards
 from misc.network_ops import sync_networks_op, conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
@@ -337,7 +337,7 @@ class A3CThread(threading.Thread):
         super(A3CThread, self).__init__(name=thread_id)
         self.thread_id = thread_id
         self.clip_gradients = clip_gradients
-        self.env = make_environment(master.env_name)
+        self.env = make(master.env_name)
         self.master = master
         self.config = master.config
         if thread_id == 0 and self.master.monitor:

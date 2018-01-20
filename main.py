@@ -6,7 +6,7 @@ import datetime
 import os
 from gym.spaces import Discrete
 
-from environment.registration import make_environment, make_environments
+from environment.registration import make, make_environments
 from agents.registration import make_agent
 from misc.utils import json_to_dict, save_config
 
@@ -21,7 +21,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None):
         os.makedirs(monitor_path)
     envs_type = spec["environments"]["type"]
     if envs_type == "single":
-        envs = [make_environment(spec["environments"]["source"])]
+        envs = [make(spec["environments"]["source"])]
     elif envs_type == "json":
         envs = make_environments(json_to_dict(spec["environments"]["source"]))
     args["envs"] = envs

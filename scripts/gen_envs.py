@@ -21,8 +21,8 @@ parser.add_argument("destination", type=str, help="Where to write the environmen
 
 def main():
     args = parser.parse_args()
-    envs = environment.make_random_environments(args.env_name, args.n)
-    dicts = [env.to_dict() for env in envs]
+    envs = environment.registration.make_random_environments(args.env_name, args.n)
+    dicts = [env.env.to_dict() for env in envs]
     with open(args.destination, "w") as f:
         json.dump(dicts, f)
 

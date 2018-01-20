@@ -21,6 +21,9 @@ class TaskPolicy(object):
         """Choose an action."""
         return self.master.session.run([self.action], feed_dict={self.master.states: [state]})[0]
 
+    def new_trajectory(self):
+        pass
+
 class KnowledgeTransfer(Agent):
     """Learner for variations of a task."""
     def __init__(self, envs, monitor_path, **usercfg):

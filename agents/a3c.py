@@ -15,7 +15,7 @@ from gym import wrappers
 
 from environment.registration import make
 from agents.agent import Agent
-from misc.utils import discount_rewards
+from misc.utils import discount_rewards, FastSaver
 from misc.network_ops import sync_networks_op, conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
 
 logging.getLogger().setLevel("INFO")
@@ -362,35 +362,48 @@ class A3CTask(threading.Thread):
                 with tf.variable_scope("local"):
                     self.local_network = self.build_networks()
                     self.sync_net = self.create_sync_net_op()
-                    n_steps = tf.shape(self.local_network.states)[0]
-                    inc_step = self.global_step.assign_add(n_steps)
-                    self.train_op = tf.group(self.make_trainer(), inc_step)
+                    self.n_steps = tf.shape(self.local_network.states)[0]
+                    inc_step = self.global_step.assign_add(self.n_steps)
+                self.train_op = tf.group(self.make_trainer(), inc_step)
+
+                loss_summaries = self.create_summary_losses()
+                self.reward = tf.placeholder("float", name="reward")
+                tf.summary.scalar("Reward", self.reward)
+                self.episode_length = tf.placeholder("float", name="episode_length")
+                tf.summary.scalar("Episode_length", self.episode_length)
+                self.summary_op = tf.summary.merge(loss_summaries)
 
             variables_to_save = [v for v in tf.global_variables() if not v.name.startswith("local")]
             init_op = tf.variables_initializer(variables_to_save)
             init_all_op = tf.global_variables_initializer()
-        # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task{}".format(self.task_id)))
+            saver = FastSaver(variables_to_save)
+            # Write the summary of each task in a different directory
+            self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task{}".format(self.task_id)))
 
-        self.runner = RunnerThread(self.env, self, 20, task_id == 0 and self.master.video)
+            self.runner = RunnerThread(self.env, self, 20, task_id == 0 and self.master.video)
 
-        self.server = tf.train.Server(cluster, job_name="worker", task_index=task_id,
-                                 config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
+            self.server = tf.train.Server(cluster, job_name="worker", task_index=task_id,
+                                     config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
 
-        def init_fn(sess):
-            sess.run(init_all_op)
+            def init_fn(sess):
+                sess.run(init_all_op)
 
-        self.sv = tf.train.Supervisor(
-            graph=self.graph,
-            is_chief=(task_id == 0),
-            summary_op=None,
-            init_op=init_op,
-            init_fn=init_fn,
-            summary_writer=self.writer,
-            global_step=self.global_step
-        )
+            self.sv = tf.train.Supervisor(
+                graph=self.graph,
+                is_chief=(task_id == 0),
+                logdir=self.master.monitor_path,
+                summary_op=None,
+                ready_op=tf.report_uninitialized_variables(variables_to_save),
+                saver=saver,
+                init_op=init_op,
+                init_fn=init_fn,
+                summary_writer=self.writer,
+                global_step=self.global_step,
+                save_model_secs=0 if not self.config["save_model"] else 30,
+                save_summaries_secs=30
+            )
 
-        self.config_proto = tf.ConfigProto(device_filters=["/job:ps", "/job:worker/task:{}/cpu:0".format(task_id)])
+            self.config_proto = tf.ConfigProto(device_filters=["/job:ps", "/job:worker/task:{}/cpu:0".format(task_id)])
 
     def get_critic_value(self, states, *rest):
         return tf.get_default_session().run(self.value, feed_dict={self.critic_states: states})[0]
@@ -425,6 +438,7 @@ class A3CTask(threading.Thread):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
         # Assume thread-specific parameter vectors θ' and θ'v
         with self.sv.managed_session(self.server.target, config=self.config_proto) as sess, sess.as_default():
+            sess.run(self.sync_net)
             self.runner.start_runner(sess, self.writer)
             t = 1  # thread step counter
             while not self.sv.should_stop() and self.master.T < self.config["T_max"]:
@@ -437,7 +451,7 @@ class A3CTask(threading.Thread):
                 delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
                 batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
                 batch_adv = discount_rewards(delta_t, self.config["gamma"])
-                fetches = self.losses + [self.train_op, self.global_step]
+                fetches = [self.summary_op, self.train_op, self.global_step]
                 states = np.asarray(trajectory.states)
                 feed_dict = {
                     self.actor_states: states,
@@ -449,12 +463,9 @@ class A3CTask(threading.Thread):
                 feature = trajectory.features[0][0]
                 if feature != []:
                     feed_dict[self.local_network.rnn_state_in] = feature
-                results = sess.run(fetches, feed_dict)
-                n_states = states.shape[0]
-                feed_dict = dict(zip(self.losses, map(lambda x: x / n_states, results)))
-                # summary = sess.run([self.summary_op], feed_dict)
-                # self.writer.add_summary(summary[0], results[-1])
-                # self.writer.flush()
+                summary, _, global_step = sess.run(fetches, feed_dict)
+                self.writer.add_summary(summary, global_step)
+                self.writer.flush()
                 t += 1
                 self.master.T += trajectory.steps
             self.sv.stop()
@@ -505,13 +516,19 @@ class A3CTaskDiscrete(A3CTask):
             processed_critic_grads = critic_grads
 
         # Apply gradients to the weights of the master network
-        # Only increase global_step counter once per update of the 2 networks
         apply_actor_gradients = actor_optimizer.apply_gradients(
             zip(processed_actor_grads, self.master.shared_actor_net.vars))
         apply_critic_gradients = critic_optimizer.apply_gradients(
             zip(processed_critic_grads, self.master.shared_critic_net.vars))
 
         return tf.group(apply_actor_gradients, apply_critic_gradients)
+
+    def create_summary_losses(self):
+        self.actor_loss = tf.placeholder("float", name="actor_loss")
+        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_network.loss)
+        self.critic_loss = tf.placeholder("float", name="critic_loss")
+        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_network.loss)
+        return [self.actor_loss, self.critic_loss], [actor_loss_summary, critic_loss_summary]
 
 class A3CTaskDiscreteCNN(A3CTaskDiscrete):
     """A3CTask for a discrete action space."""
@@ -548,9 +565,15 @@ class A3CTaskDiscreteCNN(A3CTaskDiscrete):
         grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         # Apply gradients to the weights of the master network
-        # Only increase global_step counter once per update of the 2 networks
         return optimizer.apply_gradients(
             zip(grads, self.network.vars))
+
+    def create_summary_losses(self):
+        n_steps = tf.to_float(self.n_steps)
+        actor_loss_summary = tf.summary.scalar("Actor_loss", self.local_network.actor_loss / n_steps)
+        critic_loss_summary = tf.summary.scalar("Critic_loss", self.local_network.critic_loss / n_steps)
+        loss_summary = tf.summary.scalar("loss", self.local_network.loss / n_steps)
+        return [actor_loss_summary, critic_loss_summary, loss_summary]
 
 class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
     """A3CTask for a discrete action space."""
@@ -639,7 +662,6 @@ class A3CTaskContinuous(A3CTask):
             processed_critic_grads = critic_grads
 
         # Apply gradients to the weights of the master network
-        # Only increase global_step counter once per update of the 2 networks
         apply_actor_gradients = actor_optimizer.apply_gradients(
             zip(processed_actor_grads, self.master.shared_actor_net.vars))
         apply_critic_gradients = critic_optimizer.apply_gradients(
@@ -704,7 +726,7 @@ class A3C(Agent):
             actor_n_hidden=20,
             critic_n_hidden=20,
             gradient_clip_value=40,
-            n_threads=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
+            n_tasks=multiprocessing.cpu_count(),  # Use as much threads as there are CPU threads on the current system
             T_max=8e5,
             shared_optimizer=False,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
@@ -712,28 +734,21 @@ class A3C(Agent):
             save_model=False
         ))
         self.config.update(usercfg)
-        self.stop_requested = False
 
-        with tf.variable_scope("global"):
-            self.build_networks()
+        # with tf.variable_scope("global"):
+        #     self.build_networks()
 
+            # TODO: do something with this
             # if self.config["save_model"]:
             #     tf.add_to_collection("action", self.action)
             #     tf.add_to_collection("states", self.states)
             #     self.saver = tf.train.Saver()
 
-            self.losses, loss_summaries = self.create_summary_losses()
-            self.reward = tf.placeholder("float", name="reward")
-            tf.summary.scalar("Reward", self.reward)
-            self.episode_length = tf.placeholder("float", name="episode_length")
-            tf.summary.scalar("Episode_length", self.episode_length)
-            self.summary_op = tf.summary.merge(loss_summaries)
-
-        spec = cluster_spec(self.config["n_threads"], 1)
+        spec = cluster_spec(self.config["n_tasks"], 1)
         cluster = tf.train.ClusterSpec(spec).as_cluster_def()
 
         self.jobs = []
-        for task_id in range(self.config["n_threads"]):
+        for task_id in range(self.config["n_tasks"]):
             job = self.make_thread(task_id, cluster)
             self.jobs.append(job)
 
@@ -760,12 +775,6 @@ class A3C(Agent):
         #     logging.info("Saving model")
         #     self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
-    def create_summary_losses(self):
-        self.actor_loss = tf.placeholder("float", name="actor_loss")
-        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss)
-        self.critic_loss = tf.placeholder("float", name="critic_loss")
-        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss)
-        return [self.actor_loss, self.critic_loss], [actor_loss_summary, critic_loss_summary]
 
 class A3CDiscrete(A3C):
     """A3C for a discrete action space"""
@@ -807,43 +816,12 @@ class A3CDiscreteCNN(A3C):
             self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
 
-    def create_summary_losses(self):
-        self.actor_loss = tf.placeholder("float", name="actor_loss")
-        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss)
-        self.critic_loss = tf.placeholder("float", name="critic_loss")
-        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss)
-        self.loss = tf.placeholder("float", name="loss")
-        loss_summary = tf.summary.scalar("Loss", self.loss)
-        return [self.actor_loss, self.critic_loss, self.loss], [actor_loss_summary, critic_loss_summary, loss_summary]
-
 class A3CDiscreteCNNRNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
         self.thread_type = A3CTaskDiscreteCNNRNN
         super(A3CDiscreteCNNRNN, self).__init__(env, monitor, monitor_path, **usercfg)
         self.config["RNN"] = True
-
-    def build_networks(self):
-        # self.shared_ac_net = ActorCriticNetworkDiscreteCNNRNN(
-        #     state_shape=list(self.env.observation_space.shape),
-        #     n_actions=self.env.action_space.n,
-        #     n_hidden=self.config["actor_n_hidden"],
-        #     summary=False)
-        # self.states = self.shared_ac_net.states
-        # self.action = self.shared_ac_net.action
-        # if self.config["shared_optimizer"]:
-        #     self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
-        # self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
-        return
-
-    def create_summary_losses(self):
-        self.actor_loss = tf.placeholder("float", name="actor_loss")
-        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss)
-        self.critic_loss = tf.placeholder("float", name="critic_loss")
-        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss)
-        self.loss = tf.placeholder("float", name="loss")
-        loss_summary = tf.summary.scalar("loss", self.loss)
-        return [self.actor_loss, self.critic_loss, self.loss], [actor_loss_summary, critic_loss_summary, loss_summary]
 
 class A3CContinuous(A3C):
     """A3C for a continuous action space"""

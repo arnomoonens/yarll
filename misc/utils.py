@@ -89,3 +89,14 @@ def ge(minimum):
 
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
+
+class FastSaver(tf.train.Saver):
+    """
+    Disables write_meta_graph argument,
+    which freezes entire process and is mostly useless.
+    Source: https://github.com/openai/universe-starter-agent/blob/cbfa7901ff223adf89698f1de902811e4dabdca9/worker.py
+    """
+    def save(self, sess, save_path, global_step=None, latest_filename=None,
+             meta_graph_suffix="meta", write_meta_graph=True):
+        super(FastSaver, self).save(sess, save_path, global_step, latest_filename,
+                                    meta_graph_suffix, False)

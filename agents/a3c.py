@@ -7,7 +7,9 @@ import logging
 import threading
 import multiprocessing
 import signal
+import sys
 import queue
+import time
 
 from gym import wrappers
 
@@ -143,7 +145,6 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         L3 = tf.reshape(L3, [-1, lstm_size])
 
         # Fully connected for Actor
-
         self.logits = linear(L3, n_actions, "actionlogits", normalized_columns_initializer(0.01))
         self.value = tf.reshape(linear(L3, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
@@ -289,7 +290,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
                     summary = tf.Summary()
                     summary.value.add(tag="global/Episode_length", simple_value=float(episode_steps))
                     summary.value.add(tag="global/Reward", simple_value=float(episode_reward))
-                    summary_writer.add_summary(summary, policy.master.global_step.eval())
+                    summary_writer.add_summary(summary, policy.global_step.eval())
                     summary_writer.flush()
                 episode_steps = 0
                 episode_reward = 0
@@ -331,34 +332,68 @@ class RunnerThread(threading.Thread):
 
             self.queue.put(next(trajectory_provider), timeout=600.0)
 
-class A3CThread(threading.Thread):
+class A3CTask(threading.Thread):
     """Single A3C learner thread."""
-    def __init__(self, master, thread_id, clip_gradients=True):
-        super(A3CThread, self).__init__(name=thread_id)
-        self.thread_id = thread_id
+    def __init__(self, master, task_id, cluster, clip_gradients=True):
+        super(A3CTask, self).__init__(name=task_id)
+        self.task_id = task_id
         self.clip_gradients = clip_gradients
         self.env = make(master.env_name)
         self.master = master
         self.config = master.config
-        if thread_id == 0 and self.master.monitor:
+        if task_id == 0 and self.master.monitor:
             self.env = wrappers.Monitor(self.env, master.monitor_path, force=True, video_callable=(None if self.master.video else False))
 
         # Only used (and overwritten) by agents that use an RNN
         self.initial_features = None
 
         # Build actor and critic networks
-        with tf.variable_scope("t{}_net".format(self.thread_id)):
-            self.action, self.value, self.actor_states, self.critic_states, self.actions_taken, self.losses, self.adv, self.r, self.n_steps = self.build_networks()
-            self.sync_net = self.create_sync_net_op()
-            inc_step = self.master.global_step.assign_add(self.n_steps)
-            self.train_op = tf.group(self.make_trainer(), inc_step)
-        # Write the summary of each thread in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "thread" + str(self.thread_id)), self.master.session.graph)
+        self.graph = tf.Graph()
+        with self.graph.as_default():
+            worker_device = "/job:worker/task:{}/cpu:0".format(task_id)
+            # Global network
+            with tf.device(tf.train.replica_device_setter(1, worker_device=worker_device)):
+                with tf.variable_scope("global"):
+                    self.network = self.build_networks()
+                    self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
+                                                       trainable=False)
+            # Local network
+            with tf.device(worker_device):
+                with tf.variable_scope("local"):
+                    self.local_network = self.build_networks()
+                    self.sync_net = self.create_sync_net_op()
+                    n_steps = tf.shape(self.local_network.states)[0]
+                    inc_step = self.global_step.assign_add(n_steps)
+                    self.train_op = tf.group(self.make_trainer(), inc_step)
 
-        self.runner = RunnerThread(self.env, self, 20, thread_id == 0 and self.master.video)
+            variables_to_save = [v for v in tf.global_variables() if not v.name.startswith("local")]
+            init_op = tf.variables_initializer(variables_to_save)
+            init_all_op = tf.global_variables_initializer()
+        # Write the summary of each thread in a different directory
+        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task{}".format(self.task_id)))
+
+        self.runner = RunnerThread(self.env, self, 20, task_id == 0 and self.master.video)
+
+        self.server = tf.train.Server(cluster, job_name="worker", task_index=task_id,
+                                 config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
+
+        def init_fn(sess):
+            sess.run(init_all_op)
+
+        self.sv = tf.train.Supervisor(
+            graph=self.graph,
+            is_chief=(task_id == 0),
+            summary_op=None,
+            init_op=init_op,
+            init_fn=init_fn,
+            summary_writer=self.writer,
+            global_step=self.global_step
+        )
+
+        self.config_proto = tf.ConfigProto(device_filters=["/job:ps", "/job:worker/task:{}/cpu:0".format(task_id)])
 
     def get_critic_value(self, states, *rest):
-        return self.master.session.run(self.value, feed_dict={self.critic_states: states})[0]
+        return tf.get_default_session().run(self.value, feed_dict={self.critic_states: states})[0]
 
     def get_env_action(self, action):
         return np.argmax(action)
@@ -369,7 +404,7 @@ class A3CThread(threading.Thread):
             self.actor_states: [state],
             self.critic_states: [state]
         }
-        action, value = self.master.session.run([self.action, self.value], feed_dict=feed_dict)
+        action, value = tf.get_default_session().run([self.action, self.value], feed_dict=feed_dict)
         return action, value, []
 
     def pull_batch_from_queue(self):
@@ -389,45 +424,45 @@ class A3CThread(threading.Thread):
     def run(self):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
         # Assume thread-specific parameter vectors θ' and θ'v
-        sess = self.master.session
-        self.runner.start_runner(sess, self.writer)
-        t = 1  # thread step counter
-        while self.master.T < self.config["T_max"] and not self.master.stop_requested:
-            # Synchronize thread-specific parameters θ' = θ and θ'v = θv
-            sess.run(self.sync_net)
-            trajectory = self.pull_batch_from_queue()
-            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1][0])
-            rewards_plus_v = np.asarray(trajectory.rewards + [v])
-            vpred_t = np.asarray(trajectory.values + [v])
-            delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
-            batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-            batch_adv = discount_rewards(delta_t, self.config["gamma"])
-            fetches = self.losses + [self.train_op, self.master.global_step]
-            states = np.asarray(trajectory.states)
-            feed_dict = {
-                self.actor_states: states,
-                self.critic_states: states,
-                self.actions_taken: np.asarray(trajectory.actions),
-                self.adv: batch_adv,
-                self.r: np.asarray(batch_r)
-            }
-            feature = trajectory.features[0][0]
-            if feature != []:
-                feed_dict[self.ac_net.rnn_state_in] = feature
-            results = sess.run(fetches, feed_dict)
-            n_states = states.shape[0]
-            feed_dict = dict(zip(self.master.losses, map(lambda x: x / n_states, results)))
-            summary = sess.run([self.master.summary_op], feed_dict)
-            self.writer.add_summary(summary[0], results[-1])
-            self.writer.flush()
-            t += 1
-            self.master.T += trajectory.steps
-        self.runner.stop_requested = True
+        with self.sv.managed_session(self.server.target, config=self.config_proto) as sess, sess.as_default():
+            self.runner.start_runner(sess, self.writer)
+            t = 1  # thread step counter
+            while not self.sv.should_stop() and self.master.T < self.config["T_max"]:
+                # Synchronize thread-specific parameters θ' = θ and θ'v = θv
+                sess.run(self.sync_net)
+                trajectory = self.pull_batch_from_queue()
+                v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1][0])
+                rewards_plus_v = np.asarray(trajectory.rewards + [v])
+                vpred_t = np.asarray(trajectory.values + [v])
+                delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
+                batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
+                batch_adv = discount_rewards(delta_t, self.config["gamma"])
+                fetches = self.losses + [self.train_op, self.global_step]
+                states = np.asarray(trajectory.states)
+                feed_dict = {
+                    self.actor_states: states,
+                    self.critic_states: states,
+                    self.actions_taken: np.asarray(trajectory.actions),
+                    self.adv: batch_adv,
+                    self.r: np.asarray(batch_r)
+                }
+                feature = trajectory.features[0][0]
+                if feature != []:
+                    feed_dict[self.local_network.rnn_state_in] = feature
+                results = sess.run(fetches, feed_dict)
+                n_states = states.shape[0]
+                feed_dict = dict(zip(self.losses, map(lambda x: x / n_states, results)))
+                # summary = sess.run([self.summary_op], feed_dict)
+                # self.writer.add_summary(summary[0], results[-1])
+                # self.writer.flush()
+                t += 1
+                self.master.T += trajectory.steps
+            self.sv.stop()
 
-class A3CThreadDiscrete(A3CThread):
-    """A3CThread for a discrete action space."""
-    def __init__(self, master, thread_id):
-        super(A3CThreadDiscrete, self).__init__(master, thread_id)
+class A3CTaskDiscrete(A3CTask):
+    """A3CTask for a discrete action space."""
+    def __init__(self, master, task_id, cluster):
+        super(A3CTaskDiscrete, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
         self.actor_net = actor_net = ActorNetworkDiscrete(list(self.env.observation_space.shape), self.env.action_space.n, self.config["actor_n_hidden"])
@@ -441,8 +476,8 @@ class A3CThreadDiscrete(A3CThread):
         return actor_net.action, critic_net.value, actor_net.states, critic_net.states, actor_net.actions_taken, [actor_net.loss, critic_net.loss], adv, r, n_steps
 
     def create_sync_net_op(self):
-        actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
-        critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.task_id)
+        critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.task_id)
         return tf.group(actor_sync_net, critic_sync_net)
 
     def make_trainer(self):
@@ -453,10 +488,10 @@ class A3CThreadDiscrete(A3CThread):
             actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
             critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
 
-        self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
+        self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.task_id)
         actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
 
-        self.critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        self.critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.task_id)
         critic_grads = tf.gradients(self.critic_net.loss, self.critic_net.vars)
 
         if self.clip_gradients:
@@ -478,13 +513,13 @@ class A3CThreadDiscrete(A3CThread):
 
         return tf.group(apply_actor_gradients, apply_critic_gradients)
 
-class A3CThreadDiscreteCNN(A3CThreadDiscrete):
-    """A3CThread for a discrete action space."""
-    def __init__(self, master, thread_id):
-        super(A3CThreadDiscreteCNN, self).__init__(master, thread_id)
+class A3CTaskDiscreteCNN(A3CTaskDiscrete):
+    """A3CTask for a discrete action space."""
+    def __init__(self, master, task_id, cluster):
+        super(A3CTaskDiscreteCNN, self).__init__(master, task_id, cluster)
 
     def create_sync_net_op(self):
-        return tf.group(*[v1.assign(v2) for v1, v2 in zip(self.ac_net.vars, self.master.shared_ac_net.vars)])
+        return tf.group(*[v1.assign(v2) for v1, v2 in zip(self.local_network.vars, self.network.vars)])
 
     def build_networks(self):
         self.ac_net = ac_net = ActorCriticNetworkDiscreteCNN(
@@ -506,64 +541,65 @@ class A3CThreadDiscreteCNN(A3CThreadDiscrete):
         return action, value, actor_states, critic_states, actions_taken, [actor_loss, critic_loss, loss], adv, r, n_steps
 
     def make_trainer(self):
-        if self.config["shared_optimizer"]:
-            optimizer = self.master.optimizer
-        else:
-            optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
-        grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
+        # TODO: at possibility to use shared optimizer again
+        optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
+        grads = tf.gradients(self.local_network.loss, self.local_network.vars)
 
         grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         # Apply gradients to the weights of the master network
         # Only increase global_step counter once per update of the 2 networks
         return optimizer.apply_gradients(
-            zip(grads, self.master.shared_ac_net.vars))
+            zip(grads, self.network.vars))
 
-class A3CThreadDiscreteCNNRNN(A3CThreadDiscreteCNN):
-    """A3CThread for a discrete action space."""
-    def __init__(self, master, thread_id):
-        super(A3CThreadDiscreteCNNRNN, self).__init__(master, thread_id)
+class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
+    """A3CTask for a discrete action space."""
+    def __init__(self, master, task_id, cluster):
+        super(A3CTaskDiscreteCNNRNN, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
-        self.ac_net = ac_net = ActorCriticNetworkDiscreteCNNRNN(
+        ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
             self.config["actor_n_hidden"],
             summary=False)
-        action = ac_net.action
-        value = ac_net.value
-        actor_states = ac_net.states
-        n_steps = tf.shape(actor_states)[0]
-        critic_states = ac_net.states
-        actions_taken = ac_net.actions_taken
-        loss = ac_net.loss
-        actor_loss = ac_net.actor_loss
-        critic_loss = ac_net.critic_loss
-        adv = ac_net.adv
-        r = ac_net.r
+        # action = ac_net.action
+        # value = ac_net.value
+        self.actor_states = ac_net.states
+        # n_steps = tf.shape(actor_states)[0]
+        self.critic_states = ac_net.states
+        self.actions_taken = ac_net.actions_taken
+        # loss = ac_net.loss
+        # actor_loss = ac_net.actor_loss
+        # critic_loss = ac_net.critic_loss
+        self.adv = ac_net.adv
+        self.r = ac_net.r
+        self.losses = [ac_net.actor_loss, ac_net.critic_loss, ac_net.loss]
         self.initial_features = ac_net.state_init
-        return action, value, actor_states, critic_states, actions_taken, [actor_loss, critic_loss, loss], adv, r, n_steps
+        # return action, value, actor_states, critic_states, actions_taken, [actor_loss, critic_loss, loss], adv, r, n_steps
+        return ac_net
 
     def choose_action(self, state, features):
         """Choose an action."""
         feed_dict = {
-            self.actor_states: [state]
+            self.local_network.states: [state]
         }
-        feed_dict[self.ac_net.rnn_state_in] = features
-        action, rnn_state, value = self.master.session.run([self.ac_net.action, self.ac_net.rnn_state_out, self.value], feed_dict=feed_dict)
+
+        feed_dict[self.local_network.rnn_state_in] = features
+        action, rnn_state, value = tf.get_default_session().run([self.local_network.action, self.local_network.rnn_state_out, self.local_network.value], feed_dict=feed_dict)
         return action, value, rnn_state
 
     def get_critic_value(self, states, features):
         feed_dict = {
-            self.critic_states: states
+            self.local_network.states: states
         }
-        feed_dict[self.ac_net.rnn_state_in] = features
-        return self.master.session.run(self.value, feed_dict=feed_dict)[0]
+        feed_dict[self.local_network.rnn_state_in] = features
+        return tf.get_default_session().run(self.local_network.value, feed_dict=feed_dict)[0]
 
-class A3CThreadContinuous(A3CThread):
-    """A3CThread for a continuous action space."""
-    def __init__(self, master, thread_id):
-        super(A3CThreadContinuous, self).__init__(master, thread_id)
+class A3CTaskContinuous(A3CTask):
+    """A3CTask for a continuous action space."""
+    def __init__(self, master, task_id, cluster):
+        super(A3CTaskContinuous, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
         self.actor_net = actor_net = ActorNetworkContinuous(self.env.action_space, list(self.env.observation_space.shape), self.config["actor_n_hidden"])
@@ -586,10 +622,10 @@ class A3CThreadContinuous(A3CThread):
             actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
             critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
 
-        self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
+        self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.task_id)
         actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
 
-        self.critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        self.critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.task_id)
         critic_grads = tf.gradients(self.critic_net.loss, self.critic_net.vars)
 
         if self.clip_gradients:
@@ -612,9 +648,41 @@ class A3CThreadContinuous(A3CThread):
         return tf.group(apply_actor_gradients, apply_critic_gradients)
 
     def create_sync_net_op(self):
-        actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.thread_id)
-        critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.thread_id)
+        actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.task_id)
+        critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.task_id)
         return tf.group(actor_sync_net, critic_sync_net)
+
+class PSProcess(multiprocessing.Process):
+    """Parameter server"""
+    def __init__(self, task_id, cluster):
+        super(PSProcess, self).__init__()
+        self.server = tf.train.Server(cluster, job_name="ps", task_index=task_id,
+                                 config=tf.ConfigProto(device_filters=["/job:ps"]))
+
+    def run(self):
+        while True:
+            time.sleep(1000)
+
+def cluster_spec(num_workers, num_ps):
+    """
+More tensorflow setup for data parallelism
+"""
+    cluster = {}
+    port = 12222
+
+    all_ps = []
+    host = '127.0.0.1'
+    for _ in range(num_ps):
+        all_ps.append('{}:{}'.format(host, port))
+        port += 1
+    cluster['ps'] = all_ps
+
+    all_workers = []
+    for _ in range(num_workers):
+        all_workers.append('{}:{}'.format(host, port))
+        port += 1
+    cluster['worker'] = all_workers
+    return cluster
 
 class A3C(Agent):
     """Asynchronous Advantage Actor Critic learner."""
@@ -646,17 +714,13 @@ class A3C(Agent):
         self.config.update(usercfg)
         self.stop_requested = False
 
-        self.session = tf.Session(config=tf.ConfigProto(
-            log_device_placement=False,
-            allow_soft_placement=True))
-
         with tf.variable_scope("global"):
             self.build_networks()
 
-            if self.config["save_model"]:
-                tf.add_to_collection("action", self.action)
-                tf.add_to_collection("states", self.states)
-                self.saver = tf.train.Saver()
+            # if self.config["save_model"]:
+            #     tf.add_to_collection("action", self.action)
+            #     tf.add_to_collection("states", self.states)
+            #     self.saver = tf.train.Saver()
 
             self.losses, loss_summaries = self.create_summary_losses()
             self.reward = tf.placeholder("float", name="reward")
@@ -665,31 +729,36 @@ class A3C(Agent):
             tf.summary.scalar("Episode_length", self.episode_length)
             self.summary_op = tf.summary.merge(loss_summaries)
 
+        spec = cluster_spec(self.config["n_threads"], 1)
+        cluster = tf.train.ClusterSpec(spec).as_cluster_def()
+
         self.jobs = []
-        for thread_id in range(self.config["n_threads"]):
-            job = self.make_thread(thread_id)
+        for task_id in range(self.config["n_threads"]):
+            job = self.make_thread(task_id, cluster)
             self.jobs.append(job)
 
-        self.session.run(tf.global_variables_initializer())
+        self.ps = PSProcess(0, cluster)
+        # self.session.run(tf.global_variables_initializer())
 
-    def make_thread(self, thread_id):
-        return self.thread_type(self, thread_id)
+    def make_thread(self, task_id, cluster):
+        return self.thread_type(self, task_id, cluster)
 
     def signal_handler(self, signal, frame):
         """When a (SIGINT) signal is received, request the threads (via the master) to stop after completing an iteration."""
         logging.info("SIGINT signal received: Requesting a stop...")
-        self.stop_requested = True
+        sys.exit(128+signal)
 
     def learn(self):
         signal.signal(signal.SIGINT, self.signal_handler)
         self.train_step = 0
+        self.ps.start()
         for job in self.jobs:
             job.start()
         for job in self.jobs:
             job.join()
-        if self.config["save_model"]:
-            logging.info("Saving model")
-            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
+        # if self.config["save_model"]:
+        #     logging.info("Saving model")
+        #     self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
     def create_summary_losses(self):
         self.actor_loss = tf.placeholder("float", name="actor_loss")
@@ -701,7 +770,7 @@ class A3C(Agent):
 class A3CDiscrete(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = A3CThreadDiscrete
+        self.thread_type = A3CTaskDiscrete
         super(A3CDiscrete, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
@@ -723,7 +792,7 @@ class A3CDiscrete(A3C):
 class A3CDiscreteCNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = A3CThreadDiscreteCNN
+        self.thread_type = A3CTaskDiscreteCNN
         super(A3CDiscreteCNN, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):
@@ -750,21 +819,22 @@ class A3CDiscreteCNN(A3C):
 class A3CDiscreteCNNRNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = A3CThreadDiscreteCNNRNN
+        self.thread_type = A3CTaskDiscreteCNNRNN
         super(A3CDiscreteCNNRNN, self).__init__(env, monitor, monitor_path, **usercfg)
         self.config["RNN"] = True
 
     def build_networks(self):
-        self.shared_ac_net = ActorCriticNetworkDiscreteCNNRNN(
-            state_shape=list(self.env.observation_space.shape),
-            n_actions=self.env.action_space.n,
-            n_hidden=self.config["actor_n_hidden"],
-            summary=False)
-        self.states = self.shared_ac_net.states
-        self.action = self.shared_ac_net.action
-        if self.config["shared_optimizer"]:
-            self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
-        self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
+        # self.shared_ac_net = ActorCriticNetworkDiscreteCNNRNN(
+        #     state_shape=list(self.env.observation_space.shape),
+        #     n_actions=self.env.action_space.n,
+        #     n_hidden=self.config["actor_n_hidden"],
+        #     summary=False)
+        # self.states = self.shared_ac_net.states
+        # self.action = self.shared_ac_net.action
+        # if self.config["shared_optimizer"]:
+        #     self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
+        # self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32), trainable=False)
+        return
 
     def create_summary_losses(self):
         self.actor_loss = tf.placeholder("float", name="actor_loss")
@@ -778,7 +848,7 @@ class A3CDiscreteCNNRNN(A3C):
 class A3CContinuous(A3C):
     """A3C for a continuous action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = A3CThreadContinuous
+        self.thread_type = A3CTaskContinuous
         super(A3CContinuous, self).__init__(env, monitor, monitor_path, **usercfg)
 
     def build_networks(self):

@@ -41,9 +41,11 @@ def make(id, **kwargs):
     if "to_dict" not in dir(env):
         env.to_dict = to_dict
     if "atari.atari_env" in env.unwrapped.__module__:
+        to_dict = env.to_dict
         env = Vectorize(env)
         env = AtariRescale42x42(env)
         env = Unvectorize(env)
+        env.to_dict = to_dict
     if (env.spec.timestep_limit is not None) and not spec.tags.get('vnc'):
         from gym.wrappers.time_limit import TimeLimit
         env = TimeLimit(env,

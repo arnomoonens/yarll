@@ -36,14 +36,14 @@ class EnvSpec(gym.envs.registration.EnvSpec):
 def make(id, **kwargs):
     spec = gym.envs.registry.spec(id)
     env = spec.make(**kwargs)
+    def to_dict():
+        return {"id": id}
+    if "to_dict" not in dir(env):
+        env.to_dict = to_dict
     if "atari.atari_env" in env.unwrapped.__module__:
         env = Vectorize(env)
         env = AtariRescale42x42(env)
         env = Unvectorize(env)
-
-        def to_dict():
-            return {"id": id}
-        env.to_dict = to_dict
     if (env.spec.timestep_limit is not None) and not spec.tags.get('vnc'):
         from gym.wrappers.time_limit import TimeLimit
         env = TimeLimit(env,

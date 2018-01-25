@@ -1,5 +1,13 @@
 # -*- coding: utf8 -*-
 
+"""
+Asynchronous Advantage Actor Critic (A3C)
+Based on:
+- Pseudo code from Asynchronous Methods for Deep Reinforcement Learning
+- Tensorflow code from https://github.com/yao62995/A3C/blob/master/A3C_atari.py and
+  https://github.com/openai/universe-starter-agent/tree/f16f37d9d3bc8146cf68a75557e1ba89824b7e54
+"""
+
 import os
 import numpy as np
 import tensorflow as tf
@@ -19,12 +27,6 @@ from misc.utils import discount_rewards, FastSaver
 from misc.network_ops import sync_networks_op, conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
 
 logging.getLogger().setLevel("INFO")
-
-np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
-
-# Based on:
-# - Pseudo code from Asynchronous Methods for Deep Reinforcement Learning
-# - Tensorflow code from https://github.com/yao62995/A3C/blob/master/A3C_atari.py
 
 class ActorCriticNetworkDiscrete(object):
     """Neural network for the Actor of an Actor-Critic algorithm using a discrete action space"""
@@ -330,7 +332,8 @@ class A3CTask(threading.Thread):
         with self.graph.as_default():
             worker_device = "/job:worker/task:{}/cpu:0".format(task_id)
             # Global network
-            with tf.device(tf.train.replica_device_setter(1, worker_device=worker_device)):
+            shared_device = tf.train.replica_device_setter(1, worker_device=worker_device)
+            with tf.device(shared_device):
                 with tf.variable_scope("global"):
                     self.network = self.build_networks()
                     self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
@@ -342,7 +345,11 @@ class A3CTask(threading.Thread):
                     self.sync_net = self.create_sync_net_op()
                     self.n_steps = tf.shape(self.local_network.states)[0]
                     inc_step = self.global_step.assign_add(self.n_steps)
-                self.train_op = tf.group(self.make_trainer(), inc_step)
+
+            device = shared_device if self.config["shared_optimizer"] else worker_device
+            with tf.device(device):
+                apply_optim_op = self.make_trainer()
+                self.train_op = tf.group(apply_optim_op, inc_step)
 
                 loss_summaries = self.create_summary_losses()
                 self.reward = tf.placeholder("float", name="reward")
@@ -481,29 +488,6 @@ class A3CTaskDiscrete(A3CTask):
         self.losses = [ac_net.actor_loss, ac_net.critic_loss, ac_net.loss]
         return ac_net
 
-    # def make_trainer(self):
-    #     if self.config["shared_optimizer"]:
-    #         actor_optimizer = self.master.actor_optimizer
-    #     else:
-    #         actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-
-    #     self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.task_id)
-    #     actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
-
-    #     if self.clip_gradients:
-    #         # Clipped gradients
-    #         gradient_clip_value = self.config["gradient_clip_value"]
-    #         processed_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in actor_grads]
-    #     else:
-    #         # Non-clipped gradients: don't do anything
-    #         processed_grads = actor_grads
-
-    #     # Apply gradients to the weights of the master network
-    #     apply_grads = actor_optimizer.apply_gradients(
-    #         zip(processed_grads, self.master.shared_actor_net.vars))
-
-    #     return apply_grads
-
 class A3CTaskDiscreteCNN(A3CTaskDiscrete):
     """A3CTask for a discrete action space."""
     def __init__(self, master, task_id, cluster):
@@ -575,38 +559,6 @@ class A3CTaskContinuous(A3CTask):
     def get_env_action(self, action):
         return action
 
-    # def make_trainer(self):
-    #     if self.config["shared_optimizer"]:
-    #         actor_optimizer = self.master.actor_optimizer
-    #         critic_optimizer = self.master.critic_optimizer
-    #     else:
-    #         actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-    #         critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
-
-    #     self.actor_sync_net = sync_networks_op(self.master.shared_actor_net, self.actor_net.vars, self.task_id)
-    #     actor_grads = tf.gradients(self.actor_net.loss, self.actor_net.vars)
-
-    #     self.critic_sync_net = sync_networks_op(self.master.shared_critic_net, self.critic_net.vars, self.task_id)
-    #     critic_grads = tf.gradients(self.critic_net.loss, self.critic_net.vars)
-
-    #     if self.clip_gradients:
-    #         # Clipped gradients
-    #         gradient_clip_value = self.config["gradient_clip_value"]
-    #         processed_actor_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in actor_grads]
-    #         processed_critic_grads = [tf.clip_by_value(grad, -gradient_clip_value, gradient_clip_value) for grad in critic_grads]
-    #     else:
-    #         # Non-clipped gradients: don't do anything
-    #         processed_actor_grads = actor_grads
-    #         processed_critic_grads = critic_grads
-
-    #     # Apply gradients to the weights of the master network
-    #     apply_actor_gradients = actor_optimizer.apply_gradients(
-    #         zip(processed_actor_grads, self.master.shared_actor_net.vars))
-    #     apply_critic_gradients = critic_optimizer.apply_gradients(
-    #         zip(processed_critic_grads, self.master.shared_critic_net.vars))
-
-    #     return tf.group(apply_actor_gradients, apply_critic_gradients)
-
 class PSProcess(multiprocessing.Process):
     """Parameter server"""
     def __init__(self, task_id, cluster):
@@ -620,8 +572,8 @@ class PSProcess(multiprocessing.Process):
 
 def cluster_spec(num_workers, num_ps):
     """
-More tensorflow setup for data parallelism
-"""
+    More tensorflow setup for data parallelism
+    """
     cluster = {}
     port = 12222
 
@@ -667,12 +619,6 @@ class A3C(Agent):
         ))
         self.config.update(usercfg)
 
-            # TODO: do something with this
-            # if self.config["save_model"]:
-            #     tf.add_to_collection("action", self.action)
-            #     tf.add_to_collection("states", self.states)
-            #     self.saver = tf.train.Saver()
-
         spec = cluster_spec(self.config["n_tasks"], 1)
         cluster = tf.train.ClusterSpec(spec).as_cluster_def()
 
@@ -707,30 +653,11 @@ class A3CDiscrete(A3C):
         self.thread_type = A3CTaskDiscrete
         super(A3CDiscrete, self).__init__(env, monitor, monitor_path, **usercfg)
 
-    def build_networks(self):
-        # self.shared_actor_net = ActorCriticNetworkDiscrete(
-        #     list(self.env.observation_space.shape),
-        #     self.env.action_space.n,
-        #     self.config["n_hidden"],
-        #     summary=False)
-        # self.states = self.shared_actor_net.states
-        # self.action = self.shared_actor_net.action
-        # self.shared_critic_net = CriticNetwork(list(self.env.observation_space.shape),
-        #                                        self.config["critic_n_hidden"],
-        #                                        summary=False)
-        if self.config["shared_optimizer"]:
-            self.actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-            self.critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])
-
 class A3CDiscreteCNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
         self.thread_type = A3CTaskDiscreteCNN
         super(A3CDiscreteCNN, self).__init__(env, monitor, monitor_path, **usercfg)
-
-    def build_networks(self):
-        if self.config["shared_optimizer"]:
-            self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
 
 class A3CDiscreteCNNRNN(A3C):
     """A3C for a discrete action space"""
@@ -744,8 +671,3 @@ class A3CContinuous(A3C):
     def __init__(self, env, monitor, monitor_path, **usercfg):
         self.thread_type = A3CTaskContinuous
         super(A3CContinuous, self).__init__(env, monitor, monitor_path, **usercfg)
-
-    def build_networks(self):
-        if self.config["shared_optimizer"]:
-            self.actor_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["actor_learning_rate"])
-            self.critic_optimizer = tf.train.AdamOptimizer(learning_rate=self.config["critic_learning_rate"])

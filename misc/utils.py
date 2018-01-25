@@ -71,7 +71,7 @@ def save_config(directory, config, envs):
     except ImportError:
         pass
     with open(path.join(directory, "config.json"), "w") as outfile:
-        json.dump(config, outfile)
+        json.dump(config, outfile, indent=4)
 
 def json_to_dict(filename):
     """Load a json file as a dictionary."""

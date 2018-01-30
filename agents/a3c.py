@@ -24,7 +24,8 @@ from gym import wrappers
 from environment.registration import make
 from agents.agent import Agent
 from misc.utils import discount_rewards, FastSaver
-from misc.network_ops import sync_networks_op, conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
+from misc.network_ops import conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
+from agents.env_runner import Trajectory
 
 logging.getLogger().setLevel("INFO")
 
@@ -200,42 +201,6 @@ class ActorCriticNetworkContinuous(object):
         self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * 0.01
 
         self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-class Trajectory(object):
-    """Experience gathered from an environment."""
-    def __init__(self):
-        super(Trajectory, self).__init__()
-        self.states = []
-        self.actions = []
-        self.rewards = []
-        self.values = []
-        self.features = []
-        self.terminal = False
-        self.steps = 0
-
-    def add(self, state, action, reward, value, features, terminal):
-        """Add a single transition to the trajectory."""
-        self.states.append(state)
-        self.actions.append(action)
-        self.rewards.append(reward)
-        self.values.append(value)
-        self.features.append(features)
-        self.terminal = terminal
-        self.steps += 1
-
-    def extend(self, other):
-        """
-        Extend a trajectory with another one
-        given that the current one hasn't ended yet.
-        """
-        assert not self.terminal, "Can't extend a terminal trajectory"
-        self.states.extend(other.states)
-        self.actions.extend(other.actions)
-        self.rewards.extend(other.rewards)
-        self.values.extend(other.values)
-        self.features.extend(other.features)
-        self.terminal = other.terminal
-        self.steps += other.steps
 
 def env_runner(env, policy, n_steps, render=False, summary_writer=None):
     """

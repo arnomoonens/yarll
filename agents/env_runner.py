@@ -1,10 +1,47 @@
 # -*- coding: utf8 -*-
 
-import numpy as np
+import tensorflow as tf
+
+
+class Trajectory(object):
+    """Experience gathered from an environment."""
+    def __init__(self):
+        super(Trajectory, self).__init__()
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.values = []
+        self.features = []
+        self.terminal = False
+        self.steps = 0
+
+    def add(self, state, action, reward, value=None, features=None, terminal=False):
+        """Add a single transition to the trajectory."""
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.values.append(value)
+        self.features.append(features)
+        self.terminal = terminal
+        self.steps += 1
+
+    def extend(self, other):
+        """
+        Extend a trajectory with another one
+        given that the current one hasn't ended yet.
+        """
+        assert not self.terminal, "Can't extend a terminal trajectory"
+        self.states.extend(other.states)
+        self.actions.extend(other.actions)
+        self.rewards.extend(other.rewards)
+        self.values.extend(other.values)
+        self.features.extend(other.features)
+        self.terminal = other.terminal
+        self.steps += other.steps
 
 class EnvRunner(object):
     """Environment runner using a policy"""
-    def __init__(self, env, policy, config, state_preprocessor=None):
+    def __init__(self, env, policy, config, state_preprocessor=None, summary_writer=None):
         super(EnvRunner, self).__init__()
         self.env = env
         self.ob_space = self.env.observation_space
@@ -16,11 +53,14 @@ class EnvRunner(object):
             batch_update="timesteps",
             episode_max_length=env.spec.max_episode_steps,
             timesteps_per_batch=10000,
-            n_iter=100,
-            repeat_n_actions=1
+            n_iter=100
         )
+        self.episode_steps = 0
+        self.episode_reward = 0
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
+        self.summary_writer = summary_writer
+        self.reset_env()
 
     def choose_action(self, state):
         """Choose an action based on the current state in the environment."""
@@ -28,46 +68,44 @@ class EnvRunner(object):
 
     def reset_env(self):
         """Reset the current environment and get the initial state"""
-        state = self.env.reset()
-        state = state if self.state_preprocessor is None else self.state_preprocessor(state)
-        return state
+        self.state = self.env.reset()
+        self.state = self.state if self.state_preprocessor is None else self.state_preprocessor(self.state)
 
     def step_env(self, action):
         """Execute an action in the current environment."""
-        state, reward, done, info = self.env.step(action)
+        state, reward, done, info = self.env.step(self.policy.get_env_action(action))
         state = state if self.state_preprocessor is None else self.state_preprocessor(state)
         return state, reward, done, info
 
-    def get_trajectory(self, render=False):
-        """
-        Run agent-environment loop for one whole episode (trajectory).
-        Returns dictionary of rewards, states, actions, whether a terminal state is reached and steps.
-        """
-        state = self.reset_env()
-        self.policy.new_trajectory()
-        states = []
-        actions = []
-        rewards = []
-        for i in range(self.config["episode_max_length"]):
-            action = self.choose_action(state)
-            states.append(state)
-            for _ in range(self.config["repeat_n_actions"]):
-                state, rew, done, _ = self.step_env(action)
-                if done:  # Don't continue if episode has already ended
-                    break
-            actions.append(action)
-            rewards.append(rew)
+    def get_steps(self, n_steps, reset=False, render=False):
+        if reset:
+            self.reset_env()
+            self.policy.new_trajectory()
+        traj = Trajectory()
+        for i in range(n_steps):
+            action, value = self.choose_action(self.state)
+            self.state, rew, done, _ = self.step_env(action)
+            traj.add(self.state, action, rew, value, terminal=done)
+            self.episode_reward += rew
+            self.episode_steps += 1
             if done:
+                if self.summary_writer is not None:
+                    summary = tf.Summary()
+                    summary.value.add(tag="global/Episode_length", simple_value=float(self.episode_steps))
+                    summary.value.add(tag="global/Reward", simple_value=float(self.episode_reward))
+                    self.summary_writer.add_summary(summary, self.policy.global_step)
+                    self.summary_writer.flush()
+                    self.episode_reward = 0
+                    self.episode_steps = 0
+                self.reset_env()
+                self.policy.new_trajectory()
                 break
             if render:
                 self.env.render()
-        return {
-            "reward": np.array(rewards),
-            "state": np.array(states),
-            "action": np.array(actions),
-            "done": done,  # Tajectory ended because a terminal state was reached
-            "steps": i + 1
-        }
+        return traj
+
+    def get_trajectory(self, render=False):
+        return self.get_steps(self.config["episode_max_length"], render)
 
     def get_trajectories(self):
         """Generate trajectories until a certain number of timesteps or trajectories."""

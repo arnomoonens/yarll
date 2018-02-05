@@ -24,182 +24,10 @@ from gym import wrappers
 from environment.registration import make
 from agents.agent import Agent
 from misc.utils import discount_rewards, FastSaver
-from misc.network_ops import conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
+from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss
 from agents.env_runner import Trajectory
 
 logging.getLogger().setLevel("INFO")
-
-class ActorCriticNetworkDiscrete(object):
-    """Neural network for the Actor of an Actor-Critic algorithm using a discrete action space"""
-    def __init__(self, state_shape, n_actions, n_hidden, summary=True):
-        super(ActorCriticNetworkDiscrete, self).__init__()
-        self.state_shape = state_shape
-        self.n_actions = n_actions
-        self.n_hidden = n_hidden
-
-        self.states = tf.placeholder(tf.float32, [None] + state_shape, name="states")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
-        self.actions_taken = tf.placeholder(tf.float32, [None, n_actions], name="actions_taken")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.n_hidden,
-            activation_fn=tf.tanh,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer(),
-            scope="L1")
-
-        # Fully connected for actor and critic
-        self.logits = linear(L1, n_actions, "actionlogits", normalized_columns_initializer(0.01))
-        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
-
-        self.probs = tf.nn.softmax(self.logits)
-
-        self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
-        self.action = tf.one_hot(self.action, n_actions)[0, :]
-
-        log_probs = tf.nn.log_softmax(self.logits)
-        self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
-        self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
-        entropy = - tf.reduce_sum(self.probs * log_probs)
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
-        self.summary_loss = self.loss
-        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-class ActorCriticNetworkDiscreteCNN(object):
-    """docstring for ActorCriticNetworkDiscreteCNNRNN"""
-    def __init__(self, state_shape, n_actions, n_hidden, summary=True):
-        super(ActorCriticNetworkDiscreteCNN, self).__init__()
-        self.state_shape = state_shape
-        self.n_actions = n_actions
-        self.n_hidden = n_hidden
-        self.summary = summary
-
-        self.states = tf.placeholder(tf.float32, [None] + state_shape, name="states")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
-        self.actions_taken = tf.placeholder(tf.float32, [None, n_actions], name="actions_taken")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
-        x = self.states
-        # Convolution layers
-        for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
-
-        # Flatten
-        shape = x.get_shape().as_list()
-        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
-
-        # Fully connected for Actor & Critic
-        self.logits = linear(reshape, n_actions, "actionlogits", normalized_columns_initializer(0.01))
-        self.value = tf.reshape(linear(reshape, 1, "value", normalized_columns_initializer(1.0)), [-1])
-
-        self.probs = tf.nn.softmax(self.logits)
-
-        self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
-        self.action = tf.one_hot(self.action, n_actions)[0, :]
-
-        log_probs = tf.nn.log_softmax(self.logits)
-        self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
-        self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
-        entropy = - tf.reduce_sum(self.probs * log_probs)
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
-        self.summary_loss = self.loss
-
-        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-class ActorCriticNetworkDiscreteCNNRNN(object):
-    """docstring for ActorCriticNetworkDiscreteCNNRNN"""
-    def __init__(self, state_shape, n_actions, n_hidden, summary=True):
-        super(ActorCriticNetworkDiscreteCNNRNN, self).__init__()
-        self.state_shape = state_shape
-        self.n_actions = n_actions
-        self.n_hidden = n_hidden
-        self.summary = summary
-
-        self.states = tf.placeholder(tf.float32, [None] + state_shape, name="states")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
-        self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
-        x = self.states
-        # Convolution layers
-        for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
-
-        # Flatten
-        reshape = tf.expand_dims(flatten(x), [0])
-
-        lstm_size = 256
-        self.enc_cell = tf.contrib.rnn.BasicLSTMCell(lstm_size)
-        lstm_state_size = self.enc_cell.state_size
-        c_init = np.zeros((1, lstm_state_size.c), np.float32)
-        h_init = np.zeros((1, lstm_state_size.h), np.float32)
-        self.state_init = [c_init, h_init]
-        self.rnn_state_in = self.enc_cell.zero_state(1, tf.float32)
-        tf.add_to_collection("rnn_state_in_c", self.rnn_state_in.c)
-        tf.add_to_collection("rnn_state_in_h", self.rnn_state_in.h)
-        L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=self.enc_cell,
-                                                   inputs=reshape,
-                                                   initial_state=self.rnn_state_in,
-                                                   dtype=tf.float32)
-        tf.add_to_collection("rnn_state_out_c", self.rnn_state_out.c)
-        tf.add_to_collection("rnn_state_out_h", self.rnn_state_out.h)
-        L3 = tf.reshape(L3, [-1, lstm_size])
-
-        # Fully connected for actor and critic
-        self.logits = linear(L3, n_actions, "actionlogits", normalized_columns_initializer(0.01))
-        self.value = tf.reshape(linear(L3, 1, "value", normalized_columns_initializer(1.0)), [-1])
-
-        self.probs = tf.nn.softmax(self.logits)
-
-        self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
-        self.action = tf.one_hot(self.action, n_actions)[0, :]
-
-        log_probs = tf.nn.log_softmax(self.logits)
-        self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
-
-        self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
-
-        self.entropy = - tf.reduce_sum(self.probs * log_probs)
-
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * 0.01
-
-        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-class ActorCriticNetworkContinuous(object):
-    """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
-    def __init__(self, action_space, state_shape, n_hidden, summary=True):
-        super(ActorCriticNetworkContinuous, self).__init__()
-        self.state_shape = state_shape
-        self.n_hidden = n_hidden
-
-        self.states = tf.placeholder("float", [None] + self.state_shape, name="states")
-        self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.n_hidden,
-            activation_fn=tf.tanh,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer(),
-            scope="mu_L1")
-
-        mu, sigma = mu_sigma_layer(L1, 1)
-
-        self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
-        self.action = self.normal_dist.sample(1)
-        self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0], name="action")
-        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
-
-        self.actor_loss = - tf.reduce_sum(self.normal_dist.log_prob(self.actions_taken) * self.adv)
-        self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
-        self.entropy = - tf.reduce_mean(self.normal_dist.entropy())
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * 0.01
-
-        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 def env_runner(env, policy, n_steps, render=False, summary_writer=None):
     """
@@ -303,16 +131,23 @@ class A3CTask(threading.Thread):
             shared_device = tf.train.replica_device_setter(1, worker_device=worker_device)
             with tf.device(shared_device):
                 with tf.variable_scope("global"):
-                    self.network = self.build_networks()
+                    self.global_network = self.build_networks()
+                    self.global_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
                     self.global_step = tf.get_variable(
                         "global_step", [],
                         tf.int32,
                         initializer=tf.constant_initializer(0, dtype=tf.int32),
                         trainable=False)
+
             # Local network
             with tf.device(worker_device):
                 with tf.variable_scope("local"):
                     self.local_network = self.build_networks()
+                    self.actor_loss, self.critic_loss, self.loss = self.make_loss(
+                        self.local_network,
+                        self.config["entropy_coef"],
+                        self.config["loss_reducer"])
+                    self.local_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
                     self.sync_net = self.create_sync_net_op()
                     self.n_steps = tf.shape(self.local_network.states)[0]
                     inc_step = self.global_step.assign_add(self.n_steps)
@@ -381,22 +216,22 @@ class A3CTask(threading.Thread):
         return action, value, []
 
     def create_sync_net_op(self):
-        return tf.group(*[v1.assign(v2) for v1, v2 in zip(self.local_network.vars, self.network.vars)])
+        return tf.group(*[v1.assign(v2) for v1, v2 in zip(self.local_vars, self.global_vars)])
 
     def make_trainer(self):
         optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
-        grads = tf.gradients(self.local_network.loss, self.local_network.vars)
+        grads = tf.gradients(self.loss, self.local_vars)
         grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
 
         # Apply gradients to the weights of the master network
         return optimizer.apply_gradients(
-            zip(grads, self.network.vars))
+            zip(grads, self.global_vars))
 
     def create_summary_losses(self):
         n_steps = tf.to_float(self.n_steps)
-        actor_loss_summary = tf.summary.scalar("Actor_loss", self.local_network.actor_loss / n_steps)
-        critic_loss_summary = tf.summary.scalar("Critic_loss", self.local_network.critic_loss / n_steps)
-        loss_summary = tf.summary.scalar("loss", self.local_network.loss / n_steps)
+        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss / n_steps)
+        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss / n_steps)
+        loss_summary = tf.summary.scalar("loss", self.loss / n_steps)
         return [actor_loss_summary, critic_loss_summary, loss_summary]
 
     def pull_batch_from_queue(self):
@@ -450,6 +285,7 @@ class A3CTask(threading.Thread):
 class A3CTaskDiscrete(A3CTask):
     """A3CTask for a discrete action space."""
     def __init__(self, master, task_id, cluster):
+        self.make_loss = ActorCriticDiscreteLoss
         super(A3CTaskDiscrete, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
@@ -462,12 +298,12 @@ class A3CTaskDiscrete(A3CTask):
         self.actions_taken = ac_net.actions_taken
         self.adv = ac_net.adv
         self.r = ac_net.r
-        self.losses = [ac_net.actor_loss, ac_net.critic_loss, ac_net.loss]
         return ac_net
 
 class A3CTaskDiscreteCNN(A3CTaskDiscrete):
     """A3CTask for a discrete action space."""
     def __init__(self, master, task_id, cluster):
+        self.make_loss = ActorCriticDiscreteLoss
         super(A3CTaskDiscreteCNN, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
@@ -480,12 +316,12 @@ class A3CTaskDiscreteCNN(A3CTaskDiscrete):
         self.actions_taken = ac_net.actions_taken
         self.adv = ac_net.adv
         self.r = ac_net.r
-        self.losses = [ac_net.actor_loss, ac_net.critic_loss, ac_net.loss]
         return ac_net
 
 class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
     """A3CTask for a discrete action space."""
     def __init__(self, master, task_id, cluster):
+        self.make_loss = ActorCriticDiscreteLoss
         super(A3CTaskDiscreteCNNRNN, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
@@ -498,7 +334,6 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         self.actions_taken = ac_net.actions_taken
         self.adv = ac_net.adv
         self.r = ac_net.r
-        self.losses = [ac_net.actor_loss, ac_net.critic_loss, ac_net.loss]
         self.initial_features = ac_net.state_init
         return ac_net
 
@@ -524,6 +359,7 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
 class A3CTaskContinuous(A3CTask):
     """A3CTask for a continuous action space."""
     def __init__(self, master, task_id, cluster):
+        self.make_loss = ActorCriticContinuousLoss
         super(A3CTaskContinuous, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
@@ -535,7 +371,6 @@ class A3CTaskContinuous(A3CTask):
         self.actions_taken = ac_net.actions_taken
         self.adv = ac_net.adv
         self.r = ac_net.r
-        self.losses = [ac_net.actor_loss, ac_net.critic_loss, ac_net.loss]
         return ac_net
 
     def get_env_action(self, action):
@@ -601,6 +436,8 @@ class A3C(Agent):
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,
             n_local_steps=20,
+            entropy_coef=0.01,
+            loss_reducer="sum",  # use tf.reduce_sum or tf.reduce_mean for the loss
             save_model=False
         ))
         self.config.update(usercfg)

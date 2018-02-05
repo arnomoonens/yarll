@@ -9,7 +9,7 @@ from gym import wrappers
 
 from agents.agent import Agent
 from misc.utils import discount_rewards
-from misc.network_ops import mu_sigma_layer, normalized_columns_initializer, linear
+from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss
 # from misc.reporter import Reporter
 from agents.env_runner import EnvRunner
 
@@ -17,79 +17,6 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
-
-class ActorCriticNetworkDiscrete(object):
-    """Neural network for the Actor of an Actor-Critic algorithm using a discrete action space"""
-    def __init__(self, state_shape, n_actions, n_hidden):
-        super(ActorCriticNetworkDiscrete, self).__init__()
-        self.state_shape = state_shape
-        self.n_actions = n_actions
-        self.n_hidden = n_hidden
-
-        self.states = tf.placeholder(tf.float32, [None] + list(state_shape), name="states")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
-        self.actions_taken = tf.placeholder(tf.float32, [None, n_actions], name="actions_taken")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.n_hidden,
-            activation_fn=tf.tanh,
-            weights_initializer=normalized_columns_initializer(0.01),
-            biases_initializer=tf.zeros_initializer(),
-            scope="L1")
-
-        # Fully connected for actor
-        self.logits = linear(L1, n_actions, "actionlogits", normalized_columns_initializer(0.01))
-
-        self.probs = tf.nn.softmax(self.logits)
-
-        self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
-        self.action = tf.one_hot(self.action, n_actions)[0, :]
-
-        # Fully connected for critic
-        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
-
-        log_probs = tf.nn.log_softmax(self.logits)
-        self.actor_loss = - tf.reduce_mean(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
-        self.critic_loss = 0.5 * tf.reduce_mean(tf.square(self.value - self.r))
-        self.entropy = - tf.reduce_mean(self.probs * log_probs)
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * self.config["entropy_coef"]
-        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-class ActorCriticNetworkContinuous(object):
-    """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
-    def __init__(self, state_shape, action_space, n_hidden):
-        super(ActorCriticNetworkContinuous, self).__init__()
-        self.state_shape = state_shape
-        self.n_hidden = n_hidden
-
-        self.states = tf.placeholder("float", [None] + list(state_shape), name="states")
-        self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
-
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.n_hidden,
-            activation_fn=tf.tanh,
-            weights_initializer=normalized_columns_initializer(0.01),
-            biases_initializer=tf.zeros_initializer(),
-            scope="mu_L1")
-
-        mu, sigma = mu_sigma_layer(L1, 1)
-
-        self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
-        self.action = self.normal_dist.sample(1)
-        self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0], name="action")
-        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
-
-        self.actor_loss = - tf.reduce_mean(self.normal_dist.log_prob(self.actions_taken) * self.adv)
-        self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
-        self.entropy = - tf.reduce_mean(self.normal_dist.entropy())
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * self.config["entropy_coef"]
-
-        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class A2C(Agent):
     """Advantage Actor Critic"""
@@ -112,6 +39,7 @@ class A2C(Agent):
             gradient_clip_value=0.5,
             n_local_steps=20,
             entropy_coef=0.01,
+            loss_reducer="mean",
             save_model=False
         ))
         self.config.update(usercfg)
@@ -123,6 +51,13 @@ class A2C(Agent):
         self.adv = self.ac_net.adv
         self.actions_taken = self.ac_net.actions_taken
 
+        self.actor_loss, self.critic_loss, self.loss = self.make_loss(
+            self.ac_net,
+            self.config["entropy_coef"],
+            self.config["loss_reducer"]
+        )
+        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
         self._global_step = tf.get_variable(
             "global_step",
             [],
@@ -131,11 +66,11 @@ class A2C(Agent):
             trainable=False)
 
         self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
-        grads = tf.gradients(self.ac_net.loss, self.ac_net.vars)
+        grads = tf.gradients(self.loss, self.vars)
         grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
 
         # Apply gradients to the weights of the master network
-        apply_grads = self.optimizer.apply_gradients(zip(grads, self.ac_net.vars))
+        apply_grads = self.optimizer.apply_gradients(zip(grads, self.vars))
 
         self.n_steps = tf.shape(self.states)[0]
         inc_step = self._global_step.assign_add(self.n_steps)
@@ -150,9 +85,9 @@ class A2C(Agent):
             tf.add_to_collection("states", self.states)
             self.saver = tf.train.Saver()
         n_steps = tf.to_float(self.n_steps)
-        summary_actor_loss = tf.summary.scalar("Actor_loss", self.ac_net.actor_loss / n_steps)
-        summary_critic_loss = tf.summary.scalar("Critic_loss", self.ac_net.critic_loss / n_steps)
-        summary_loss = tf.summary.scalar("Loss", self.ac_net.loss / n_steps)
+        summary_actor_loss = tf.summary.scalar("Actor_loss", self.actor_loss / n_steps)
+        summary_critic_loss = tf.summary.scalar("Critic_loss", self.critic_loss / n_steps)
+        summary_loss = tf.summary.scalar("Loss", self.loss / n_steps)
         self.loss_summary_op = tf.summary.merge(
             [summary_actor_loss, summary_critic_loss, summary_loss])
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "summaries"), self.session.graph)
@@ -207,6 +142,10 @@ class A2C(Agent):
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 class A2CDiscrete(A2C):
+    def __init__(self, *args, **kwargs):
+        self.make_loss = ActorCriticDiscreteLoss
+        super(A2CDiscrete, self).__init__(*args, **kwargs)
+
     def build_networks(self):
         self.ac_net = ActorCriticNetworkDiscrete(
             self.env.observation_space.shape,
@@ -214,6 +153,10 @@ class A2CDiscrete(A2C):
             self.config["n_hidden"])
 
 class A2CContinuous(A2C):
+    def __init__(self, *args, **kwargs):
+        self.make_loss = ActorCriticContinuousLoss
+        super(A2CContinuous, self).__init__(*args, **kwargs)
+
     def build_networks(self):
         self.ac_net = ActorCriticNetworkContinuous(
             self.env.observation_space.shape,

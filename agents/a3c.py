@@ -50,22 +50,21 @@ class ActorCriticNetworkDiscrete(object):
             biases_initializer=tf.zeros_initializer(),
             scope="L1")
 
-        # Fully connected for actor
+        # Fully connected for actor and critic
         self.logits = linear(L1, n_actions, "actionlogits", normalized_columns_initializer(0.01))
+        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
         self.probs = tf.nn.softmax(self.logits)
 
         self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
 
-        # Fully connected for critic
-        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
-
         log_probs = tf.nn.log_softmax(self.logits)
         self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
         self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
-        self.entropy = - tf.reduce_sum(self.probs * log_probs)
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * 0.01
+        entropy = - tf.reduce_sum(self.probs * log_probs)
+        self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
+        self.summary_loss = self.loss
         self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class ActorCriticNetworkDiscreteCNN(object):
@@ -250,14 +249,13 @@ class RunnerThread(threading.Thread):
     and puts them on a queue.
     """
     def __init__(self, env, policy, n_local_steps, render=False):
-        super(RunnerThread, self).__init__()
+        threading.Thread.__init__(self)
         self.env = env
         self.policy = policy
         self.n_local_steps = n_local_steps
         self.render = render
-        self.stop_requested = False
-
-        self.queue = queue.Queue(5)
+        self.daemon = True
+        self.queue = queue.Queue(maxsize=5)
 
     def start_runner(self, sess, summary_writer):
         self.sess = sess
@@ -270,11 +268,10 @@ class RunnerThread(threading.Thread):
 
     def _run(self):
         trajectory_provider = env_runner(self.env, self.policy, self.n_local_steps, self.render, self.summary_writer)
-        while not self.stop_requested:
+        while True:
             # the timeout variable exists because apparently, if one worker dies, the other workers
             # won't die with it, unless the timeout is set to some large number.  This is an empirical
             # observation.
-
             self.queue.put(next(trajectory_provider), timeout=600.0)
 
 class A3CTask(threading.Thread):
@@ -287,7 +284,12 @@ class A3CTask(threading.Thread):
         self.master = master
         self.config = master.config
         if task_id == 0 and self.master.monitor:
-            self.env = wrappers.Monitor(self.env, master.monitor_path, force=True, video_callable=(None if self.master.video else False))
+            self.env = wrappers.Monitor(
+                self.env,
+                master.monitor_path,
+                force=True,
+                video_callable=(None if self.master.video else False)
+            )
 
         # Only used (and overwritten) by agents that use an RNN
         self.initial_features = None
@@ -330,7 +332,7 @@ class A3CTask(threading.Thread):
             # Write the summary of each task in a different directory
             self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task{}".format(self.task_id)))
 
-            self.runner = RunnerThread(self.env, self, 20, task_id == 0 and self.master.video)
+            self.runner = RunnerThread(self.env, self, self.config["n_local_steps"], task_id == 0 and self.master.video)
 
             self.server = tf.train.Server(cluster, job_name="worker", task_index=task_id,
                                      config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
@@ -373,12 +375,11 @@ class A3CTask(threading.Thread):
         return tf.group(*[v1.assign(v2) for v1, v2 in zip(self.local_network.vars, self.network.vars)])
 
     def make_trainer(self):
-        # TODO: at possibility to use shared optimizer again
         optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         grads = tf.gradients(self.local_network.loss, self.local_network.vars)
         grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
 
-                # Apply gradients to the weights of the master network
+        # Apply gradients to the weights of the master network
         return optimizer.apply_gradients(
             zip(grads, self.network.vars))
 
@@ -409,7 +410,6 @@ class A3CTask(threading.Thread):
         with self.sv.managed_session(self.server.target, config=self.config_proto) as sess, sess.as_default():
             sess.run(self.sync_net)
             self.runner.start_runner(sess, self.writer)
-            t = 1  # thread step counter
             while not self.sv.should_stop() and self.master.T < self.config["T_max"]:
                 # Synchronize thread-specific parameters θ' = θ and θ'v = θv
                 sess.run(self.sync_net)
@@ -434,9 +434,9 @@ class A3CTask(threading.Thread):
                 summary, _, global_step = sess.run(fetches, feed_dict)
                 self.writer.add_summary(summary, global_step)
                 self.writer.flush()
-                t += 1
                 self.master.T += trajectory.steps
-            self.sv.stop()
+        self.sv.stop()
+        print("stopped")
 
 class A3CTaskDiscrete(A3CTask):
     """A3CTask for a discrete action space."""
@@ -580,6 +580,7 @@ class A3C(Agent):
             shared_optimizer=False,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             repeat_n_actions=1,
+            n_local_steps=20,
             save_model=False
         ))
         self.config.update(usercfg)
@@ -593,6 +594,7 @@ class A3C(Agent):
             self.jobs.append(job)
 
         self.ps = PSProcess(0, cluster)
+        self.ps.daemon = True
 
     def make_thread(self, task_id, cluster):
         return self.thread_type(self, task_id, cluster)
@@ -611,6 +613,7 @@ class A3C(Agent):
             job.start()
         for job in self.jobs:
             job.join()
+        self.ps.terminate()
 
 class A3CDiscrete(A3C):
     """A3C for a discrete action space"""

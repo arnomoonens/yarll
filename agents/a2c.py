@@ -35,7 +35,7 @@ class ActorCriticNetworkDiscrete(object):
             inputs=self.states,
             num_outputs=self.n_hidden,
             activation_fn=tf.tanh,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+            weights_initializer=normalized_columns_initializer(0.01),
             biases_initializer=tf.zeros_initializer(),
             scope="L1")
 
@@ -51,10 +51,10 @@ class ActorCriticNetworkDiscrete(object):
         self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
         log_probs = tf.nn.log_softmax(self.logits)
-        self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
-        self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
-        self.entropy = - tf.reduce_sum(self.probs * log_probs)
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * 0.01
+        self.actor_loss = - tf.reduce_mean(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
+        self.critic_loss = 0.5 * tf.reduce_mean(tf.square(self.value - self.r))
+        self.entropy = - tf.reduce_mean(self.probs * log_probs)
+        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * self.config["entropy_coef"]
         self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
 class ActorCriticNetworkContinuous(object):
@@ -73,7 +73,7 @@ class ActorCriticNetworkContinuous(object):
             inputs=self.states,
             num_outputs=self.n_hidden,
             activation_fn=tf.tanh,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+            weights_initializer=normalized_columns_initializer(0.01),
             biases_initializer=tf.zeros_initializer(),
             scope="mu_L1")
 
@@ -84,10 +84,10 @@ class ActorCriticNetworkContinuous(object):
         self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0], name="action")
         self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
-        self.actor_loss = - tf.reduce_sum(self.normal_dist.log_prob(self.actions_taken) * self.adv)
-        self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
+        self.actor_loss = - tf.reduce_mean(self.normal_dist.log_prob(self.actions_taken) * self.adv)
+        self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
         self.entropy = - tf.reduce_mean(self.normal_dist.entropy())
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * 0.01
+        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.entropy * self.config["entropy_coef"]
 
         self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
@@ -109,8 +109,9 @@ class A2C(Agent):
             gamma=0.99,
             learning_rate=0.001,
             n_hidden=20,
-            gradient_clip_value=50,
+            gradient_clip_value=0.5,
             n_local_steps=20,
+            entropy_coef=0.01,
             save_model=False
         ))
         self.config.update(usercfg)

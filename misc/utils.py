@@ -3,12 +3,18 @@
 import argparse
 from scipy import signal
 import numpy as np
+import os
 from os import path
+
+# To set the seed of their random number generators
+import random
+import go_vncdriver  # noqa
+import tensorflow as tf
+
 import json
 import cv2
 from gym.spaces.box import Box
 from universe import vectorized
-import tensorflow as tf
 
 def discount_rewards(x, gamma):
     """
@@ -100,3 +106,10 @@ class FastSaver(tf.train.Saver):
              meta_graph_suffix="meta", write_meta_graph=True):
         super(FastSaver, self).save(sess, save_path, global_step, latest_filename,
                                     meta_graph_suffix, False)
+
+def set_seed(seed):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    tf.set_random_seed(seed)
+    return

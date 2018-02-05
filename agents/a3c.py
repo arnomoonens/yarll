@@ -24,7 +24,7 @@ from gym import wrappers
 from environment.registration import make
 from agents.agent import Agent
 from misc.utils import discount_rewards, FastSaver
-from misc.network_ops import sync_networks_op, conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
+from misc.network_ops import conv2d, mu_sigma_layer, flatten, normalized_columns_initializer, linear
 
 logging.getLogger().setLevel("INFO")
 
@@ -316,13 +316,18 @@ class A3CTask(threading.Thread):
     """Single A3C learner thread."""
     def __init__(self, master, task_id, cluster, clip_gradients=True):
         super(A3CTask, self).__init__(name=task_id)
+        self.master = master
+        self.config = master.config
         self.task_id = task_id
         self.clip_gradients = clip_gradients
         self.env = make(master.env_name)
-        self.master = master
-        self.config = master.config
+        self.env.seed(self.config["seed"])
         if task_id == 0 and self.master.monitor:
-            self.env = wrappers.Monitor(self.env, master.monitor_path, force=True, video_callable=(None if self.master.video else False))
+            self.env = wrappers.Monitor(
+                self.env,
+                master.monitor_path,
+                force=True,
+                video_callable=(None if self.master.video else False))
 
         # Only used (and overwritten) by agents that use an RNN
         self.initial_features = None
@@ -336,8 +341,11 @@ class A3CTask(threading.Thread):
             with tf.device(shared_device):
                 with tf.variable_scope("global"):
                     self.network = self.build_networks()
-                    self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
-                                                       trainable=False)
+                    self.global_step = tf.get_variable(
+                        "global_step", [],
+                        tf.int32,
+                        initializer=tf.constant_initializer(0, dtype=tf.int32),
+                        trainable=False)
             # Local network
             with tf.device(worker_device):
                 with tf.variable_scope("local"):
@@ -367,8 +375,11 @@ class A3CTask(threading.Thread):
 
             self.runner = RunnerThread(self.env, self, 20, task_id == 0 and self.master.video)
 
-            self.server = tf.train.Server(cluster, job_name="worker", task_index=task_id,
-                                     config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
+            self.server = tf.train.Server(
+                cluster,
+                job_name="worker",
+                task_index=task_id,
+                config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
 
             def init_fn(sess):
                 sess.run(init_all_op)
@@ -401,7 +412,9 @@ class A3CTask(threading.Thread):
         feed_dict = {
             self.states: [state]
         }
-        action, value = tf.get_default_session().run([self.local_network.action, self.local_network.value], feed_dict=feed_dict)
+        action, value = tf.get_default_session().run(
+            [self.local_network.action, self.local_network.value],
+            feed_dict=feed_dict)
         return action, value, []
 
     def create_sync_net_op(self):
@@ -479,7 +492,10 @@ class A3CTaskDiscrete(A3CTask):
         super(A3CTaskDiscrete, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
-        ac_net = ActorCriticNetworkDiscrete(list(self.env.observation_space.shape), self.env.action_space.n, self.config["n_hidden"])
+        ac_net = ActorCriticNetworkDiscrete(
+            list(self.env.observation_space.shape),
+            self.env.action_space.n,
+            self.config["n_hidden"])
 
         self.states = ac_net.states
         self.actions_taken = ac_net.actions_taken
@@ -532,7 +548,9 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         }
 
         feed_dict[self.local_network.rnn_state_in] = features
-        action, rnn_state, value = tf.get_default_session().run([self.local_network.action, self.local_network.rnn_state_out, self.local_network.value], feed_dict=feed_dict)
+        action, rnn_state, value = tf.get_default_session().run(
+            [self.local_network.action, self.local_network.rnn_state_out, self.local_network.value],
+            feed_dict=feed_dict)
         return action, value, rnn_state
 
     def get_critic_value(self, states, features):
@@ -548,7 +566,10 @@ class A3CTaskContinuous(A3CTask):
         super(A3CTaskContinuous, self).__init__(master, task_id, cluster)
 
     def build_networks(self):
-        ac_net = ActorCriticNetworkContinuous(self.env.action_space, list(self.env.observation_space.shape), self.config["n_hidden"])
+        ac_net = ActorCriticNetworkContinuous(
+            self.env.action_space,
+            list(self.env.observation_space.shape),
+            self.config["n_hidden"])
         self.states = ac_net.states
         self.actions_taken = ac_net.actions_taken
         self.adv = ac_net.adv
@@ -563,8 +584,11 @@ class PSProcess(multiprocessing.Process):
     """Parameter server"""
     def __init__(self, task_id, cluster):
         super(PSProcess, self).__init__()
-        self.server = tf.train.Server(cluster, job_name="ps", task_index=task_id,
-                                 config=tf.ConfigProto(device_filters=["/job:ps"]))
+        self.server = tf.train.Server(
+            cluster,
+            job_name="ps",
+            task_index=task_id,
+            config=tf.ConfigProto(device_filters=["/job:ps"]))
 
     def run(self):
         while True:
@@ -634,7 +658,7 @@ class A3C(Agent):
 
     def signal_handler(self, signal, frame):
         logging.info("SIGINT signal received: Requesting a stop...")
-        sys.exit(128+signal)
+        sys.exit(128 + signal)
 
     def learn(self):
         signal.signal(signal.SIGINT, self.signal_handler)

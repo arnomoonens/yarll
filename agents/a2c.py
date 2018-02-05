@@ -9,7 +9,7 @@ from gym import wrappers
 
 from agents.agent import Agent
 from misc.utils import discount_rewards
-from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss
+from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss
 # from misc.reporter import Reporter
 from agents.env_runner import EnvRunner
 
@@ -148,7 +148,21 @@ class A2CDiscrete(A2C):
 
     def build_networks(self):
         self.ac_net = ActorCriticNetworkDiscrete(
-            self.env.observation_space.shape,
+            list(self.env.observation_space.shape),
+            self.env.action_space.n,
+            self.config["n_hidden"])
+
+class A2CDiscreteCNN(A2CDiscrete):
+    def build_networks(self):
+        self.ac_net = ActorCriticNetworkDiscreteCNN(
+            list(self.env.observation_space.shape),
+            self.env.action_space.n,
+            self.config["n_hidden"])
+
+class A2CDiscreteCNNRNN(A2CDiscrete):
+    def build_networks(self):
+        self.ac_net = ActorCriticNetworkDiscreteCNNRNN(
+            list(self.env.observation_space.shape),
             self.env.action_space.n,
             self.config["n_hidden"])
 
@@ -159,6 +173,6 @@ class A2CContinuous(A2C):
 
     def build_networks(self):
         self.ac_net = ActorCriticNetworkContinuous(
-            self.env.observation_space.shape,
+            list(self.env.observation_space.shape),
             self.env.action_space,
             self.config["n_hidden"])

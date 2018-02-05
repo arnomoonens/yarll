@@ -6,6 +6,17 @@ register_agent(name="A2C",
                action_space="discrete"
                )
 register_agent(name="A2C",
+               entry_point="agents.a2c:A2CDiscreteCNN",
+               state_dimensions="multi",
+               action_space="discrete"
+               )
+register_agent(name="A2C",
+               entry_point="agents.a2c:A2CDiscreteCNNRNN",
+               state_dimensions="multi",
+               action_space="discrete",
+               RNN=True
+               )
+register_agent(name="A2C",
                entry_point="agents.a2c:A2CContinuous",
                state_dimensions="single",
                action_space="continuous"

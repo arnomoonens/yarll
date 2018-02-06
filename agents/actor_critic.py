@@ -73,13 +73,6 @@ class ActorCriticNetworkDiscreteCNN(object):
         self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
 
-        log_probs = tf.nn.log_softmax(self.logits)
-        self.actor_loss = - tf.reduce_sum(tf.reduce_sum(log_probs * self.actions_taken, [1]) * self.adv)
-        self.critic_loss = 0.5 * tf.reduce_sum(tf.square(self.value - self.r))
-        entropy = - tf.reduce_sum(self.probs * log_probs)
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - entropy * 0.01
-        self.summary_loss = self.loss
-
 class ActorCriticNetworkDiscreteCNNRNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
     def __init__(self, state_shape, n_actions, n_hidden, summary=True):
@@ -132,9 +125,9 @@ def ActorCriticDiscreteLoss(network, entropy_coef=0.01, reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     log_probs = tf.nn.log_softmax(network.logits)
     actor_loss = - tf_reducer(tf.reduce_sum(log_probs * network.actions_taken, [1]) * network.adv)
-    critic_loss = 0.5 * tf_reducer(tf.square(network.value - network.r))
-    entropy = - tf_reducer(network.probs * log_probs)
-    loss = actor_loss + 0.5 * critic_loss - entropy * entropy
+    critic_loss = tf_reducer(tf.square(network.value - network.r))
+    entropy = tf_reducer(network.probs * log_probs)
+    loss = actor_loss + 0.5 * critic_loss - entropy_coef * entropy
     return actor_loss, critic_loss, loss
 
 class ActorCriticNetworkContinuous(object):
@@ -165,8 +158,9 @@ class ActorCriticNetworkContinuous(object):
         self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
 def ActorCriticContinuousLoss(network, entropy_coef=0.01, reducer="sum"):
-    actor_loss = - tf.reduce_mean(network.normal_dist.log_prob(network.actions_taken) * network.adv)
-    critic_loss = tf.reduce_mean(tf.square(network.value - network.r))
-    entropy = - tf.reduce_mean(network.normal_dist.entropy())
-    loss = actor_loss + 0.5 * critic_loss - entropy * entropy_coef
+    tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
+    actor_loss = - tf_reducer(network.normal_dist.log_prob(network.actions_taken) * network.adv)
+    critic_loss = tf_reducer(tf.square(network.value - network.r))
+    entropy = tf_reducer(network.normal_dist.entropy())
+    loss = actor_loss + 0.5 * critic_loss - entropy_coef * entropy
     return actor_loss, critic_loss, loss

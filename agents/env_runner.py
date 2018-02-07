@@ -49,6 +49,7 @@ class EnvRunner(object):
         self.nO = self.ob_space.shape[0]
         self.nA = env.action_space.n
         self.policy = policy
+        self.features = policy.initial_features
         self.config = dict(
             batch_update="timesteps",
             episode_max_length=env.spec.max_episode_steps,
@@ -64,7 +65,7 @@ class EnvRunner(object):
 
     def choose_action(self, state):
         """Choose an action based on the current state in the environment."""
-        return self.policy.choose_action(state)
+        return self.policy.choose_action(state, self.features)
 
     def reset_env(self):
         """Reset the current environment and get the initial state"""
@@ -83,9 +84,10 @@ class EnvRunner(object):
             self.policy.new_trajectory()
         traj = Trajectory()
         for i in range(n_steps):
-            action, value = self.choose_action(self.state)
+            action, value, new_features = self.choose_action(self.state)
             self.state, rew, done, _ = self.step_env(action)
-            traj.add(self.state, action, rew, value, terminal=done)
+            traj.add(self.state, action, rew, value, terminal=done, features=self.features)
+            self.features = new_features
             self.episode_reward += rew
             self.episode_steps += 1
             if done:
@@ -98,6 +100,7 @@ class EnvRunner(object):
                     self.episode_reward = 0
                     self.episode_steps = 0
                 self.reset_env()
+                self.features = self.policy.initial_features
                 self.policy.new_trajectory()
                 break
             if render:

@@ -28,7 +28,6 @@ class A2C(Agent):
             monitor_path,
             force=True,
             video_callable=(None if video else False))
-        self.env_runner = EnvRunner(self.env, self, usercfg)
 
         self.config.update(dict(
             n_iter=100,
@@ -90,14 +89,14 @@ class A2C(Agent):
         self.loss_summary_op = tf.summary.merge(
             [summary_actor_loss, summary_critic_loss, summary_loss])
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "summaries"), self.session.graph)
-        self.env_runner.summary_writer = self.writer
+        self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
         return
 
     @property
     def global_step(self):
         return self._global_step.eval(session=self.session)
 
-    def get_critic_value(self, state):
+    def get_critic_value(self, state, *rest):
         return self.session.run([self.ac_net.value], feed_dict={self.states: state})[0].flatten()
 
     def choose_action(self, state, *rest):
@@ -106,7 +105,7 @@ class A2C(Agent):
             self.states: [state]
         }
         action, value = self.session.run([self.ac_net.action, self.ac_net.value], feed_dict=feed_dict)
-        return action, value
+        return action, value, []
 
     def get_env_action(self, action):
         return np.argmax(action)
@@ -117,7 +116,7 @@ class A2C(Agent):
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectory = self.env_runner.get_steps(self.config["n_local_steps"])
-            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1])
+            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])
             vpred_t = np.asarray(trajectory.values + [v])
             delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
@@ -131,6 +130,9 @@ class A2C(Agent):
                 self.adv: batch_adv,
                 self.r: np.asarray(batch_r)
             }
+            feature = trajectory.features[0]
+            if feature != []:
+                feed_dict[self.ac_net.rnn_state_in] = feature
             summary, _, global_step = self.session.run(fetches, feed_dict)
             self.writer.add_summary(summary, global_step)
             self.writer.flush()
@@ -164,6 +166,26 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
             list(self.env.observation_space.shape),
             self.env.action_space.n,
             self.config["n_hidden"])
+        self.initial_features = self.ac_net.state_init
+
+    def choose_action(self, state, features):
+        """Choose an action."""
+        feed_dict = {
+            self.ac_net.states: [state],
+            self.ac_net.rnn_state_in: features
+        }
+
+        action, rnn_state, value = self.session.run(
+            [self.ac_net.action, self.ac_net.rnn_state_out, self.ac_net.value],
+            feed_dict=feed_dict)
+        return action, value, rnn_state
+
+    def get_critic_value(self, states, features):
+        feed_dict = {
+            self.ac_net.states: states,
+            self.ac_net.rnn_state_in: features
+        }
+        return self.session.run(self.ac_net.value, feed_dict=feed_dict)[0]
 
 class A2CContinuous(A2C):
     def __init__(self, *args, **kwargs):

@@ -142,6 +142,7 @@ class PPO(Agent):
     def learn(self):
         """Run learning algorithm"""
         config = self.config
+        n_updates = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             states, actions, advs, rs = self.get_processed_trajectories()
@@ -155,8 +156,7 @@ class PPO(Agent):
                 batch_actions = np.array(actions)[i:(i + 32)]
                 batch_advs = np.array(advs)[i:(i + 32)]
                 batch_rs = np.array(rs)[i:(i + 32)]
-                # fetches = [self.loss_summary_op, self.train_op, self._global_step]
-                fetches = [self.train_op]
+                fetches = [self.loss_summary_op, self.train_op]
                 feed_dict = {
                     self.states: batch_states,
                     self.old_network.states: batch_states,
@@ -164,10 +164,10 @@ class PPO(Agent):
                     self.adv: batch_advs,
                     self.r: batch_rs
                 }
-                # summary, _, global_step = self.session.run(fetches, feed_dict)
-                self.session.run(fetches, feed_dict)
-                # self.writer.add_summary(summary, global_step)
-                # self.writer.flush()
+                summary, _ = self.session.run(fetches, feed_dict)
+                self.writer.add_summary(summary, n_updates)
+                self.writer.flush()
+                n_updates += 1
 
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)

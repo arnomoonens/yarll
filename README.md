@@ -12,6 +12,7 @@ Different algorithms have currently been implemented:
 - [Karpathy's policy gradient algorithm](./agents/karpathy.py) ([version using convolutional neural networks](./agents/karpathy_cnn.py) has not been tested yet)
 - [Advantage Actor Critic](./agents/a2c.py)
 - [Asynchronous Advantage Actor Critic (A3C)](./agents/a3c.py)
+- [Proximal Policy Optimization (PPO)](./agents/ppo.py)
 - [(Sequential) knowledge transfer](./agents/knowledge_transfer.py)
 - [Asynchronous knowledge transfer](./agents/async_knowledge_transfer.py)
 

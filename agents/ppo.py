@@ -18,8 +18,7 @@ def cso_loss(old_network, new_network, epsilon, advantage):
     old_action_log_prob = tf.reduce_sum(old_log_probs * new_network.actions_taken, [1])
     new_action_log_prob = tf.reduce_sum(new_log_probs * new_network.actions_taken, [1])
     ratio = tf.exp(new_action_log_prob - old_action_log_prob)
-    ratio_clipped = tf.clip_by_value(ratio, 1 - epsilon, 1 + epsilon)
-    # ratio = tf.Print(ratio, [ratio], summarize=32)
+    ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
     return tf.minimum(ratio * advantage, ratio_clipped * advantage)
 
 class PPO(Agent):
@@ -38,6 +37,9 @@ class PPO(Agent):
             n_hidden=20,
             gamma=0.99,
             learning_rate=0.001,
+            n_iter=10000,
+            batch_size=32,
+            n_trajectories=10,
             n_local_steps=20,
             gradient_clip_value=0.5,
             entropy_coef=0.01,
@@ -61,7 +63,7 @@ class PPO(Agent):
         self.set_old_to_new = tf.group(*[v1.assign(v2) for v1, v2 in zip(self.old_network_vars, self.new_network_vars)])
 
         # Reduces by taking the mean instead of summing
-        self.actor_loss = tf.reduce_mean(cso_loss(self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
+        self.actor_loss = -tf.reduce_mean(cso_loss(self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
         log_probs = tf.nn.log_softmax(self.new_network.logits)
         entropy = tf.reduce_mean(self.new_network.probs * log_probs)
@@ -125,7 +127,7 @@ class PPO(Agent):
         all_actions = []
         all_advs = []
         all_rs = []
-        for _ in range(10):
+        for _ in range(self.config["n_trajectories"]):
             trajectory = self.env_runner.get_steps(self.config["n_local_steps"])
             v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])
@@ -151,11 +153,12 @@ class PPO(Agent):
             indices = np.arange(len(states))
             np.random.shuffle(indices)
 
-            for i in range(0, len(states), 32):
-                batch_states = np.array(states)[i:(i + 32)]
-                batch_actions = np.array(actions)[i:(i + 32)]
-                batch_advs = np.array(advs)[i:(i + 32)]
-                batch_rs = np.array(rs)[i:(i + 32)]
+            batch_size = self.config["batch_size"]
+            for i in range(0, len(states), batch_size):
+                batch_states = np.array(states)[i:(i + batch_size)]
+                batch_actions = np.array(actions)[i:(i + batch_size)]
+                batch_advs = np.array(advs)[i:(i + batch_size)]
+                batch_rs = np.array(rs)[i:(i + batch_size)]
                 fetches = [self.loss_summary_op, self.train_op]
                 feed_dict = {
                     self.states: batch_states,

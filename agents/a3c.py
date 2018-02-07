@@ -51,7 +51,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
             new_state, reward, terminal, _ = env.step(policy.get_env_action(action))
             episode_steps += 1
             episode_reward += reward
-            trajectory.add(state, action, reward, value, new_features, terminal)
+            trajectory.add(state, action, reward, value, features, terminal)
             state = new_state
             features = new_features
             if terminal or episode_steps >= timestep_limit:
@@ -338,7 +338,6 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         return ac_net
 
     def choose_action(self, state, features):
-        """Choose an action."""
         feed_dict = {
             self.local_network.states: [state]
         }

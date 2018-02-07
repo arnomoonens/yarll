@@ -10,7 +10,6 @@ from gym import wrappers
 from agents.agent import Agent
 from misc.utils import discount_rewards
 from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss
-# from misc.reporter import Reporter
 from agents.env_runner import EnvRunner
 
 logging.basicConfig(level=logging.INFO,

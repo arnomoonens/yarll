@@ -43,7 +43,6 @@ class SarsaFA(object):
 
     def learn(self):
         for i in range(self.config["n_iter"]):
-            # print('Episode {}'.format(i))
             traces = EligibilityTraces(self.function_approximation.features_shape, self.config["gamma"], self.config["Lambda"])
             state, action = self.env.reset(), 0
             sarsa = Sarsa(self.config["gamma"], self.config["alpha"], self.policy, traces, self.function_approximation, range(self.nA), state, action)
@@ -51,7 +50,6 @@ class SarsaFA(object):
             iteration = 0
             while not(done):
                 iteration += 1
-                # env.render()
                 state, reward, done, _ = self.env.step(action)
                 if done and iteration < self.config["steps_per_episode"]:
                     print("Episode {}: Less than {} steps were needed: {}".format(i, self.config["steps_per_episode"], iteration))

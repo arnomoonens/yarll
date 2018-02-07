@@ -47,6 +47,27 @@ register_agent(name="AsyncKnowledgeTransfer",
                state_dimensions="single",
                action_space="discrete"
                )
+register_agent(name="PPO",
+               entry_point="agents.ppo:PPODiscrete",
+               state_dimensions="single",
+               action_space="discrete"
+               )
+register_agent(name="PPO",
+               entry_point="agents.ppo:PPODiscreteCNN",
+               state_dimensions="multi",
+               action_space="discrete"
+               )
+register_agent(name="PPO",
+               entry_point="agents.ppo:PPODiscreteCNNRNN",
+               state_dimensions="multi",
+               action_space="discrete",
+               RNN=True
+               )
+register_agent(name="PPO",
+               entry_point="agents.ppo:PPOContinuous",
+               state_dimensions="single",
+               action_space="continuous"
+               )
 register_agent(name="CEM",
                entry_point="agents.cem:CEM",
                state_dimensions="single",

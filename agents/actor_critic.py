@@ -30,16 +30,21 @@ class ActorCriticNetworkDiscrete(object):
             biases_initializer=tf.zeros_initializer(),
             scope="L1")
 
-        # Fully connected for actor
+        # Fully connected for actor & critic
         self.logits = linear(L1, n_actions, "actionlogits", normalized_columns_initializer(0.01))
+        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
         self.probs = tf.nn.softmax(self.logits)
 
         self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
 
-        # Fully connected for critic
-        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
+        # Log probabilities of all actions
+        self.log_probs = tf.nn.log_softmax(self.logits)
+        # Prob of the action that was actually taken
+        self.action_log_prob = tf.reduce_sum(self.log_probs * self.actions_taken, [1])
+
+        self.entropy = self.new_network.probs * self.log_probs
 
 class ActorCriticNetworkDiscreteCNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
@@ -64,7 +69,7 @@ class ActorCriticNetworkDiscreteCNN(object):
         shape = x.get_shape().as_list()
         reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
-        # Fully connected for Actor & Critic
+        # Fully connected for actor & critic
         self.logits = linear(reshape, n_actions, "actionlogits", normalized_columns_initializer(0.01))
         self.value = tf.reshape(linear(reshape, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
@@ -72,6 +77,13 @@ class ActorCriticNetworkDiscreteCNN(object):
 
         self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
+
+        # Log probabilities of all actions
+        self.log_probs = tf.nn.log_softmax(self.logits)
+        # Prob of the action that was actually taken
+        self.action_log_prob = tf.reduce_sum(self.log_probs * self.actions_taken, [1])
+
+        self.entropy = self.new_network.probs * self.log_probs
 
 class ActorCriticNetworkDiscreteCNNRNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
@@ -121,6 +133,13 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         self.action = tf.squeeze(tf.multinomial(self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
 
+        # Log probabilities of all actions
+        self.log_probs = tf.nn.log_softmax(self.logits)
+        # Prob of the action that was actually taken
+        self.action_log_prob = tf.reduce_sum(self.log_probs * self.actions_taken, [1])
+
+        self.entropy = self.new_network.probs * self.log_probs
+
 def ActorCriticDiscreteLoss(network, entropy_coef=0.01, reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     log_probs = tf.nn.log_softmax(network.logits)
@@ -142,20 +161,17 @@ class ActorCriticNetworkContinuous(object):
         self.adv = tf.placeholder(tf.float32, name="advantage")
         self.r = tf.placeholder(tf.float32, [None], name="r")
 
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.n_hidden,
-            activation_fn=tf.tanh,
-            weights_initializer=normalized_columns_initializer(0.01),
-            biases_initializer=tf.zeros_initializer(),
-            scope="mu_L1")
+        self.L1 = tf.tanh(linear(self.states, self.n_hidden, "L1", initializer=normalized_columns_initializer(0.01)))
 
-        mu, sigma = mu_sigma_layer(L1, 1)
+        mu, sigma = mu_sigma_layer(self.L1, 1)
 
-        self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
+        self.normal_dist = tf.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample(1)
         self.action = tf.clip_by_value(self.action, action_space.low[0], action_space.high[0], name="action")
-        self.value = tf.reshape(linear(L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
+        self.value = tf.reshape(linear(self.L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
+
+        self.action_log_prob = self.normal_dist.log_prob(self.actions_taken)
+        self.entropy = self.normal_dist.entropy()
 
 def ActorCriticContinuousLoss(network, entropy_coef=0.01, reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean

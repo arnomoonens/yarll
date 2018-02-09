@@ -58,12 +58,6 @@ register_agent(name="PPO",
                action_space="discrete"
                )
 register_agent(name="PPO",
-               entry_point="agents.ppo:PPODiscreteCNNRNN",
-               state_dimensions="multi",
-               action_space="discrete",
-               RNN=True
-               )
-register_agent(name="PPO",
                entry_point="agents.ppo:PPOContinuous",
                state_dimensions="single",
                action_space="continuous"

@@ -100,11 +100,7 @@ class A2C(Agent):
         return self.session.run([self.ac_net.value], feed_dict={self.states: state})[0].flatten()
 
     def choose_action(self, state, *rest):
-        """Choose an action."""
-        feed_dict = {
-            self.states: [state]
-        }
-        action, value = self.session.run([self.ac_net.action, self.ac_net.value], feed_dict=feed_dict)
+        action, value = self.session.run([self.ac_net.action, self.ac_net.value], feed_dict={self.states: [state]})
         return action, value, []
 
     def get_env_action(self, action):

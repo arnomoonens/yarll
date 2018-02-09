@@ -1,7 +1,7 @@
 # -*- coding: utf8 -*-
 
 import tensorflow as tf
-
+import numpy as np
 
 class Trajectory(object):
     """Experience gathered from an environment."""
@@ -44,10 +44,6 @@ class EnvRunner(object):
     def __init__(self, env, policy, config, state_preprocessor=None, summary_writer=None):
         super(EnvRunner, self).__init__()
         self.env = env
-        self.ob_space = self.env.observation_space
-        self.action_space = self.env.action_space
-        self.nO = self.ob_space.shape[0]
-        self.nA = env.action_space.n
         self.policy = policy
         self.features = policy.initial_features
         self.config = dict(
@@ -78,15 +74,16 @@ class EnvRunner(object):
         state = state if self.state_preprocessor is None else self.state_preprocessor(state)
         return state, reward, done, info
 
-    def get_steps(self, n_steps, reset=False, render=False):
+    def get_steps(self, n_steps, reset=False, stop_at_trajectory_end=True, render=False):
         if reset:
             self.reset_env()
             self.policy.new_trajectory()
         traj = Trajectory()
         for i in range(n_steps):
             action, value, new_features = self.choose_action(self.state)
-            self.state, rew, done, _ = self.step_env(action)
+            new_state, rew, done, _ = self.step_env(action)
             traj.add(self.state, action, rew, value, terminal=done, features=self.features)
+            self.state = new_state
             self.features = new_features
             self.episode_reward += rew
             self.episode_steps += 1
@@ -102,15 +99,18 @@ class EnvRunner(object):
                 self.reset_env()
                 self.features = self.policy.initial_features
                 self.policy.new_trajectory()
-                break
+                # Decide whether to stop when the episode (=trajectory) is done
+                # or to keep collecting until n_steps
+                if stop_at_trajectory_end:
+                    break
             if render:
                 self.env.render()
         return traj
 
-    def get_trajectory(self, render=False):
-        return self.get_steps(self.config["episode_max_length"], render)
+    def get_trajectory(self, stop_at_trajectory_end=True, render=False):
+        return self.get_steps(self.config["episode_max_length"], stop_at_trajectory_end, render)
 
-    def get_trajectories(self):
+    def get_trajectories(self, stop_at_trajectory_end=True, render=False):
         """Generate trajectories until a certain number of timesteps or trajectories."""
         use_timesteps = self.config["batch_update"] == "timesteps"
         trajectories = []
@@ -118,7 +118,7 @@ class EnvRunner(object):
         i = 0
         while (use_timesteps and timesteps_total < self.config["timesteps_per_batch"]) or (not(use_timesteps) and i < self.config["trajectories_per_batch"]):
             i += 1
-            trajectory = self.get_trajectory()
+            trajectory = self.get_trajectory(stop_at_trajectory_end, render)
             trajectories.append(trajectory)
             timesteps_total += len(trajectory["reward"])
         return trajectories

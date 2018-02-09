@@ -6,23 +6,19 @@ import numpy as np
 from gym import wrappers
 
 from agents.agent import Agent
-from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticNetworkContinuous
+from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
 from misc.utils import discount_rewards
 from agents.env_runner import EnvRunner
 
 def cso_loss(old_network, new_network, epsilon, advantage):
-    # Probs of all actions
-    old_log_probs = tf.nn.log_softmax(old_network.logits)
-    new_log_probs = tf.nn.log_softmax(new_network.logits)
-    # Prob of the action that was actually taken
-    old_action_log_prob = tf.reduce_sum(old_log_probs * new_network.actions_taken, [1])
-    new_action_log_prob = tf.reduce_sum(new_log_probs * new_network.actions_taken, [1])
-    ratio = tf.exp(new_action_log_prob - old_action_log_prob)
+    ratio = tf.exp(new_network.action_log_prob - old_network.action_log_prob)
     ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
     return tf.minimum(ratio * advantage, ratio_clipped * advantage)
 
 class PPO(Agent):
     """Proximal Policy Optimization agent."""
+    RNN = False
+
     def __init__(self, env, monitor_path, video=False, **usercfg):
         super(PPO, self).__init__(**usercfg)
         self.monitor_path = monitor_path
@@ -31,16 +27,14 @@ class PPO(Agent):
             monitor_path,
             force=True,
             video_callable=(None if video else False))
-        self.env_runner = EnvRunner(self.env, self, usercfg)
 
         self.config.update(dict(
             n_hidden=20,
             gamma=0.99,
             learning_rate=0.001,
             n_iter=10000,
-            batch_size=32,
-            n_trajectories=10,
-            n_local_steps=20,
+            batch_size=64,  # Timesteps per training batch
+            n_local_steps=256,
             gradient_clip_value=0.5,
             entropy_coef=0.01,
             cso_epsilon=0.2  # Clipped surrogate objective epsilon
@@ -52,6 +46,10 @@ class PPO(Agent):
 
         with tf.variable_scope("new_network"):
             self.new_network = self.build_networks()
+            if self.RNN:
+                self.initial_features = self.new_network.state_init
+            else:
+                self.initial_features = None
             self.new_network_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
         self.action = self.new_network.action
         self.value = self.new_network.value
@@ -65,9 +63,7 @@ class PPO(Agent):
         # Reduces by taking the mean instead of summing
         self.actor_loss = -tf.reduce_mean(cso_loss(self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
-        log_probs = tf.nn.log_softmax(self.new_network.logits)
-        entropy = tf.reduce_mean(self.new_network.probs * log_probs)
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.config["entropy_coef"] * entropy
+        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy)
 
         self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         grads = tf.gradients(self.loss, self.new_network_vars)
@@ -101,45 +97,32 @@ class PPO(Agent):
         self.loss_summary_op = tf.summary.merge(
             [summary_actor_loss, summary_critic_loss, summary_loss])
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "summaries"), self.session.graph)
-        self.env_runner.summary_writer = self.writer
+        self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
         return
 
     @property
     def global_step(self):
         return self._global_step.eval(session=self.session)
 
-    def get_critic_value(self, state):
+    def get_critic_value(self, state, *rest):
         return self.session.run([self.value], feed_dict={self.states: state})[0].flatten()
 
     def choose_action(self, state, *rest):
-        """Choose an action."""
-        feed_dict = {
-            self.states: [state]
-        }
-        action, value = self.session.run([self.action, self.value], feed_dict=feed_dict)
-        return action, value[0]
+        action, value = self.session.run([self.action, self.value], feed_dict={self.states: [state]})
+        return action, value[0], []
 
     def get_env_action(self, action):
         return np.argmax(action)
 
     def get_processed_trajectories(self):
-        all_states = []
-        all_actions = []
-        all_advs = []
-        all_rs = []
-        for _ in range(self.config["n_trajectories"]):
-            trajectory = self.env_runner.get_steps(self.config["n_local_steps"])
-            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1])
-            rewards_plus_v = np.asarray(trajectory.rewards + [v])
-            vpred_t = np.asarray(trajectory.values + [v])
-            delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
-            batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-            batch_adv = discount_rewards(delta_t, self.config["gamma"])
-            all_states.extend(trajectory.states)
-            all_actions.extend(trajectory.actions)
-            all_advs.extend(np.vstack(batch_adv).flatten().tolist())
-            all_rs.extend(batch_r)
-        return all_states, all_actions, all_advs, all_rs
+        trajectory = self.env_runner.get_steps(self.config["n_local_steps"], stop_at_trajectory_end=False)
+        v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+        rewards_plus_v = np.asarray(trajectory.rewards + [v])
+        vpred_t = np.asarray(trajectory.values + [v])
+        delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
+        batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
+        batch_adv = discount_rewards(delta_t, self.config["gamma"])
+        return trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features
 
     def learn(self):
         """Run learning algorithm"""
@@ -147,7 +130,7 @@ class PPO(Agent):
         n_updates = 0
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            states, actions, advs, rs = self.get_processed_trajectories()
+            states, actions, advs, rs, features = self.get_processed_trajectories()
             self.session.run(self.set_old_to_new)
 
             indices = np.arange(len(states))
@@ -164,13 +147,14 @@ class PPO(Agent):
                     self.states: batch_states,
                     self.old_network.states: batch_states,
                     self.actions_taken: batch_actions,
+                    self.old_network.actions_taken: batch_actions,
                     self.adv: batch_advs,
                     self.r: batch_rs
                 }
                 summary, _ = self.session.run(fetches, feed_dict)
                 self.writer.add_summary(summary, n_updates)
-                self.writer.flush()
                 n_updates += 1
+                self.writer.flush()
 
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
@@ -191,16 +175,12 @@ class PPODiscreteCNN(PPODiscrete):
             self.env.action_space.n,
             self.config["n_hidden"])
 
-class PPODiscreteCNNRNN(PPODiscrete):
-    def build_networks(self):
-        return ActorCriticNetworkDiscreteCNNRNN(
-            list(self.env.observation_space.shape),
-            self.env.action_space.n,
-            self.config["n_hidden"])
-
 class PPOContinuous(PPO):
     def build_networks(self):
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
             self.config["n_hidden"])
+
+    def get_env_action(self, action):
+        return action

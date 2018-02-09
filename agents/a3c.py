@@ -206,13 +206,9 @@ class A3CTask(threading.Thread):
         return np.argmax(action)
 
     def choose_action(self, state, *rest):
-        """Choose an action."""
-        feed_dict = {
-            self.states: [state]
-        }
         action, value = tf.get_default_session().run(
             [self.local_network.action, self.local_network.value],
-            feed_dict=feed_dict)
+            feed_dict={self.states: [state]})
         return action, value, []
 
     def create_sync_net_op(self):

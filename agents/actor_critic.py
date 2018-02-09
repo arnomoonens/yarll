@@ -164,6 +164,8 @@ class ActorCriticNetworkContinuous(object):
         self.L1 = tf.tanh(linear(self.states, self.n_hidden, "L1", initializer=normalized_columns_initializer(0.01)))
 
         mu, sigma = mu_sigma_layer(self.L1, 1)
+        mu = tf.check_numerics(mu, "mu")
+        sigma = tf.check_numerics(sigma, "mu")
 
         self.normal_dist = tf.distributions.Normal(mu, sigma)
         self.action = self.normal_dist.sample(1)

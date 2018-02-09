@@ -62,6 +62,27 @@ register_agent(name="PPO",
                state_dimensions="single",
                action_space="continuous"
                )
+register_agent(name="DPPO",
+               entry_point="agents.dppo:DPPODiscrete",
+               state_dimensions="single",
+               action_space="discrete"
+               )
+register_agent(name="DPPO",
+               entry_point="agents.dppo:DPPODiscreteCNN",
+               state_dimensions="multi",
+               action_space="discrete"
+               )
+register_agent(name="DPPO",
+               entry_point="agents.dppo:DPPODiscreteCNNRNN",
+               state_dimensions="multi",
+               action_space="discrete",
+               RNN=True
+               )
+register_agent(name="DPPO",
+               entry_point="agents.dppo:DPPOContinuous",
+               state_dimensions="single",
+               action_space="continuous"
+               )
 register_agent(name="CEM",
                entry_point="agents.cem:CEM",
                state_dimensions="single",

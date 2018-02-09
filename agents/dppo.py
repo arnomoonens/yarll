@@ -1,43 +1,98 @@
 # -*- coding: utf8 -*-
 
+
 import os
 import tensorflow as tf
 import numpy as np
 from gym import wrappers
+import threading
+import queue
 
 from agents.agent import Agent
 from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
+from agents.ppo import cso_loss
 from misc.utils import discount_rewards
 from agents.env_runner import EnvRunner
+from environment.registration import make
 
-def cso_loss(old_network, new_network, epsilon, advantage):
-    ratio = tf.exp(new_network.action_log_prob - old_network.action_log_prob)
-    ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
-    return tf.minimum(ratio * advantage, ratio_clipped * advantage)
+class DPPOWorker(threading.Thread):
+    """Distributed Proximal Policy Optimization Worker."""
+    def __init__(self, policy, env, queue, lock, should_update, should_collect, n_local_steps, min_trajectories, summary_writer=None):
+        super(DPPOWorker, self).__init__()
+        self.daemon = True
+        self.policy = policy
+        self.config = self.policy.config
+        self.initial_features = policy.initial_features
+        self.env = env
+        self.queue = queue
+        self.lock = lock
+        self.should_update = should_update
+        self.should_collect = should_collect
+        self.n_local_steps = n_local_steps
+        self.min_trajectories = min_trajectories
+        self.env_runner = EnvRunner(self.env, self, {}, summary_writer=summary_writer)
 
-class PPO(Agent):
-    """Proximal Policy Optimization agent."""
+    def run(self):
+        while True:  # TODO: use coordinator.should_stop instead
+            if not self.should_collect.is_set():
+                self.should_collect.wait()
+            trajectory = self.env_runner.get_steps(self.config["n_local_steps"], stop_at_trajectory_end=False)
+            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+            rewards_plus_v = np.asarray(trajectory.rewards + [v])
+            vpred_t = np.asarray(trajectory.values + [v])
+            delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
+            batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
+            batch_adv = discount_rewards(delta_t, self.config["gamma"])
+            processed = trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features[0]
+            self.queue.put(processed)
+            self.policy.n_trajectories += 1
+            if self.policy.n_trajectories >= self.min_trajectories:
+                self.should_collect.clear()
+                self.should_update.set()
+                self.policy.n_trajectories = 0
+
+    @property
+    def global_step(self):
+        return self.policy._global_step.eval(session=self.policy.session)
+
+    def get_critic_value(self, state, *rest):
+        with self.lock:
+            value = self.policy.session.run([self.policy.value], feed_dict={self.policy.states: state})[0].flatten()
+        return value
+
+    def choose_action(self, state, *rest):
+        with self.lock:
+            action, value = self.policy.session.run([self.policy.action, self.policy.value], feed_dict={self.policy.states: [state]})
+        return action, value[0], []
+
+    def get_env_action(self, action):
+        return np.argmax(action)
+
+    def new_trajectory(self):
+        pass
+
+class DPPO(Agent):
+    """Distributed Proximal Policy Optimization agent."""
+
     RNN = False
 
     def __init__(self, env, monitor_path, video=False, **usercfg):
-        super(PPO, self).__init__(**usercfg)
+        super(DPPO, self).__init__()
+        self.env = env
         self.monitor_path = monitor_path
-        self.env = wrappers.Monitor(
-            env,
-            monitor_path,
-            force=True,
-            video_callable=(None if video else False))
+        self.env_name = env.spec.id
 
         self.config.update(dict(
+            n_workers=4,
             n_hidden=20,
             gamma=0.99,
             learning_rate=0.001,
             n_iter=10000,
-            batch_size=64,  # Timesteps per training batch
             n_local_steps=256,
             gradient_clip_value=0.5,
             entropy_coef=0.01,
-            cso_epsilon=0.2  # Clipped surrogate objective epsilon
+            cso_epsilon=0.2,  # Clipped surrogate objective epsilon
+            save_model=False
         ))
 
         with tf.variable_scope("old_network"):
@@ -101,84 +156,88 @@ class PPO(Agent):
 
         init = tf.global_variables_initializer()
         self.session.run(init)
+
+        self.lock = threading.Lock()
+        self.should_update, self.should_collect = threading.Event(), threading.Event()
+        self.queue = queue.Queue(self.config["n_workers"])
+        self.n_trajectories = 0
+        self.workers = []
+        for i in range(self.config["n_workers"]):
+            env = wrappers.Monitor(
+                make(self.env_name),
+                monitor_path,
+                force=True,
+                video_callable=(None if video else False))
+            worker = DPPOWorker(
+                self,
+                env,
+                self.queue,
+                self.lock,
+                self.should_update,
+                self.should_collect,
+                self.config["n_local_steps"],
+                self.config["n_workers"],
+                self.writer if i == 0 else None)
+            self.workers.append(worker)
         return
-
-    @property
-    def global_step(self):
-        return self._global_step.eval(session=self.session)
-
-    def get_critic_value(self, state, *rest):
-        return self.session.run([self.value], feed_dict={self.states: state})[0].flatten()
-
-    def choose_action(self, state, *rest):
-        action, value = self.session.run([self.action, self.value], feed_dict={self.states: [state]})
-        return action, value[0], []
-
-    def get_env_action(self, action):
-        return np.argmax(action)
-
-    def get_processed_trajectories(self):
-        trajectory = self.env_runner.get_steps(self.config["n_local_steps"], stop_at_trajectory_end=False)
-        v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
-        rewards_plus_v = np.asarray(trajectory.rewards + [v])
-        vpred_t = np.asarray(trajectory.values + [v])
-        delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
-        batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-        batch_adv = discount_rewards(delta_t, self.config["gamma"])
-        return trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features
 
     def learn(self):
         """Run learning algorithm"""
         config = self.config
         n_updates = 0
+
+        self.should_collect.set()
+        for worker in self.workers:
+            worker.start()
+
         for iteration in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            states, actions, advs, rs, features = self.get_processed_trajectories()
+            if not self.should_update.is_set():
+                self.should_update.wait()
+            print("Gonna update")
+            trajectories = [self.queue.get() for _ in range(self.queue.qsize())]
             self.session.run(self.set_old_to_new)
 
-            indices = np.arange(len(states))
-            np.random.shuffle(indices)
-
-            batch_size = self.config["batch_size"]
-            for i in range(0, len(states), batch_size):
-                batch_states = np.array(states)[i:(i + batch_size)]
-                batch_actions = np.array(actions)[i:(i + batch_size)]
-                batch_advs = np.array(advs)[i:(i + batch_size)]
-                batch_rs = np.array(rs)[i:(i + batch_size)]
+            for states, actions, advs, rs, features in trajectories:
                 fetches = [self.model_summary_op, self.train_op]
                 feed_dict = {
-                    self.states: batch_states,
-                    self.old_network.states: batch_states,
-                    self.actions_taken: batch_actions,
-                    self.old_network.actions_taken: batch_actions,
-                    self.adv: batch_advs,
-                    self.r: batch_rs
+                    self.states: states,
+                    self.old_network.states: states,
+                    self.actions_taken: actions,
+                    self.old_network.actions_taken: actions,
+                    self.adv: advs,
+                    self.r: rs
                 }
+                if features != [] and features is not None:
+                    feed_dict[self.old_network.rnn_state_in] = features
+                    feed_dict[self.new_network.rnn_state_in] = features
                 summary, _ = self.session.run(fetches, feed_dict)
                 self.writer.add_summary(summary, n_updates)
                 n_updates += 1
                 self.writer.flush()
+                self.should_update.clear()
+                self.should_collect.set()
 
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
-class PPODiscrete(PPO):
+class DPPODiscrete(DPPO):
     def build_networks(self):
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
             self.config["n_hidden"])
 
-class PPODiscreteCNN(PPODiscrete):
+class DPPODiscreteCNN(DPPODiscrete):
     def build_networks(self):
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
             self.config["n_hidden"])
 
-class PPOContinuous(PPO):
+class DPPOContinuous(DPPO):
     def build_networks(self):
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
@@ -186,5 +245,4 @@ class PPOContinuous(PPO):
             self.config["n_hidden"])
 
     def get_env_action(self, action):
-        # TODO: use np.clip with the right values (e.g. -2,2 for Pendulum-v0)
         return action

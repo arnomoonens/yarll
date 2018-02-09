@@ -44,7 +44,7 @@ class ActorCriticNetworkDiscrete(object):
         # Prob of the action that was actually taken
         self.action_log_prob = tf.reduce_sum(self.log_probs * self.actions_taken, [1])
 
-        self.entropy = self.new_network.probs * self.log_probs
+        self.entropy = self.probs * self.log_probs
 
 class ActorCriticNetworkDiscreteCNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""

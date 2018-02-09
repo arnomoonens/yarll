@@ -65,11 +65,7 @@ class PPO(Agent):
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
         self.loss = self.actor_loss + 0.5 * self.critic_loss - self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy)
 
-        self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         grads = tf.gradients(self.loss, self.new_network_vars)
-        grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
-
-        apply_grads = self.optimizer.apply_gradients(zip(grads, self.new_network_vars))
 
         self._global_step = tf.get_variable(
             "global_step",
@@ -79,13 +75,7 @@ class PPO(Agent):
             trainable=False)
 
         self.n_steps = tf.shape(self.states)[0]
-        inc_step = self._global_step.assign_add(self.n_steps)
-        self.train_op = tf.group(apply_grads, inc_step)
-
-        init = tf.global_variables_initializer()
-        # Launch the graph.
         self.session = tf.Session()
-        self.session.run(init)
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
@@ -94,10 +84,23 @@ class PPO(Agent):
         summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss / n_steps)
         summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss / n_steps)
         summary_loss = tf.summary.scalar("model/Loss", self.loss / n_steps)
-        self.loss_summary_op = tf.summary.merge(
-            [summary_actor_loss, summary_critic_loss, summary_loss])
+        summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
+        summary_var_norm = tf.summary.scalar("model/var_global_norm", tf.global_norm(self.new_network_vars))
+        self.model_summary_op = tf.summary.merge(
+            [summary_actor_loss, summary_critic_loss, summary_loss, summary_grad_norm, summary_var_norm])
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "summaries"), self.session.graph)
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
+
+        # grads before clipping were passed to the summary, now clip and apply them
+        grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
+        self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
+        apply_grads = self.optimizer.apply_gradients(zip(grads, self.new_network_vars))
+
+        inc_step = self._global_step.assign_add(self.n_steps)
+        self.train_op = tf.group(apply_grads, inc_step)
+
+        init = tf.global_variables_initializer()
+        self.session.run(init)
         return
 
     @property
@@ -142,7 +145,7 @@ class PPO(Agent):
                 batch_actions = np.array(actions)[i:(i + batch_size)]
                 batch_advs = np.array(advs)[i:(i + batch_size)]
                 batch_rs = np.array(rs)[i:(i + batch_size)]
-                fetches = [self.loss_summary_op, self.train_op]
+                fetches = [self.model_summary_op, self.train_op]
                 feed_dict = {
                     self.states: batch_states,
                     self.old_network.states: batch_states,

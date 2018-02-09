@@ -186,4 +186,5 @@ class PPOContinuous(PPO):
             self.config["n_hidden"])
 
     def get_env_action(self, action):
+        # TODO: use np.clip with the right values (e.g. -2,2 for Pendulum-v0)
         return action

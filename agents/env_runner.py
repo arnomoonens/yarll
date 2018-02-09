@@ -1,7 +1,6 @@
 # -*- coding: utf8 -*-
 
 import tensorflow as tf
-import numpy as np
 
 class Trajectory(object):
     """Experience gathered from an environment."""

@@ -13,7 +13,7 @@ import tensorflow as tf
 from gym import wrappers
 
 from agents.agent import Agent
-from misc.utils import discount_rewards, preprocess_image, flatten
+from misc.utils import discount_rewards, flatten
 from misc.network_ops import conv2d, mu_sigma_layer
 from misc.reporter import Reporter
 from agents.env_runner import EnvRunner
@@ -61,10 +61,10 @@ class REINFORCE(Agent):
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
 
-    def choose_action(self, state):
+    def choose_action(self, state, features):
         """Choose an action."""
         action = self.session.run([self.action], feed_dict={self.states: [state]})[0]
-        return action
+        return {"action": action}
 
     def learn(self):
         """Run learning algorithm"""
@@ -75,20 +75,21 @@ class REINFORCE(Agent):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectories = self.env_runner.get_trajectories()
             total_n_trajectories += len(trajectories)
-            all_state = np.concatenate([trajectory["state"] for trajectory in trajectories])
+            all_state = np.concatenate([trajectory.states for trajectory in trajectories])
             # Compute discounted sums of rewards
-            rets = [discount_rewards(trajectory["reward"], config["gamma"]) for trajectory in trajectories]
+            rets = [discount_rewards(trajectory.rewards, config["gamma"]) for trajectory in trajectories]
             max_len = max(len(ret) for ret in rets)
             padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
             # Compute time-dependent baseline
             baseline = np.mean(padded_rets, axis=0)
             # Compute advantage function
             advs = [ret - baseline[:len(ret)] for ret in rets]
-            all_action = np.concatenate([trajectory["action"] for trajectory in trajectories])
+            all_action = np.concatenate([trajectory.actions for trajectory in trajectories])
             all_adv = np.concatenate(advs)
             # Do policy gradient update step
-            episode_rewards = np.array([trajectory["reward"].sum() for trajectory in trajectories])  # episode total rewards
-            episode_lengths = np.array([len(trajectory["reward"]) for trajectory in trajectories])  # episode lengths
+            episode_rewards = np.array([sum(trajectory.rewards) for trajectory in trajectories])  # episode total rewards
+            episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
+            # TODO: deal with RNN state
             summary, _ = self.session.run([self.summary_op, self.train], feed_dict={
                 self.states: all_state,
                 self.a_n: all_action,
@@ -142,13 +143,11 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         usercfg["n_hidden_units"] = 200
         super(REINFORCEDiscreteCNN, self).__init__(env, monitor_path, video=video, **usercfg)
         self.config.update(usercfg)
-        self.env_runner.state_preprocessor = preprocess_image
 
     def build_network(self):
-        image_size = 80
-        image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
+        shape = list(self.env.observation_space.shape)
 
-        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
+        self.states = tf.placeholder(tf.float32, [None] + shape, name="states")
         self.a_n = tf.placeholder(tf.float32, name="a_n")
         self.N = tf.placeholder(tf.int32, name="N")
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
@@ -185,7 +184,6 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
-        self.rnn_state = None
         self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
         # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
@@ -210,33 +208,26 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
             biases_initializer=tf.zeros_initializer())
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
-    def new_trajectory(self):
-        self.rnn_state = None
-
-    def choose_action(self, state):
+    def choose_action(self, state, features):
         """Choose an action."""
         feed_dict = {
-            self.states: [state]
+            self.states: [state],
+            self.rnn_state_in: features
         }
-        if self.rnn_state is not None:
-            feed_dict[self.rnn_state_in] = self.rnn_state
-        action, self.rnn_state = self.session.run([self.action, self.rnn_state_out], feed_dict=feed_dict)
-        return action
+        action, new_features = self.session.run([self.action, self.rnn_state_out], feed_dict=feed_dict)
+        return {"action": action, "features": new_features}
 
 class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
     def __init__(self, env, monitor_path, video=True, **usercfg):
         super(REINFORCEDiscreteCNNRNN, self).__init__(env, monitor_path, video=video, **usercfg)
-        self.env_runner.state_preprocessor = preprocess_image
 
     def build_network(self):
-        self.rnn_state = None
         self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
         self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
-        image_size = 80
-        image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
+        shape = list(self.env.observation_space.shape)
 
-        self.states = tf.placeholder(tf.float32, [None, image_size, image_size, image_depth], name="states")
+        self.states = tf.placeholder(tf.float32, [None] + shape, name="states")
         self.N = tf.placeholder(tf.int32, name="N")
 
         x = self.states

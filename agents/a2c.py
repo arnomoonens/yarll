@@ -37,11 +37,14 @@ class A2C(Agent):
             n_hidden=20,
             gradient_clip_value=0.5,
             n_local_steps=20,
+            vf_coef=0.5,
             entropy_coef=0.01,
             loss_reducer="mean",
             save_model=False
         ))
         self.config.update(usercfg)
+        # Only used (and overwritten) by agents that use an RNN
+        self.initial_features = None
         self.build_networks()
 
         self.action = self.ac_net.action
@@ -52,6 +55,7 @@ class A2C(Agent):
 
         self.actor_loss, self.critic_loss, self.loss = self.make_loss(
             self.ac_net,
+            self.config["vf_coef"],
             self.config["entropy_coef"],
             self.config["loss_reducer"]
         )
@@ -106,7 +110,7 @@ class A2C(Agent):
             self.states: [state]
         }
         action, value = self.session.run([self.ac_net.action, self.ac_net.value], feed_dict=feed_dict)
-        return action, value, []
+        return {"action": action, "value": value}
 
     def get_env_action(self, action):
         return np.argmax(action)
@@ -132,7 +136,7 @@ class A2C(Agent):
                 self.r: np.asarray(batch_r)
             }
             feature = trajectory.features[0]
-            if feature != []:
+            if feature != [] and feature is not None:
                 feed_dict[self.ac_net.rnn_state_in] = feature
             summary, _, global_step = self.session.run(fetches, feed_dict)
             self.writer.add_summary(summary, global_step)
@@ -179,7 +183,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
         action, rnn_state, value = self.session.run(
             [self.ac_net.action, self.ac_net.rnn_state_out, self.ac_net.value],
             feed_dict=feed_dict)
-        return action, value, rnn_state
+        return {"action": action, "value": value, "features": rnn_state}
 
     def get_critic_value(self, states, features):
         feed_dict = {

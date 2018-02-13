@@ -15,6 +15,7 @@ import subprocess
 import signal
 import sys
 import os
+from six.moves import shlex_quote
 
 from agents.agent import Agent
 
@@ -61,19 +62,26 @@ class A3C(Agent):
         signal.signal(signal.SIGHUP, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
         current_folder = os.path.abspath(os.path.dirname(os.path.realpath(__file__)))
-        ps_process = subprocess.Popen([sys.executable, os.path.join(current_folder, "parameter_server.py"), str(self.config["n_tasks"])])
+        cmd = [
+            sys.executable,
+            os.path.join(current_folder, "parameter_server.py"),
+            self.config["n_tasks"]]
+        processed_cmd = " ".join(shlex_quote(str(x)) for x in cmd)
+        ps_process = subprocess.Popen(processed_cmd, shell=True)
         worker_processes = []
         for task_id in range(self.config["n_tasks"]):
-            p = subprocess.Popen([
+            cmd = [
                 sys.executable,
                 os.path.join(current_folder, "a3c_worker.py"),
                 self.env_name,
                 self.thread_type,
-                str(task_id),
-                str(self.config["n_tasks"]),
+                task_id,
+                self.config["n_tasks"],
                 self.config["config_path"],
                 "--monitor_path", self.monitor_path
-            ])
+            ]
+            processed_cmd = " ".join(shlex_quote(str(x)) for x in cmd)
+            p = subprocess.Popen(processed_cmd, shell=True)
             worker_processes.append(p)
         for p in worker_processes:
             p.wait()

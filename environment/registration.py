@@ -33,11 +33,12 @@ class EnvSpec(gym.envs.registration.EnvSpec):
 
         return env
 
-def make(id, **kwargs):
-    spec = gym.envs.registry.spec(id)
+def make(env_id, **kwargs):
+    spec = gym.envs.registry.spec(env_id)
     env = spec.make(**kwargs)
+
     def to_dict():
-        return {"id": id}
+        return {"id": env_id}
     if "to_dict" not in dir(env):
         env.to_dict = to_dict
     if "atari.atari_env" in env.unwrapped.__module__:
@@ -58,13 +59,13 @@ def make_environments(descriptions):
     """Make environments using a list of descriptions."""
     return [make(**d) for d in descriptions]
 
-def make_random_environments(id, n_envs):
+def make_random_environments(env_id, n_envs):
     """Make n_envs random environments of the env_name class."""
-    spec = gym.envs.registry.spec(id)
+    spec = gym.envs.registry.spec(env_id)
     cls = gym.envs.registration.load(spec._entry_point)
     envs = []
     for _ in range(n_envs):
-        args = {"id": id}
+        args = {"id": env_id}
         for p in cls.changeable_parameters:
             if p["type"] == "range":
                 args[p["name"]] = np.random.uniform(p["low"], p["high"])  # Assume for now only range parameters are used

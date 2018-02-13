@@ -29,7 +29,8 @@ class Trajectory(object):
         Extend a trajectory with another one
         given that the current one hasn't ended yet.
         """
-        assert not self.terminal, "Can't extend a terminal trajectory"
+        if self.terminal:
+            raise AssertionError("Can't extend a terminal trajectory.")
         self.states.extend(other.states)
         self.actions.extend(other.actions)
         self.rewards.extend(other.rewards)

@@ -96,10 +96,10 @@ class A2C(Agent):
     def global_step(self):
         return self._global_step.eval(session=self.session)
 
-    def get_critic_value(self, state, *rest):
+    def get_critic_value(self, state, features):
         return self.session.run([self.ac_net.value], feed_dict={self.states: state})[0].flatten()
 
-    def choose_action(self, state, *rest):
+    def choose_action(self, state, features):
         action, value = self.session.run([self.ac_net.action, self.ac_net.value], feed_dict={self.states: [state]})
         return action, value, []
 

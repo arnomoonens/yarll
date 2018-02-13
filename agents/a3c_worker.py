@@ -185,13 +185,13 @@ class A3CTask(object):
 
             self.config_proto = tf.ConfigProto(device_filters=["/job:ps", "/job:worker/task:{}/cpu:0".format(task_id)])
 
-    def get_critic_value(self, states, *rest):
+    def get_critic_value(self, states, featues):
         return tf.get_default_session().run(self.local_network.value, feed_dict={self.states: states})[0]
 
     def get_env_action(self, action):
         return np.argmax(action)
 
-    def choose_action(self, state, *rest):
+    def choose_action(self, state, features):
         """Choose an action."""
         feed_dict = {
             self.states: [state]
@@ -264,8 +264,7 @@ class A3CTask(object):
                 }
                 feature = trajectory.features[0]
                 if feature != [] and feature is not None:
-                    print(feature)
-                    feed_dict[self.local_network.rnn_state_in] = feature[0]
+                    feed_dict[self.local_network.rnn_state_in] = feature
                 summary, _, global_step = sess.run(fetches, feed_dict)
                 self.writer.add_summary(summary, global_step)
                 self.writer.flush()

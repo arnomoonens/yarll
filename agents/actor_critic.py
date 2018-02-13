@@ -140,13 +140,13 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
 
         self.entropy = self.new_network.probs * self.log_probs
 
-def ActorCriticDiscreteLoss(network, entropy_coef=0.01, reducer="sum"):
+def ActorCriticDiscreteLoss(network, vf_coef=0.5, entropy_coef=0.01, reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     log_probs = tf.nn.log_softmax(network.logits)
     actor_loss = - tf_reducer(tf.reduce_sum(log_probs * network.actions_taken, [1]) * network.adv)
     critic_loss = tf_reducer(tf.square(network.value - network.r))
     entropy = tf_reducer(network.probs * log_probs)
-    loss = actor_loss + 0.5 * critic_loss - entropy_coef * entropy
+    loss = actor_loss + vf_coef * critic_loss - entropy_coef * entropy
     return actor_loss, critic_loss, loss
 
 class ActorCriticNetworkContinuous(object):

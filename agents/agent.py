@@ -5,10 +5,15 @@ class Agent(object):
     def __init__(self, **usercfg):
         super(Agent, self).__init__()
         self.config = usercfg
+        # Only used (and overwritten) by agents that use an RNN
+        self.initial_features = None
 
     def learn(self):
         """Learn in the current environment."""
         raise NotImplementedError()
+
+    def get_env_action(self, action):
+        return action
 
     def new_trajectory(self):
         """

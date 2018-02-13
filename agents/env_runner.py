@@ -80,7 +80,10 @@ class EnvRunner(object):
             self.policy.new_trajectory()
         traj = Trajectory()
         for i in range(n_steps):
-            action, value, new_features = self.choose_action(self.state)
+            results = self.choose_action(self.state)
+            action = results["action"]
+            value = results.get("value", None)
+            new_features = results.get("features", None)
             new_state, rew, done, _ = self.step_env(action)
             traj.add(self.state, action, rew, value, terminal=done, features=self.features)
             self.state = new_state
@@ -120,5 +123,5 @@ class EnvRunner(object):
             i += 1
             trajectory = self.get_trajectory(stop_at_trajectory_end, render)
             trajectories.append(trajectory)
-            timesteps_total += len(trajectory["reward"])
+            timesteps_total += len(trajectory.rewards)
         return trajectories

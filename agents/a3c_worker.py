@@ -33,7 +33,10 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
 
         for _ in range(n_steps):
             # Choose the next action (using a neural network) depending on the current state
-            action, value, new_features = policy.choose_action(state, features)
+            results = policy.choose_action(state, features)
+            action = results["action"]
+            value = results.get("value", None)
+            new_features = results.get("features", None)
             # Execute the action in the environment
             new_state, reward, terminal, _ = env.step(policy.get_env_action(action))
             episode_steps += 1
@@ -131,6 +134,7 @@ class A3CTask(object):
                     self.local_network = self.build_networks()
                     self.actor_loss, self.critic_loss, self.loss = self.make_loss(
                         self.local_network,
+                        self.config["vf_coef"],
                         self.config["entropy_coef"],
                         self.config["loss_reducer"])
                     self.local_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
@@ -199,7 +203,7 @@ class A3CTask(object):
         action, value = tf.get_default_session().run(
             [self.local_network.action, self.local_network.value],
             feed_dict=feed_dict)
-        return action, value, []
+        return {"action": action, "value": value}
 
     def create_sync_net_op(self):
         return tf.group(*[v1.assign(v2) for v1, v2 in zip(self.local_vars, self.global_vars)])
@@ -335,7 +339,7 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         action, rnn_state, value = tf.get_default_session().run(
             [self.local_network.action, self.local_network.rnn_state_out, self.local_network.value],
             feed_dict=feed_dict)
-        return action, value, rnn_state
+        return {"action": action, "value": value, "features": rnn_state}
 
     def get_critic_value(self, states, features):
         feed_dict = {

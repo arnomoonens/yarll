@@ -35,8 +35,6 @@ class A3C(Agent):
         self.config.update(dict(
             gamma=0.99,  # Discount past rewards by a percentage
             learning_rate=1e-4,
-            actor_learning_rate=1e-4,
-            critic_learning_rate=1e-4,
             n_hidden=20,
             critic_n_hidden=20,
             gradient_clip_value=50,
@@ -44,8 +42,8 @@ class A3C(Agent):
             T_max=8e5,
             shared_optimizer=False,
             episode_max_length=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
-            repeat_n_actions=1,
             n_local_steps=20,
+            vf_coef=0.5,
             entropy_coef=0.01,
             loss_reducer="sum",  # use tf.reduce_sum or tf.reduce_mean for the loss
             save_model=False,

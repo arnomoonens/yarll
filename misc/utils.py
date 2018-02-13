@@ -5,6 +5,7 @@ from scipy import signal
 import numpy as np
 import os
 from os import path
+import pkg_resources
 
 # To set the seed of their random number generators
 import random
@@ -113,3 +114,30 @@ def set_seed(seed):
     random.seed(seed)
     tf.set_random_seed(seed)
     return
+
+def load(name):
+    """Load an object by string."""
+    entry_point = pkg_resources.EntryPoint.parse('x={}'.format(name))
+    result = entry_point.load(False)
+    return result
+
+def cluster_spec(num_workers, num_ps):
+    """
+    Generate a cluster specification (for distributed Tensorflow).
+    """
+    cluster = {}
+    port = 12222
+
+    all_ps = []
+    host = '127.0.0.1'
+    for _ in range(num_ps):
+        all_ps.append('{}:{}'.format(host, port))
+        port += 1
+    cluster['ps'] = all_ps
+
+    all_workers = []
+    for _ in range(num_workers):
+        all_workers.append('{}:{}'.format(host, port))
+        port += 1
+    cluster['worker'] = all_workers
+    return cluster

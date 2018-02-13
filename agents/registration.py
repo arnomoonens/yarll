@@ -1,17 +1,10 @@
 # -*- coding: utf8 -*-
 
-import pkg_resources
+from misc.utils import load
 
 from misc.exceptions import ClassNotRegisteredError
 
-def load(name):
-    """Load an object by string."""
-    entry_point = pkg_resources.EntryPoint.parse('x={}'.format(name))
-    result = entry_point.load(False)
-    return result
-
 # Dictionary with names of algorithms as keys and a list of variants as values.
-
 agent_registry = {}
 
 def register_agent(name, entry_point, state_dimensions, action_space, RNN=False):

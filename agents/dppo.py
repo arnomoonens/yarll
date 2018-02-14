@@ -42,7 +42,7 @@ class DPPOWorker(threading.Thread):
             vpred_t = np.asarray(trajectory.values + [v])
             delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
             batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-            batch_adv = discount_rewards(delta_t, self.config["gamma"])
+            batch_adv = discount_rewards(delta_t, self.config["gamma"], self.config["lambda_"])
             processed = trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features[0]
             self.queue.put(processed)
             self.policy.n_trajectories += 1
@@ -63,7 +63,7 @@ class DPPOWorker(threading.Thread):
     def choose_action(self, state, *rest):
         with self.lock:
             action, value = self.policy.session.run([self.policy.action, self.policy.value], feed_dict={self.policy.states: [state]})
-        return action, value[0], []
+        return {"action": action, "value": value[0]}
 
     def get_env_action(self, action):
         return np.argmax(action)
@@ -86,6 +86,7 @@ class DPPO(Agent):
             n_workers=4,
             n_hidden=20,
             gamma=0.99,
+            lambda_=0.95
             learning_rate=0.001,
             n_iter=10000,
             n_local_steps=256,
@@ -194,7 +195,6 @@ class DPPO(Agent):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             if not self.should_update.is_set():
                 self.should_update.wait()
-            print("Gonna update")
             trajectories = [self.queue.get() for _ in range(self.queue.qsize())]
             self.session.run(self.set_old_to_new)
 

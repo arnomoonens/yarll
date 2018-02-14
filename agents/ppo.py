@@ -31,14 +31,17 @@ class PPO(Agent):
         self.config.update(dict(
             n_hidden=20,
             gamma=0.99,
+            lambda_=0.95,
             learning_rate=0.001,
             n_iter=10000,
             batch_size=64,  # Timesteps per training batch
             n_local_steps=256,
             gradient_clip_value=0.5,
+            vf_coef=0.5,
             entropy_coef=0.01,
             cso_epsilon=0.2  # Clipped surrogate objective epsilon
         ))
+        self.config.update(usercfg)
 
         with tf.variable_scope("old_network"):
             self.old_network = self.build_networks()
@@ -63,7 +66,9 @@ class PPO(Agent):
         # Reduces by taking the mean instead of summing
         self.actor_loss = -tf.reduce_mean(cso_loss(self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
-        self.loss = self.actor_loss + 0.5 * self.critic_loss - self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy)
+        self.loss = self.actor_loss \
+            + self.config["vf_coef"] * self.critic_loss \
+            - self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy)
 
         grads = tf.gradients(self.loss, self.new_network_vars)
 
@@ -112,7 +117,7 @@ class PPO(Agent):
 
     def choose_action(self, state, *rest):
         action, value = self.session.run([self.action, self.value], feed_dict={self.states: [state]})
-        return action, value[0], []
+        return {"action": action, "value": value[0]}
 
     def get_env_action(self, action):
         return np.argmax(action)
@@ -124,7 +129,7 @@ class PPO(Agent):
         vpred_t = np.asarray(trajectory.values + [v])
         delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
         batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-        batch_adv = discount_rewards(delta_t, self.config["gamma"])
+        batch_adv = discount_rewards(delta_t, self.config["gamma"] * self.config["lambda_"])
         return trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features
 
     def learn(self):

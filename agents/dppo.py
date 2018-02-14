@@ -42,7 +42,7 @@ class DPPOWorker(threading.Thread):
             vpred_t = np.asarray(trajectory.values + [v])
             delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
             batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-            batch_adv = discount_rewards(delta_t, self.config["gamma"], self.config["lambda_"])
+            batch_adv = discount_rewards(delta_t, self.config["gamma"] * self.config["lambda_"])
             processed = trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features[0]
             self.queue.put(processed)
             self.policy.n_trajectories += 1
@@ -86,7 +86,7 @@ class DPPO(Agent):
             n_workers=4,
             n_hidden=20,
             gamma=0.99,
-            lambda_=0.95
+            lambda_=0.95,
             learning_rate=0.001,
             n_iter=10000,
             n_local_steps=256,

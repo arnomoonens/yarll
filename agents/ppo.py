@@ -33,6 +33,7 @@ class PPO(Agent):
             gamma=0.99,
             lambda_=0.95,
             learning_rate=0.001,
+            n_epochs=10,
             n_iter=10000,
             batch_size=64,  # Timesteps per training batch
             n_local_steps=256,
@@ -142,26 +143,28 @@ class PPO(Agent):
             self.session.run(self.set_old_to_new)
 
             indices = np.arange(len(states))
-            np.random.shuffle(indices)
+            for i in range(self.config["n_epochs"]):
+                np.random.shuffle(indices)
 
-            batch_size = self.config["batch_size"]
-            for i in range(0, len(states), batch_size):
-                batch_states = np.array(states)[i:(i + batch_size)]
-                batch_actions = np.array(actions)[i:(i + batch_size)]
-                batch_advs = np.array(advs)[i:(i + batch_size)]
-                batch_rs = np.array(rs)[i:(i + batch_size)]
-                fetches = [self.model_summary_op, self.train_op]
-                feed_dict = {
-                    self.states: batch_states,
-                    self.old_network.states: batch_states,
-                    self.actions_taken: batch_actions,
-                    self.old_network.actions_taken: batch_actions,
-                    self.adv: batch_advs,
-                    self.r: batch_rs
-                }
-                summary, _ = self.session.run(fetches, feed_dict)
-                self.writer.add_summary(summary, n_updates)
-                n_updates += 1
+                batch_size = self.config["batch_size"]
+                for j in range(0, len(states), batch_size):
+                    batch_indices = indices[j:(j + batch_size)]
+                    batch_states = np.array(states)[batch_indices]
+                    batch_actions = np.array(actions)[batch_indices]
+                    batch_advs = np.array(advs)[batch_indices]
+                    batch_rs = np.array(rs)[batch_indices]
+                    fetches = [self.model_summary_op, self.train_op]
+                    feed_dict = {
+                        self.states: batch_states,
+                        self.old_network.states: batch_states,
+                        self.actions_taken: batch_actions,
+                        self.old_network.actions_taken: batch_actions,
+                        self.adv: batch_advs,
+                        self.r: batch_rs
+                    }
+                    summary, _ = self.session.run(fetches, feed_dict)
+                    self.writer.add_summary(summary, n_updates)
+                    n_updates += 1
                 self.writer.flush()
 
         if self.config["save_model"]:

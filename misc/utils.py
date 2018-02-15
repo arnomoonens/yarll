@@ -14,8 +14,8 @@ import tensorflow as tf
 
 import json
 import cv2
+import gym
 from gym.spaces.box import Box
-from universe import vectorized
 
 def discount_rewards(x, gamma):
     """
@@ -45,13 +45,13 @@ def _process_frame42(frame):
     frame = np.reshape(frame, [42, 42, 1])
     return frame
 
-class AtariRescale42x42(vectorized.ObservationWrapper):
+class AtariRescale42x42(gym.ObservationWrapper):
     def __init__(self, env=None):
         super(AtariRescale42x42, self).__init__(env)
         self.observation_space = Box(0.0, 1.0, [42, 42, 1])
 
-    def _observation(self, observation_n):
-        return [_process_frame42(observation) for observation in observation_n]
+    def observation(self, observation):
+        return _process_frame42(observation)
 
 
 def preprocess_image(img):

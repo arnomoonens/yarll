@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from agents.agent import Agent
 from agents.env_runner import EnvRunner
-from misc.utils import discount_rewards
+from misc.utils import discount_rewards, FastSaver
 from misc.reporter import Reporter
 from misc.network_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
@@ -55,7 +55,7 @@ class KnowledgeTransfer(Agent):
             for action_tensor in self.action_tensors:
                 tf.add_to_collection("action", action_tensor)
             tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
+            self.saver = FastSaver()
 
     def build_networks(self):
         self.session = tf.Session()

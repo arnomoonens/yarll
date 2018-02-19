@@ -96,3 +96,4 @@ Environment/*.json
 *-experiment.json
 *~
 .*.swp
+.vscode/

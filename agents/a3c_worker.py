@@ -231,7 +231,7 @@ class A3CTask(object):
         wasn't over and more transitions are available
         """
         trajectory = self.runner.queue.get(timeout=600.0)
-        while not trajectory.terminal:
+        while not trajectory.terminals[-1]:
             try:
                 trajectory.extend(self.runner.queue.get_nowait())
             except queue.Empty:
@@ -252,7 +252,7 @@ class A3CTask(object):
                 # Synchronize thread-specific parameters θ' = θ and θ'v = θv
                 sess.run(self.sync_net)
                 trajectory = self.pull_batch_from_queue()
-                v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+                v = 0 if trajectory.terminals[-1] else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
                 rewards_plus_v = np.asarray(trajectory.rewards + [v])
                 vpred_t = np.asarray(trajectory.values + [v])
                 delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]

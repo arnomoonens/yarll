@@ -7,7 +7,7 @@ from gym import wrappers
 
 from agents.agent import Agent
 from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
-from misc.utils import discount_rewards
+from misc.utils import discount_rewards, FastSaver
 from agents.env_runner import EnvRunner
 
 def cso_loss(old_network, new_network, epsilon, advantage):
@@ -31,7 +31,7 @@ class PPO(Agent):
         self.config.update(dict(
             n_hidden=20,
             gamma=0.99,
-            lambda_=0.95,
+            gae_lambda=0.95,
             learning_rate=0.001,
             n_epochs=10,
             n_iter=10000,
@@ -67,9 +67,7 @@ class PPO(Agent):
         # Reduces by taking the mean instead of summing
         self.actor_loss = -tf.reduce_mean(cso_loss(self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
-        self.loss = self.actor_loss \
-            + self.config["vf_coef"] * self.critic_loss \
-            - self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy)
+        self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss - self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy)
 
         grads = tf.gradients(self.loss, self.new_network_vars)
 
@@ -85,15 +83,20 @@ class PPO(Agent):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
-        n_steps = tf.to_float(self.n_steps)
-        summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss / n_steps)
-        summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss / n_steps)
-        summary_loss = tf.summary.scalar("model/Loss", self.loss / n_steps)
+            self.saver = FastSaver()
+
+        summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss)
+        summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss)
+        summary_loss = tf.summary.scalar("model/Loss", self.loss)
         summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar("model/var_global_norm", tf.global_norm(self.new_network_vars))
-        self.model_summary_op = tf.summary.merge(
-            [summary_actor_loss, summary_critic_loss, summary_loss, summary_grad_norm, summary_var_norm])
+        summaries = []
+        for v in tf.trainable_variables():
+            if "new_network" in v.name:
+                summaries.append(tf.summary.histogram(v.name, v))
+        summaries += [summary_actor_loss, summary_critic_loss,
+                      summary_loss, summary_grad_norm, summary_var_norm]
+        self.model_summary_op = tf.summary.merge(summaries)
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "summaries"), self.session.graph)
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
 
@@ -125,25 +128,34 @@ class PPO(Agent):
 
     def get_processed_trajectories(self):
         trajectory = self.env_runner.get_steps(self.config["n_local_steps"], stop_at_trajectory_end=False)
-        v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
-        rewards_plus_v = np.asarray(trajectory.rewards + [v])
-        vpred_t = np.asarray(trajectory.values + [v])
-        delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
-        batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-        batch_adv = discount_rewards(delta_t, self.config["gamma"] * self.config["lambda_"])
-        return trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features
+        T = trajectory.steps
+        v = 0 if trajectory.terminals[-1] else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+        vpred = np.asarray(trajectory.values + [v])
+        gamma = self.config["gamma"]
+        lambda_ = self.config["gae_lambda"]
+        terminals = np.append(trajectory.terminals, 0)
+        gaelam = advantages = np.empty(T, 'float32')
+        lastgaelam = 0
+        for t in reversed(range(T)):
+            nonterminal = 1 - terminals[t + 1]
+            delta = trajectory.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
+            gaelam[t] = lastgaelam = delta + gamma * lambda_ * nonterminal * lastgaelam
+        rs = advantages + trajectory.values
+        return trajectory.states, trajectory.actions, advantages, rs, trajectory.features
 
     def learn(self):
         """Run learning algorithm"""
         config = self.config
         n_updates = 0
-        for iteration in range(config["n_iter"]):
+        for _ in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            states, actions, advs, rs, features = self.get_processed_trajectories()
+            states, actions, advs, rs, _ = self.get_processed_trajectories()
+            advs = np.array(advs)
+            advs = (advs - advs.mean()) / advs.std()
             self.session.run(self.set_old_to_new)
 
             indices = np.arange(len(states))
-            for i in range(self.config["n_epochs"]):
+            for _ in range(self.config["n_epochs"]):
                 np.random.shuffle(indices)
 
                 batch_size = self.config["batch_size"]
@@ -153,7 +165,8 @@ class PPO(Agent):
                     batch_actions = np.array(actions)[batch_indices]
                     batch_advs = np.array(advs)[batch_indices]
                     batch_rs = np.array(rs)[batch_indices]
-                    fetches = [self.model_summary_op, self.train_op]
+                    losses = [self.actor_loss, self.critic_loss, self.loss]
+                    fetches = losses + [self.model_summary_op, self.train_op]
                     feed_dict = {
                         self.states: batch_states,
                         self.old_network.states: batch_states,
@@ -162,15 +175,13 @@ class PPO(Agent):
                         self.adv: batch_advs,
                         self.r: batch_rs
                     }
-                    summary, _ = self.session.run(fetches, feed_dict)
-                    self.writer.add_summary(summary, n_updates)
+                    results = self.session.run(fetches, feed_dict)
+                    self.writer.add_summary(results[len(losses)], n_updates)
                     n_updates += 1
                 self.writer.flush()
 
-        if self.config["save_model"]:
-            tf.add_to_collection("action", self.action)
-            tf.add_to_collection("states", self.states)
-            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
+            if self.config["save_model"]:
+                self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 class PPODiscrete(PPO):
     def build_networks(self):

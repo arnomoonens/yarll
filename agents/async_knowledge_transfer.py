@@ -9,7 +9,7 @@ import signal
 
 from agents.agent import Agent
 from agents.env_runner import EnvRunner
-from misc.utils import discount_rewards
+from misc.utils import discount_rewards, FastSaver
 from misc.reporter import Reporter
 from agents.knowledge_transfer import TaskPolicy
 
@@ -191,7 +191,7 @@ class AsyncKnowledgeTransfer(Agent):
             for job in self.jobs:
                 tf.add_to_collection("action", job.action)
             tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
+            self.saver = FastSaver()
 
     def build_networks(self):
         with tf.variable_scope("shared"):

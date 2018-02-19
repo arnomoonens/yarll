@@ -11,7 +11,7 @@ import queue
 from agents.agent import Agent
 from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
 from agents.ppo import cso_loss
-from misc.utils import discount_rewards
+from misc.utils import discount_rewards, FastSaver
 from agents.env_runner import EnvRunner
 from environment.registration import make
 
@@ -37,7 +37,7 @@ class DPPOWorker(threading.Thread):
             if not self.should_collect.is_set():
                 self.should_collect.wait()
             trajectory = self.env_runner.get_steps(self.config["n_local_steps"], stop_at_trajectory_end=False)
-            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+            v = 0 if trajectory.terminals[-1] else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])
             vpred_t = np.asarray(trajectory.values + [v])
             delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
@@ -89,6 +89,7 @@ class DPPO(Agent):
             lambda_=0.95,
             learning_rate=0.001,
             n_iter=10000,
+            n_epochs=3,
             n_local_steps=256,
             gradient_clip_value=0.5,
             entropy_coef=0.01,
@@ -135,7 +136,7 @@ class DPPO(Agent):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
+            self.saver = FastSaver()
         n_steps = tf.to_float(self.n_steps)
         summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss / n_steps)
         summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss / n_steps)

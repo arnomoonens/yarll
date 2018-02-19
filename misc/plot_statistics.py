@@ -9,6 +9,7 @@ import argparse
 import re
 import operator
 import logging
+import go_vncdriver
 from tensorboard.backend.event_processing.plugin_event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -134,19 +135,18 @@ def tf_scalar_data(em):
     """Process scalar data of TensorFlow summaries."""
     runs = list(em.Runs().keys())
     scalars = em.Runs()[runs[0]]["tensors"]  # Assumes that the scalars of every run are the same
-    print(em.Runs())
     pattern = re.compile("\w+(\d+)$")
     data = {}
     for scalar in scalars:
         scalar_data = {}
         for run in runs:
             task = int(pattern.search(run).group(1))
+            accum = em.GetAccumulator(run)
             if task in scalar_data:
-                scalar_data[task]["values"].append([x.value for x in em.Scalars(run, scalar)])
+                scalar_data[task]["values"].append([s.tensor_proto.float_val[0] for s in accum.Tensors(scalar)])
             else:
                 values = []
                 epochs = []
-                accum = em.GetAccumulator(run)
                 for s in accum.Tensors(scalar):
                     values.append(s.tensor_proto.float_val[0])
                     epochs.append(s.step)

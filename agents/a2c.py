@@ -8,7 +8,7 @@ import logging
 from gym import wrappers
 
 from agents.agent import Agent
-from misc.utils import discount_rewards
+from misc.utils import discount_rewards, FastSaver
 from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss
 from agents.env_runner import EnvRunner
 
@@ -85,7 +85,7 @@ class A2C(Agent):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
+            self.saver = FastSaver()
         n_steps = tf.to_float(self.n_steps)
         summary_actor_loss = tf.summary.scalar("Actor_loss", self.actor_loss / n_steps)
         summary_critic_loss = tf.summary.scalar("Critic_loss", self.critic_loss / n_steps)
@@ -113,10 +113,10 @@ class A2C(Agent):
     def learn(self):
         """Run learning algorithm"""
         config = self.config
-        for iteration in range(config["n_iter"]):
+        for _ in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectory = self.env_runner.get_steps(self.config["n_local_steps"])
-            v = 0 if trajectory.terminal else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+            v = 0 if trajectory.terminals[-1] else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])
             vpred_t = np.asarray(trajectory.values + [v])
             delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]

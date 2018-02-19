@@ -13,7 +13,7 @@ import tensorflow as tf
 from gym import wrappers
 
 from agents.agent import Agent
-from misc.utils import discount_rewards, flatten
+from misc.utils import discount_rewards, flatten, FastSaver
 from misc.network_ops import conv2d, mu_sigma_layer
 from misc.reporter import Reporter
 from agents.env_runner import EnvRunner
@@ -52,7 +52,7 @@ class REINFORCE(Agent):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
+            self.saver = FastSaver()
         self.rewards = tf.placeholder("float", name="Rewards")
         self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
         summary_loss = tf.summary.scalar("Loss", self.summary_loss)

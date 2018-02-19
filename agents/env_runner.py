@@ -11,7 +11,7 @@ class Trajectory(object):
         self.rewards = []
         self.values = []
         self.features = []
-        self.terminal = False
+        self.terminals = []
         self.steps = 0
 
     def add(self, state, action, reward, value=None, features=None, terminal=False):
@@ -21,7 +21,7 @@ class Trajectory(object):
         self.rewards.append(reward)
         self.values.append(value)
         self.features.append(features)
-        self.terminal = terminal
+        self.terminals.append(terminal)
         self.steps += 1
 
     def extend(self, other):
@@ -36,7 +36,7 @@ class Trajectory(object):
         self.rewards.extend(other.rewards)
         self.values.extend(other.values)
         self.features.extend(other.features)
-        self.terminal = other.terminal
+        self.terminal.extend(other.terminals)
         self.steps += other.steps
 
 class EnvRunner(object):
@@ -54,6 +54,7 @@ class EnvRunner(object):
         )
         self.episode_steps = 0
         self.episode_reward = 0
+        self.n_episodes = 0
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
         self.summary_writer = summary_writer
@@ -95,10 +96,11 @@ class EnvRunner(object):
                     summary = tf.Summary()
                     summary.value.add(tag="global/Episode_length", simple_value=float(self.episode_steps))
                     summary.value.add(tag="global/Reward", simple_value=float(self.episode_reward))
-                    self.summary_writer.add_summary(summary, self.policy.global_step)
+                    self.summary_writer.add_summary(summary, self.n_episodes)
                     self.summary_writer.flush()
                     self.episode_reward = 0
                     self.episode_steps = 0
+                    self.n_episodes += 1
                 self.reset_env()
                 self.features = self.policy.initial_features
                 self.policy.new_trajectory()

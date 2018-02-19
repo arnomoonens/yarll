@@ -9,7 +9,7 @@ from gym import wrappers
 # import gym_ple
 
 from agents.agent import Agent
-from misc.utils import discount_rewards, preprocess_image
+from misc.utils import discount_rewards, preprocess_image, FastSaver
 from misc.reporter import Reporter
 from misc.network_ops import create_accumulative_gradients_op, add_accumulative_gradients_op, reset_accumulative_gradients_op
 
@@ -43,7 +43,7 @@ class KarpathyCNN(Agent):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver = tf.train.Saver()
+            self.saver = FastSaver()
 
     def build_network(self):
         image_size = 80

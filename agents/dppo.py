@@ -37,13 +37,23 @@ class DPPOWorker(threading.Thread):
             if not self.should_collect.is_set():
                 self.should_collect.wait()
             trajectory = self.env_runner.get_steps(self.config["n_local_steps"], stop_at_trajectory_end=False)
-            v = 0 if trajectory.terminals[-1] else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
-            rewards_plus_v = np.asarray(trajectory.rewards + [v])
-            vpred_t = np.asarray(trajectory.values + [v])
-            delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
-            batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
-            batch_adv = discount_rewards(delta_t, self.config["gamma"] * self.config["lambda_"])
-            processed = trajectory.states, trajectory.actions, np.vstack(batch_adv).flatten().tolist(), batch_r, trajectory.features[0]
+            T = trajectory.steps
+            v = 0 if trajectory.terminals[-1] else self.get_critic_value(
+                np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+            vpred = np.asarray(trajectory.values + [v])
+            gamma = self.config["gamma"]
+            lambda_ = self.config["gae_lambda"]
+            terminals = np.append(trajectory.terminals, 0)
+            gaelam = advantages = np.empty(T, 'float32')
+            lastgaelam = 0
+            for t in reversed(range(T)):
+                nonterminal = 1 - terminals[t + 1]
+                delta = trajectory.rewards[t] + gamma * \
+                    vpred[t + 1] * nonterminal - vpred[t]
+                gaelam[t] = lastgaelam = delta + gamma * \
+                    lambda_ * nonterminal * lastgaelam
+            rs = advantages + trajectory.values
+            processed = trajectory.states, trajectory.actions, advantages, rs, trajectory.features[0]
             self.queue.put(processed)
             self.policy.n_trajectories += 1
             if self.policy.n_trajectories >= self.min_trajectories:
@@ -86,14 +96,14 @@ class DPPO(Agent):
             n_workers=4,
             n_hidden=20,
             gamma=0.99,
-            lambda_=0.95,
-            learning_rate=0.001,
+            gae_lambda=0.95,
+            learning_rate=2.5e-4,
             n_iter=10000,
-            n_epochs=3,
-            n_local_steps=256,
+            n_epochs=4,
+            n_local_steps=128,
             gradient_clip_value=0.5,
             entropy_coef=0.01,
-            cso_epsilon=0.2,  # Clipped surrogate objective epsilon
+            cso_epsilon=0.1,  # Clipped surrogate objective epsilon
             save_model=False
         ))
 
@@ -192,7 +202,7 @@ class DPPO(Agent):
         for worker in self.workers:
             worker.start()
 
-        for iteration in range(config["n_iter"]):
+        for _ in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             if not self.should_update.is_set():
                 self.should_update.wait()

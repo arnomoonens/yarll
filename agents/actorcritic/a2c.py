@@ -1,24 +1,29 @@
 # -*- coding: utf8 -*-
 
 import os
+import logging
 import numpy as np
 import tensorflow as tf
-import logging
 
 from gym import wrappers
 
 from agents.agent import Agent
-from misc.utils import discount_rewards, FastSaver
-from agents.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss
+from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
+ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss,\
+ActorCriticNetworkContinuous, ActorCriticContinuousLoss
 from agents.env_runner import EnvRunner
+from misc.utils import discount_rewards, FastSaver
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-np.set_printoptions(suppress=True)  # Don't use the scientific notation to print results
+# Don't use the scientific notation to print results
+np.set_printoptions(suppress=True)
+
 
 class A2C(Agent):
     """Advantage Actor Critic"""
+
     def __init__(self, env, monitor_path, video=True, **usercfg):
         super(A2C, self).__init__(**usercfg)
         self.monitor_path = monitor_path
@@ -58,7 +63,8 @@ class A2C(Agent):
             self.config["entropy_coef"],
             self.config["loss_reducer"]
         )
-        self.vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+        self.vars = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
         self._global_step = tf.get_variable(
             "global_step",
@@ -67,9 +73,11 @@ class A2C(Agent):
             initializer=tf.constant_initializer(0, dtype=tf.int32),
             trainable=False)
 
-        self.optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
+        self.optimizer = tf.train.AdamOptimizer(
+            self.config["learning_rate"], name="optim")
         grads = tf.gradients(self.loss, self.vars)
-        grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
+        grads, _ = tf.clip_by_global_norm(
+            grads, self.config["gradient_clip_value"])
 
         # Apply gradients to the weights of the master network
         apply_grads = self.optimizer.apply_gradients(zip(grads, self.vars))
@@ -87,13 +95,17 @@ class A2C(Agent):
             tf.add_to_collection("states", self.states)
             self.saver = FastSaver()
         n_steps = tf.to_float(self.n_steps)
-        summary_actor_loss = tf.summary.scalar("Actor_loss", self.actor_loss / n_steps)
-        summary_critic_loss = tf.summary.scalar("Critic_loss", self.critic_loss / n_steps)
+        summary_actor_loss = tf.summary.scalar(
+            "Actor_loss", self.actor_loss / n_steps)
+        summary_critic_loss = tf.summary.scalar(
+            "Critic_loss", self.critic_loss / n_steps)
         summary_loss = tf.summary.scalar("Loss", self.loss / n_steps)
         self.loss_summary_op = tf.summary.merge(
             [summary_actor_loss, summary_critic_loss, summary_loss])
-        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "summaries"), self.session.graph)
-        self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
+        self.writer = tf.summary.FileWriter(os.path.join(
+            self.monitor_path, "summaries"), self.session.graph)
+        self.env_runner = EnvRunner(
+            self.env, self, usercfg, summary_writer=self.writer)
         return
 
     @property
@@ -104,7 +116,8 @@ class A2C(Agent):
         return self.session.run([self.ac_net.value], feed_dict={self.states: state})[0].flatten()
 
     def choose_action(self, state, features):
-        action, value = self.session.run([self.ac_net.action, self.ac_net.value], feed_dict={self.states: [state]})
+        action, value = self.session.run(
+            [self.ac_net.action, self.ac_net.value], feed_dict={self.states: [state]})
         return {"action": action, "value": value}
 
     def get_env_action(self, action):
@@ -115,12 +128,16 @@ class A2C(Agent):
         config = self.config
         for _ in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectory = self.env_runner.get_steps(self.config["n_local_steps"])
-            v = 0 if trajectory.terminals[-1] else self.get_critic_value(np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
+            trajectory = self.env_runner.get_steps(
+                self.config["n_local_steps"])
+            v = 0 if trajectory.terminals[-1] else self.get_critic_value(
+                np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])
             vpred_t = np.asarray(trajectory.values + [v])
-            delta_t = trajectory.rewards + self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
-            batch_r = discount_rewards(rewards_plus_v, self.config["gamma"])[:-1]
+            delta_t = trajectory.rewards + \
+                self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
+            batch_r = discount_rewards(
+                rewards_plus_v, self.config["gamma"])[:-1]
             batch_adv = discount_rewards(delta_t, self.config["gamma"])
             fetches = [self.loss_summary_op, self.train_op, self._global_step]
             states = np.asarray(trajectory.states)
@@ -140,7 +157,9 @@ class A2C(Agent):
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
-            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
+            self.saver.save(self.session, os.path.join(
+                self.monitor_path, "model"))
+
 
 class A2CDiscrete(A2C):
     def __init__(self, *args, **kwargs):
@@ -153,12 +172,14 @@ class A2CDiscrete(A2C):
             self.env.action_space.n,
             self.config["n_hidden"])
 
+
 class A2CDiscreteCNN(A2CDiscrete):
     def build_networks(self):
         self.ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
             self.config["n_hidden"])
+
 
 class A2CDiscreteCNNRNN(A2CDiscrete):
     def build_networks(self):
@@ -186,6 +207,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
             self.ac_net.rnn_state_in: features
         }
         return self.session.run(self.ac_net.value, feed_dict=feed_dict)[0]
+
 
 class A2CContinuous(A2C):
     def __init__(self, *args, **kwargs):

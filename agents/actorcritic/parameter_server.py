@@ -2,14 +2,14 @@
 # -*- coding: utf8 -*-
 
 import argparse
-import go_vncdriver  # noqa
-import tensorflow as tf
+import os
 import time
 import sys
-import os
+import go_vncdriver  # pylint: disable=W0611
+import tensorflow as tf
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")))
-from misc.utils import cluster_spec  # noqa
+from misc.utils import cluster_spec  # pylint: disable=C0413
 
 parser = argparse.ArgumentParser()
 parser.add_argument("n_tasks", type=int, help="Total number of tasks in this experiment.")
@@ -19,7 +19,7 @@ def main(_):
     args = parser.parse_args()
     spec = cluster_spec(args.n_tasks, 1)
     cluster = tf.train.ClusterSpec(spec).as_cluster_def()
-    server = tf.train.Server(  # noqa
+    server = tf.train.Server(  # pylint: disable=W0612
         cluster,
         job_name="ps",
         task_index=args.task_id,

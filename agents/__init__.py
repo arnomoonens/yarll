@@ -1,85 +1,85 @@
 from agents.registration import register_agent, make_agent
 
 register_agent(name="A2C",
-               entry_point="agents.a2c:A2CDiscrete",
+               entry_point="agents.actorcritic.a2c:A2CDiscrete",
                state_dimensions="single",
                action_space="discrete"
                )
 register_agent(name="A2C",
-               entry_point="agents.a2c:A2CDiscreteCNN",
+               entry_point="agents.actorcritic.a2c:A2CDiscreteCNN",
                state_dimensions="multi",
                action_space="discrete"
                )
 register_agent(name="A2C",
-               entry_point="agents.a2c:A2CDiscreteCNNRNN",
+               entry_point="agents.actorcritic.a2c:A2CDiscreteCNNRNN",
                state_dimensions="multi",
                action_space="discrete",
                RNN=True
                )
 register_agent(name="A2C",
-               entry_point="agents.a2c:A2CContinuous",
+               entry_point="agents.actorcritic.a2c:A2CContinuous",
                state_dimensions="single",
                action_space="continuous"
                )
 register_agent(name="A3C",
-               entry_point="agents.a3c:A3CDiscrete",
+               entry_point="agents.actorcritic.a3c:A3CDiscrete",
                state_dimensions="single",
                action_space="discrete"
                )
 register_agent(name="A3C",
-               entry_point="agents.a3c:A3CDiscreteCNN",
+               entry_point="agents.actorcritic.a3c:A3CDiscreteCNN",
                state_dimensions="multi",
                action_space="discrete"
                )
 register_agent(name="A3C",
-               entry_point="agents.a3c:A3CDiscreteCNNRNN",
+               entry_point="agents.actorcritic.a3c:A3CDiscreteCNNRNN",
                state_dimensions="multi",
                action_space="discrete",
                RNN=True
                )
 register_agent(name="A3C",
-               entry_point="agents.a3c:A3CContinuous",
+               entry_point="agents.actorcritic.a3c:A3CContinuous",
                state_dimensions="single",
                action_space="continuous"
                )
 register_agent(name="AsyncKnowledgeTransfer",
-               entry_point="agents.async_knowledge_transfer:AsyncKnowledgeTransfer",
+               entry_point="agents.knowledgetransfer.async_knowledge_transfer:AsyncKnowledgeTransfer",
                state_dimensions="single",
                action_space="discrete"
                )
 register_agent(name="PPO",
-               entry_point="agents.ppo:PPODiscrete",
+               entry_point="agents.ppo.ppo:PPODiscrete",
                state_dimensions="single",
                action_space="discrete"
                )
 register_agent(name="PPO",
-               entry_point="agents.ppo:PPODiscreteCNN",
+               entry_point="agents.ppo.ppo:PPODiscreteCNN",
                state_dimensions="multi",
                action_space="discrete"
                )
 register_agent(name="PPO",
-               entry_point="agents.ppo:PPOContinuous",
+               entry_point="agents.ppo.ppo:PPOContinuous",
                state_dimensions="single",
                action_space="continuous"
                )
 register_agent(name="DPPO",
-               entry_point="agents.dppo:DPPODiscrete",
+               entry_point="agents.ppo.dppo:DPPODiscrete",
                state_dimensions="single",
                action_space="discrete"
                )
 register_agent(name="DPPO",
-               entry_point="agents.dppo:DPPODiscreteCNN",
+               entry_point="agents.ppo.dppo:DPPODiscreteCNN",
                state_dimensions="multi",
                action_space="discrete"
                )
 register_agent(name="DPPO",
-               entry_point="agents.dppo:DPPODiscreteCNNRNN",
+               entry_point="agents.ppo.dppo:DPPODiscreteCNNRNN",
                state_dimensions="multi",
                action_space="discrete",
                RNN=True
                )
 register_agent(name="DPPO",
-               entry_point="agents.dppo:DPPOContinuous",
+               entry_point="agents.ppo.dppo:DPPOContinuous",
                state_dimensions="single",
                action_space="continuous"
                )
@@ -131,7 +131,7 @@ register_agent(name="REINFORCE",
                action_space="continuous"
                )
 register_agent(name="SarsaFA",
-               entry_point="agents.sarsa_fa:SarsaFA",
+               entry_point="agents.sarsa.sarsa_fa:SarsaFA",
                state_dimensions="single",
                action_space="discrete"
                )

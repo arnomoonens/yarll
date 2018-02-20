@@ -7,20 +7,20 @@ This code is part of [my master thesis](https://github.com/arnomoonens/Master-Th
 ## Status
 
 Different algorithms have currently been implemented:
-- [Advantage Actor Critic](./agents/a2c.py)
-- [Asynchronous Advantage Actor Critic (A3C)](./agents/a3c.py)
-- [Proximal Policy Optimization (PPO)](./agents/ppo.py)
-- [Distributed Policy Optimization (DPPO)](./agents/dppo.py)
+- [Advantage Actor Critic](./agents/actorcritic/a2c.py)
+- [Asynchronous Advantage Actor Critic (A3C)](./agents/actorcritic/a3c.py)
+- [Proximal Policy Optimization (PPO)](./agents/ppo/ppo.py)
+- [Distributed Policy Optimization (DPPO)](./agents/ppo/dppo.py)
 - [REINFORCE](./agents/reinforce.py) (convolutional neural network part has not been tested yet)
 - [Cross-Entropy Method](./agents/cem.py)
-- [Sarsa with with function approximation and eligibility traces](./agents/sarsa_fa.py)
+- [Sarsa with with function approximation and eligibility traces](./agents/sarsa/sarsa_fa.py)
 - [Karpathy's policy gradient algorithm](./agents/karpathy.py) ([version using convolutional neural networks](./agents/karpathy_cnn.py) has not been tested yet)
-- [(Sequential) knowledge transfer](./agents/knowledge_transfer.py)
-- [Asynchronous knowledge transfer](./agents/async_knowledge_transfer.py)
+- [(Sequential) knowledge transfer](./agents/knowledgetransfer/knowledge_transfer.py)
+- [Asynchronous knowledge transfer](./agents/knowledgetransfer/async_knowledge_transfer.py)
 
 ## Asynchronous Advantage Actor Critic (A3C)
 
-The code for this algorithm can be found [here](./agents/a3c.py).
+The code for this algorithm can be found [here](./agents/actorcritic/a3c.py).
 Example run after training using 16 threads for a total of 5 million timesteps on the _PongDeterministic-v4_ environment:
 
 ![Pong example run](./results/pong.gif)

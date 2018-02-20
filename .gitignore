@@ -97,3 +97,4 @@ Environment/*.json
 *~
 .*.swp
 .vscode/
+scripts/generate_exp_description.py

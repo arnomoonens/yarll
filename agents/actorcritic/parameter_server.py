@@ -5,19 +5,19 @@ import argparse
 import os
 import time
 import sys
-import go_vncdriver  # pylint: disable=W0611
 import tensorflow as tf
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../..")))
 from misc.utils import cluster_spec  # pylint: disable=C0413
 
 parser = argparse.ArgumentParser()
 parser.add_argument("n_tasks", type=int, help="Total number of tasks in this experiment.")
+parser.add_argument("--n_masters", type=int, default=0, help="Number of masters")
 parser.add_argument("--task_id", type=int, default=0, help="ID of this task.")
 
 def main(_):
     args = parser.parse_args()
-    spec = cluster_spec(args.n_tasks, 1)
+    spec = cluster_spec(args.n_tasks, 1, args.n_masters)
     cluster = tf.train.ClusterSpec(spec).as_cluster_def()
     server = tf.train.Server(  # pylint: disable=W0612
         cluster,

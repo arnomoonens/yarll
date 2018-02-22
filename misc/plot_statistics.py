@@ -3,25 +3,24 @@
 
 import os
 import sys
-import numpy as np
+import re
 import json
 import argparse
-import re
 import operator
 import logging
-import go_vncdriver
+import numpy as np
 from tensorboard.backend.event_processing.plugin_event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
+import matplotlib
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from misc.utils import ge  # noqa
-from misc.exceptions import WrongArgumentsError  # noqa
+from misc.utils import ge  # pylint: disable=C0413
+from misc.exceptions import WrongArgumentsError  # pylint: disable=C0413
 
-import matplotlib  # noqa
 gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
 for gui in gui_env:
     try:
         matplotlib.use(gui, warn=False, force=True)
-        from matplotlib import pyplot as plt
+        from matplotlib import pyplot as plt  # pylint: disable=C0412
         break
     except ImportError:
         continue

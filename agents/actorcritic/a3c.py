@@ -31,6 +31,7 @@ class A3C(Agent):
         self.monitor = monitor
         self.monitor_path = monitor_path
         self.video = video
+        self.task_type = None
 
         self.config.update(dict(
             gamma=0.99,  # Discount past rewards by a percentage
@@ -46,14 +47,13 @@ class A3C(Agent):
             vf_coef=0.5,
             entropy_coef=0.01,
             loss_reducer="sum",  # use tf.reduce_sum or tf.reduce_mean for the loss
-            save_model=False,
-            config_path=os.path.join(monitor_path, "config.json")
+            save_model=False
         ))
         self.config.update(usercfg)
 
-    def signal_handler(self, signal, frame):
+    def signal_handler(self, received_signal, frame):
         logging.info("SIGINT signal received: Requesting a stop...")
-        sys.exit(128 + signal)
+        sys.exit(128 + received_signal)
 
     def learn(self):
         signal.signal(signal.SIGINT, self.signal_handler)
@@ -72,7 +72,7 @@ class A3C(Agent):
                 sys.executable,
                 os.path.join(current_folder, "a3c_worker.py"),
                 self.env_name,
-                self.thread_type,
+                self.task_type,
                 task_id,
                 self.config["n_tasks"],
                 self.config["config_path"],
@@ -88,24 +88,24 @@ class A3C(Agent):
 class A3CDiscrete(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = "A3CTaskDiscrete"
         super(A3CDiscrete, self).__init__(env, monitor, monitor_path, **usercfg)
+        self.task_type = "A3CTaskDiscrete"
 
 class A3CDiscreteCNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = "A3CTaskDiscreteCNN"
         super(A3CDiscreteCNN, self).__init__(env, monitor, monitor_path, **usercfg)
+        self.task_type = "A3CTaskDiscreteCNN"
 
 class A3CDiscreteCNNRNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = "A3CTaskDiscreteCNNRNN"
         super(A3CDiscreteCNNRNN, self).__init__(env, monitor, monitor_path, **usercfg)
+        self.task_type = "A3CTaskDiscreteCNNRNN"
         self.config["RNN"] = True
 
 class A3CContinuous(A3C):
     """A3C for a continuous action space"""
     def __init__(self, env, monitor, monitor_path, **usercfg):
-        self.thread_type = "A3CTaskContinuous"
         super(A3CContinuous, self).__init__(env, monitor, monitor_path, **usercfg)
+        self.task_type = "A3CTaskContinuous"

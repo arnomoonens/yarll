@@ -17,6 +17,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         set_seed(seed)
 
     args = spec["agent"]["args"]
+    args["config_path"] = os.path.join(monitor_path, "config.json")
     if monitor_path:
         args["monitor_path"] = monitor_path
     else:

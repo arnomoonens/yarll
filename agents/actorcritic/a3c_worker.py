@@ -7,7 +7,6 @@ import threading
 import argparse
 import sys
 import numpy as np
-import go_vncdriver  # pylint: disable=W0611
 import tensorflow as tf
 from gym import wrappers
 
@@ -83,6 +82,8 @@ class RunnerThread(threading.Thread):
         self.n_local_steps = n_local_steps
         self.render = render
         self.daemon = True
+        self.sess = None
+        self.summary_writer = None
         self.queue = queue.Queue(maxsize=5)
 
     def start_runner(self, sess, summary_writer):
@@ -138,7 +139,8 @@ class A3CTask(object):
                     self.global_vars = tf.get_collection(
                         tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
                     self._global_step = tf.get_variable(
-                        "global_step", [],
+                        "global_step",
+                        [],
                         tf.int32,
                         initializer=tf.constant_initializer(0, dtype=tf.int32),
                         trainable=False)
@@ -457,7 +459,7 @@ def main():
     args = parser.parse_args()
     spec = cluster_spec(args.n_tasks, 1)
     cluster = tf.train.ClusterSpec(spec).as_cluster_def()
-    cls = load("agents.a3c_worker:" + args.cls)
+    cls = load("agents.actorcritic.a3c_worker:" + args.cls)
     config = json_to_dict(args.config)
     task = cls(args.env_id, args.task_id, cluster,
                args.monitor_path, config, video=args.video)

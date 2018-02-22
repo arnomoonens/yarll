@@ -128,8 +128,7 @@ class A2C(Agent):
         config = self.config
         for _ in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectory = self.env_runner.get_steps(
-                self.config["n_local_steps"])
+            trajectory = self.env_runner.get_steps(self.config["n_local_steps"])
             v = 0 if trajectory.terminals[-1] else self.get_critic_value(
                 np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])

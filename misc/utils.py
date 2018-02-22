@@ -1,18 +1,15 @@
 # -*- coding: utf8 -*-
 
 import argparse
-from scipy import signal
-import numpy as np
+import json
 import os
 from os import path
-import pkg_resources
-
-# To set the seed of their random number generators
 import random
-import go_vncdriver  # noqa
+import pkg_resources
+from scipy import signal
+import numpy as np
 import tensorflow as tf
 
-import json
 import cv2
 import gym
 from gym.spaces.box import Box
@@ -109,7 +106,7 @@ class FastSaver(tf.train.Saver):
                                     meta_graph_suffix, False)
 
 def set_seed(seed):
-    os.environ['PYTHONHASHSEED'] = str(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     random.seed(seed)
     tf.set_random_seed(seed)
@@ -117,11 +114,11 @@ def set_seed(seed):
 
 def load(name):
     """Load an object by string."""
-    entry_point = pkg_resources.EntryPoint.parse('x={}'.format(name))
+    entry_point = pkg_resources.EntryPoint.parse("x={}".format(name))
     result = entry_point.load(False)
     return result
 
-def cluster_spec(num_workers, num_ps):
+def cluster_spec(num_workers, num_ps, num_masters=0):
     """
     Generate a cluster specification (for distributed Tensorflow).
     """
@@ -129,15 +126,22 @@ def cluster_spec(num_workers, num_ps):
     port = 12222
 
     all_ps = []
-    host = '127.0.0.1'
+    host = "127.0.0.1"
     for _ in range(num_ps):
-        all_ps.append('{}:{}'.format(host, port))
+        all_ps.append("{}:{}".format(host, port))
         port += 1
-    cluster['ps'] = all_ps
+    cluster["ps"] = all_ps
 
     all_workers = []
     for _ in range(num_workers):
-        all_workers.append('{}:{}'.format(host, port))
+        all_workers.append("{}:{}".format(host, port))
         port += 1
-    cluster['worker'] = all_workers
+    cluster["worker"] = all_workers
+
+    if num_masters > 0:
+        all_masters = []
+        for _ in range(num_masters):
+            all_masters.append("{}:{}".format(host, port))
+            port += 1
+        cluster["master"] = all_masters
     return cluster

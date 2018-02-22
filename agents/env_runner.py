@@ -29,14 +29,14 @@ class Trajectory(object):
         Extend a trajectory with another one
         given that the current one hasn't ended yet.
         """
-        if self.terminal:
+        if self.terminals[-1]:
             raise AssertionError("Can't extend a terminal trajectory.")
         self.states.extend(other.states)
         self.actions.extend(other.actions)
         self.rewards.extend(other.rewards)
         self.values.extend(other.values)
         self.features.extend(other.features)
-        self.terminal.extend(other.terminals)
+        self.terminals.extend(other.terminals)
         self.steps += other.steps
 
 class EnvRunner(object):

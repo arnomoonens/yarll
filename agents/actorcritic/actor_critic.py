@@ -52,7 +52,7 @@ class ActorCriticNetworkDiscrete(object):
         self.probs = tf.nn.softmax(self.logits)
 
         self.action = tf.squeeze(tf.multinomial(
-            self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
+            self.logits - tf.reduce_max(self.logits, [1], keepdims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
 
         # Log probabilities of all actions
@@ -100,7 +100,7 @@ class ActorCriticNetworkDiscreteCNN(object):
         self.probs = tf.nn.softmax(self.logits)
 
         self.action = tf.squeeze(tf.multinomial(
-            self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
+            self.logits - tf.reduce_max(self.logits, [1], keepdims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
 
         # Log probabilities of all actions
@@ -162,7 +162,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         self.probs = tf.nn.softmax(self.logits)
 
         self.action = tf.squeeze(tf.multinomial(
-            self.logits - tf.reduce_max(self.logits, [1], keep_dims=True), 1), [1], name="action")
+            self.logits - tf.reduce_max(self.logits, [1], keepdims=True), 1), [1], name="action")
         self.action = tf.one_hot(self.action, n_actions)[0, :]
 
         # Log probabilities of all actions

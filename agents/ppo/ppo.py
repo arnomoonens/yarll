@@ -75,7 +75,7 @@ class PPO(Agent):
             self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
-        self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss - \
+        self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
             self.config["entropy_coef"] * self.mean_entropy
 
         grads = tf.gradients(self.loss, self.new_network_vars)

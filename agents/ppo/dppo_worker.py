@@ -2,6 +2,8 @@
 # # -*- coding: utf8 -*-
 
 import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import sys
 import argparse
 import numpy as np
@@ -16,6 +18,7 @@ from environment.registration import make  # pylint: disable=C0413
 from misc.utils import load, json_to_dict  # pylint: disable=C0413
 from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss  # pylint: disable=C0413
 from agents.env_runner import EnvRunner  # pylint: disable=C0413
+
 
 class DPPOWorker(object):
     """Distributed Proximal Policy Optimization Worker."""
@@ -34,25 +37,25 @@ class DPPOWorker(object):
 
         # Only used (and overwritten) by agents that use an RNN
         self.initial_features = None
+        with tf.device('/cpu:0'):
+            with tf.variable_scope("new_network"):  # The workers only have 1 network
+                self.global_network = self.build_networks()
+                self.states = self.global_network.states
+                self.action = self.global_network.action
+                self.value = self.global_network.value
+                self.actions_taken = self.global_network.actions_taken
+                self.adv = self.global_network.adv
+                self.r = self.global_network.r
+                self.global_vars = tf.get_collection(
+                    tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+                self._global_step = tf.get_variable(
+                    "global_step", [],
+                    tf.int32,
+                    initializer=tf.constant_initializer(0, dtype=tf.int32),
+                    trainable=False)
 
-        with tf.variable_scope("new_network"):  # The workers only have 1 network
-            self.global_network = self.build_networks()
-            self.states = self.global_network.states
-            self.action = self.global_network.action
-            self.value = self.global_network.value
-            self.actions_taken = self.global_network.actions_taken
-            self.adv = self.global_network.adv
-            self.r = self.global_network.r
-            self.global_vars = tf.get_collection(
-                tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-            self._global_step = tf.get_variable(
-                "global_step", [],
-                tf.int32,
-                initializer=tf.constant_initializer(0, dtype=tf.int32),
-                trainable=False)
-
-        self.env_runner = EnvRunner(
-            self.env, self, {}, summary_writer=self.writer)
+            self.env_runner = EnvRunner(
+                self.env, self, {}, summary_writer=self.writer)
 
     def build_networks(self):
         raise NotImplementedError

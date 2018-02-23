@@ -83,7 +83,7 @@ class DPPO(Agent):
             self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
-        self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss - \
+        self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
             self.config["entropy_coef"] * self.mean_entropy
 
         grads = tf.gradients(self.loss, self.new_network_vars)
@@ -197,7 +197,9 @@ class DPPO(Agent):
             ],
             maxprocs=self.config["n_workers"]
         )
-        with tf.Session() as sess, sess.as_default():
+        sess_config = tf.ConfigProto()
+        sess_config.gpu_options.allow_growth = True
+        with tf.Session(config=sess_config) as sess, sess.as_default():
             tf.get_default_session().run(self.init_op)
             for _ in range(config["n_iter"]):
                 # Collect trajectories until we get timesteps_per_batch total timesteps

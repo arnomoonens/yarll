@@ -5,11 +5,13 @@ import argparse
 import datetime
 import os
 
+import gym
 from gym.spaces import Discrete
 from environment.registration import make, make_environments
 from agents.registration import make_agent
 from misc.utils import json_to_dict, save_config, set_seed
 
+gym.logger.set_level(gym.logger.ERROR)
 
 def run_experiment(spec, monitor_path=None, only_last=False, description=None, seed=None):
     """Run an experiment using a specification dictionary."""

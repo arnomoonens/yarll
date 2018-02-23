@@ -8,6 +8,8 @@ import numpy as np
 import gym
 from misc.utils import AtariRescale42x42
 
+gym.logger.set_level(gym.logger.ERROR)
+
 class EnvSpec(gym.envs.registration.EnvSpec):
     """
     Modified version of `gym.envs.registration.EnvSpec`

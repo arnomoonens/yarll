@@ -13,14 +13,14 @@ sys.path.insert(0, os.path.abspath(os.path.join(
     "../.."
 )))
 from environment.registration import make  # pylint: disable=C0413
-from misc.utils import load, json_to_dict, cluster_spec  # pylint: disable=C0413
+from misc.utils import load, json_to_dict  # pylint: disable=C0413
 from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss  # pylint: disable=C0413
 from agents.env_runner import EnvRunner  # pylint: disable=C0413
 
 class DPPOWorker(object):
     """Distributed Proximal Policy Optimization Worker."""
 
-    def __init__(self, env_id, task_id, cluster, comm, monitor_path, config, seed=None):
+    def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         super(DPPOWorker, self).__init__()
         self.comm = comm
         self.config = config
@@ -35,66 +35,35 @@ class DPPOWorker(object):
         # Only used (and overwritten) by agents that use an RNN
         self.initial_features = None
 
-        # Build actor and critic networks
-        worker_device = "/job:worker/task:{}/cpu:0".format(task_id)
-        # Global network
-        shared_device = tf.train.replica_device_setter(1, worker_device=worker_device)
-        with tf.device(shared_device):
-            with tf.variable_scope("new_network"):  # The workers only have 1 network
-                self.global_network = self.build_networks()
-                self.states = self.global_network.states
-                self.action = self.global_network.action
-                self.value = self.global_network.value
-                self.actions_taken = self.global_network.actions_taken
-                self.adv = self.global_network.adv
-                self.r = self.global_network.r
-                self.global_vars = tf.get_collection(
-                    tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-                self._global_step = tf.get_variable(
-                    "global_step", [],
-                    tf.int32,
-                    initializer=tf.constant_initializer(0, dtype=tf.int32),
-                    trainable=False)
+        with tf.variable_scope("new_network"):  # The workers only have 1 network
+            self.global_network = self.build_networks()
+            self.states = self.global_network.states
+            self.action = self.global_network.action
+            self.value = self.global_network.value
+            self.actions_taken = self.global_network.actions_taken
+            self.adv = self.global_network.adv
+            self.r = self.global_network.r
+            self.global_vars = tf.get_collection(
+                tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+            self._global_step = tf.get_variable(
+                "global_step", [],
+                tf.int32,
+                initializer=tf.constant_initializer(0, dtype=tf.int32),
+                trainable=False)
 
         self.env_runner = EnvRunner(
             self.env, self, {}, summary_writer=self.writer)
-
-        self.server = tf.train.Server(
-            cluster,
-            job_name="worker",
-            task_index=task_id,
-            config=tf.ConfigProto(
-                intra_op_parallelism_threads=1,
-                inter_op_parallelism_threads=2
-        ))
-
-        init_op = tf.global_variables_initializer()
-        def init_fn(sess):
-            sess.run(init_op)
-        self.sv = tf.train.Supervisor(
-            is_chief=(task_id == 0),  # The master (in dppo.py) is the chief
-            logdir=monitor_path,
-            init_op=init_op,
-            init_fn=init_fn,
-            summary_op=None,
-            summary_writer=self.writer,
-            global_step=self._global_step,
-        )
-
-        self.config_proto = tf.ConfigProto(
-            device_filters=["/job:ps", "/job:master", "/job:worker/task:{}/cpu:0".format(task_id)])
 
     def build_networks(self):
         raise NotImplementedError
 
     def run(self):
-        with self.sv.managed_session(self.server.target, config=self.config_proto) as sess, sess.as_default():
-            print("DPPO worker {} in managed session".format(self.task_id))
-            while not self.sv.should_stop():
-                message = None
-                while message != "collect":
-                    message = self.comm.bcast(None, root=0)
-                print("gonna collect")
+        with tf.Session() as sess, sess.as_default():
+            var_receivers = [np.zeros(var.shape.as_list(), dtype=var.dtype.as_numpy_dtype) for var in self.global_vars]
+            while True:
+                for var_receiver, tf_var in zip(var_receivers, self.global_vars):
+                    self.comm.Bcast(var_receiver, root=0)
+                    tf_var.load(var_receiver)
                 trajectory = self.env_runner.get_steps(
                     self.config["n_local_steps"], stop_at_trajectory_end=False)
                 T = trajectory.steps
@@ -142,12 +111,11 @@ class DPPOWorker(object):
 class DPPOWorkerDiscrete(DPPOWorker):
     """DPPOWorker for a discrete action space."""
 
-    def __init__(self, env_id, task_id, cluster, comm, monitor_path, config, seed=None):
+    def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = ActorCriticDiscreteLoss
         super(DPPOWorkerDiscrete, self).__init__(
             env_id,
             task_id,
-            cluster,
             comm,
             monitor_path,
             config,
@@ -165,12 +133,11 @@ class DPPOWorkerDiscrete(DPPOWorker):
 class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
     """DPPOWorker for a discrete action space."""
 
-    def __init__(self, env_id, task_id, cluster, comm, monitor_path, config, seed=None):
+    def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = ActorCriticDiscreteLoss
         super(DPPOWorkerDiscreteCNN, self).__init__(
             env_id,
             task_id,
-            cluster,
             comm,
             monitor_path,
             config,
@@ -189,12 +156,11 @@ class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
 class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
     """DPPOWorker for a discrete action space."""
 
-    def __init__(self, env_id, task_id, cluster, comm, monitor_path, config, seed=None):
+    def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = ActorCriticDiscreteLoss
         super(DPPOWorkerDiscreteCNNRNN, self).__init__(
             env_id,
             task_id,
-            cluster,
             comm,
             monitor_path,
             config,
@@ -232,12 +198,11 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
 class DPPOWorkerContinuous(DPPOWorker):
     """DPPOWorker for a continuous action space."""
 
-    def __init__(self, env_id, task_id, cluster, comm, monitor_path, config, seed=None):
+    def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = ActorCriticContinuousLoss
         super(DPPOWorkerContinuous, self).__init__(
             env_id,
             task_id,
-            cluster,
             comm,
             monitor_path,
             config,
@@ -270,15 +235,12 @@ parser.add_argument("--seed", type=int, default=None, help="Seed to use for envi
 
 def main():
     comm = MPI.Comm.Get_parent()
-    n_tasks = comm.Get_size()
     task_id = comm.Get_rank()
     args = parser.parse_args()
-    spec = cluster_spec(n_tasks, 1, 1)
-    cluster = tf.train.ClusterSpec(spec).as_cluster_def()
     cls = load("agents.ppo.dppo_worker:" + args.cls)
     config = json_to_dict(args.config)
 
-    task = cls(args.env_id, task_id, cluster, comm, args.monitor_path, config, args.seed)
+    task = cls(args.env_id, task_id, comm, args.monitor_path, config, args.seed)
     task.run()
 
 

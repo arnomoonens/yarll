@@ -74,9 +74,9 @@ class PPO(Agent):
         self.actor_loss = -tf.reduce_mean(cso_loss(
             self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
+        self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss - \
-            self.config["entropy_coef"] * \
-            tf.reduce_mean(self.new_network.entropy)
+            self.config["entropy_coef"] * self.mean_entropy
 
         grads = tf.gradients(self.loss, self.new_network_vars)
 
@@ -94,13 +94,11 @@ class PPO(Agent):
             tf.add_to_collection("states", self.states)
             self.saver = FastSaver()
 
-        summary_actor_loss = tf.summary.scalar(
-            "model/Actor_loss", self.actor_loss)
-        summary_critic_loss = tf.summary.scalar(
-            "model/Critic_loss", self.critic_loss)
+        summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss)
+        summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss)
         summary_loss = tf.summary.scalar("model/Loss", self.loss)
-        summary_grad_norm = tf.summary.scalar(
-            "model/grad_global_norm", tf.global_norm(grads))
+        summary_entropy = tf.summary.scalar("model/entropy", self.mean_entropy)
+        summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar(
             "model/var_global_norm", tf.global_norm(self.new_network_vars))
         summaries = []
@@ -108,7 +106,7 @@ class PPO(Agent):
             if "new_network" in v.name:
                 summaries.append(tf.summary.histogram(v.name, v))
         summaries += [summary_actor_loss, summary_critic_loss,
-                      summary_loss, summary_grad_norm, summary_var_norm]
+                      summary_loss, summary_entropy, summary_grad_norm, summary_var_norm]
         self.model_summary_op = tf.summary.merge(summaries)
         self.writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), self.session.graph)
@@ -129,6 +127,9 @@ class PPO(Agent):
         init = tf.global_variables_initializer()
         self.session.run(init)
         return
+
+    def build_networks(self):
+        raise NotImplementedError
 
     @property
     def global_step(self):
@@ -159,10 +160,8 @@ class PPO(Agent):
         lastgaelam = 0
         for t in reversed(range(T)):
             nonterminal = 1 - terminals[t + 1]
-            delta = trajectory.rewards[t] + gamma * \
-                vpred[t + 1] * nonterminal - vpred[t]
-            gaelam[t] = lastgaelam = delta + gamma * \
-                lambda_ * nonterminal * lastgaelam
+            delta = trajectory.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
+            gaelam[t] = lastgaelam = delta + gamma * lambda_ * nonterminal * lastgaelam
         rs = advantages + trajectory.values
         return trajectory.states, trajectory.actions, advantages, rs, trajectory.features
 

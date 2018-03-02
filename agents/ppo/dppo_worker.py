@@ -129,7 +129,8 @@ class DPPOWorkerDiscrete(DPPOWorker):
         ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
         return ac_net
 
 
@@ -151,7 +152,7 @@ class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
         ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"],
+            self.config["n_hidden_units"],
             summary=False)
         return ac_net
 
@@ -174,7 +175,7 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
         ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"],
+            self.config["n_hidden_units"],
             summary=False)
         self.initial_features = ac_net.state_init
         return ac_net
@@ -216,7 +217,8 @@ class DPPOWorkerContinuous(DPPOWorker):
         ac_net = ActorCriticNetworkContinuous(
             self.env.action_space,
             list(self.env.observation_space.shape),
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
         return ac_net
 
     def get_env_action(self, action):

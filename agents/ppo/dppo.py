@@ -28,7 +28,8 @@ class DPPO(Agent):
 
         self.config.update(dict(
             n_workers=3,
-            n_hidden=20,
+            n_hidden_units=20,
+            n_hidden_layers=2,
             gamma=0.99,
             gae_lambda=0.95,
             learning_rate=2.5e-4,
@@ -98,7 +99,7 @@ class DPPO(Agent):
         summary_critic_loss = tf.summary.scalar(
             "model/Critic_loss", self.critic_loss)
         summary_loss = tf.summary.scalar("model/Loss", self.loss)
-        summary_entropy = tf.summary.scalar("model/Entropy", self.mean_entropy)
+        summary_entropy = tf.summary.scalar("model/Entropy", -self.mean_entropy)
         summary_grad_norm = tf.summary.scalar(
             "model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar(
@@ -115,8 +116,8 @@ class DPPO(Agent):
             self.monitor_path, "master"))
 
         # grads before clipping were passed to the summary, now clip and apply them
-        grads, _ = tf.clip_by_global_norm(
-            grads, self.config["gradient_clip_value"])
+        if self.config["gradient_clip_value"] is not None:
+            grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
 
         with tf.variable_scope("optimizer"):
             self.optimizer = tf.train.AdamOptimizer(
@@ -224,7 +225,8 @@ class DPPODiscrete(DPPO):
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
 
 
 class DPPODiscreteCNN(DPPODiscrete):
@@ -237,7 +239,7 @@ class DPPODiscreteCNN(DPPODiscrete):
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"])
 
 
 class DPPOContinuous(DPPO):
@@ -250,7 +252,8 @@ class DPPOContinuous(DPPO):
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
 
     def get_env_action(self, action):
         return action

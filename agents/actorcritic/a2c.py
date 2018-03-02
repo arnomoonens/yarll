@@ -49,6 +49,7 @@ class A2C(Agent):
         self.config.update(usercfg)
         # Only used (and overwritten) by agents that use an RNN
         self.initial_features = None
+        self.ac_net = None  # Overwritten by build_networks
         self.build_networks()
 
         self.action = self.ac_net.action
@@ -169,7 +170,8 @@ class A2CDiscrete(A2C):
         self.ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
 
 
 class A2CDiscreteCNN(A2CDiscrete):
@@ -177,7 +179,7 @@ class A2CDiscreteCNN(A2CDiscrete):
         self.ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"])
 
 
 class A2CDiscreteCNNRNN(A2CDiscrete):
@@ -185,7 +187,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
         self.ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"])
         self.initial_features = self.ac_net.state_init
 
     def choose_action(self, state, features):
@@ -217,4 +219,5 @@ class A2CContinuous(A2C):
         self.ac_net = ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])

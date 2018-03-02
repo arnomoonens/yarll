@@ -321,7 +321,8 @@ class A3CTaskDiscrete(A3CTask):
         ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
 
         self.states = ac_net.states
         self.actions_taken = ac_net.actions_taken
@@ -350,7 +351,7 @@ class A3CTaskDiscreteCNN(A3CTaskDiscrete):
         ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"],
+            self.config["n_hidden_units"],
             summary=False)
         self.states = ac_net.states
         self.actions_taken = ac_net.actions_taken
@@ -379,7 +380,7 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"],
+            self.config["n_hidden_units"],
             summary=False)
         self.states = ac_net.states
         self.actions_taken = ac_net.actions_taken
@@ -427,7 +428,8 @@ class A3CTaskContinuous(A3CTask):
         ac_net = ActorCriticNetworkContinuous(
             self.env.action_space,
             list(self.env.observation_space.shape),
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
         self.states = ac_net.states
         self.actions_taken = ac_net.actions_taken
         self.adv = ac_net.adv

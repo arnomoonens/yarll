@@ -32,7 +32,8 @@ class PPO(Agent):
             video_callable=(None if video else False))
 
         self.config.update(dict(
-            n_hidden=20,
+            n_hidden_units=20,
+            n_hidden_layers=2,
             gamma=0.99,
             gae_lambda=0.95,
             learning_rate=0.001,
@@ -40,7 +41,7 @@ class PPO(Agent):
             n_iter=10000,
             batch_size=64,  # Timesteps per training batch
             n_local_steps=256,
-            gradient_clip_value=0.5,
+            gradient_clip_value=None,
             vf_coef=0.5,
             entropy_coef=0.01,
             cso_epsilon=0.2  # Clipped surrogate objective epsilon
@@ -97,7 +98,7 @@ class PPO(Agent):
         summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss)
         summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss)
         summary_loss = tf.summary.scalar("model/Loss", self.loss)
-        summary_entropy = tf.summary.scalar("model/entropy", self.mean_entropy)
+        summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
         summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar(
             "model/var_global_norm", tf.global_norm(self.new_network_vars))
@@ -114,10 +115,12 @@ class PPO(Agent):
             self.env, self, usercfg, summary_writer=self.writer)
 
         # grads before clipping were passed to the summary, now clip and apply them
-        grads, _ = tf.clip_by_global_norm(
-            grads, self.config["gradient_clip_value"])
+        if self.config["gradient_clip_value"] is not None:
+            grads, _ = tf.clip_by_global_norm(
+                grads, self.config["gradient_clip_value"])
         self.optimizer = tf.train.AdamOptimizer(
-            self.config["learning_rate"], name="optim")
+            self.config["learning_rate"],
+            name="optim")
         apply_grads = self.optimizer.apply_gradients(
             zip(grads, self.new_network_vars))
 
@@ -212,7 +215,8 @@ class PPODiscrete(PPO):
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
 
 
 class PPODiscreteCNN(PPODiscrete):
@@ -220,7 +224,7 @@ class PPODiscreteCNN(PPODiscrete):
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"])
 
 
 class PPOContinuous(PPO):
@@ -228,8 +232,8 @@ class PPOContinuous(PPO):
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden"])
+            self.config["n_hidden_units"],
+            self.config["n_hidden_layers"])
 
     def get_env_action(self, action):
-        # TODO: use np.clip with the right values (e.g. -2,2 for Pendulum-v0)
         return action

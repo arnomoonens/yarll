@@ -54,7 +54,7 @@ def mu_sigma_layer(inputs, n_outputs):
         inputs=inputs,
         num_outputs=n_outputs,
         activation_fn=None,
-        weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+        weights_initializer=normalized_columns_initializer(0.01),
         biases_initializer=tf.zeros_initializer(),
         scope="mu")
     mu = tf.squeeze(mu, name="mu")
@@ -63,7 +63,7 @@ def mu_sigma_layer(inputs, n_outputs):
         inputs=inputs,
         num_outputs=n_outputs,
         activation_fn=None,
-        weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
+        weights_initializer=normalized_columns_initializer(0.01),
         biases_initializer=tf.zeros_initializer(),
         scope="sigma")
     sigma = tf.squeeze(sigma)

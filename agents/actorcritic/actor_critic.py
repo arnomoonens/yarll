@@ -7,17 +7,16 @@ Functions and networks for actor-critic agents.
 import numpy as np
 import tensorflow as tf
 
-from misc.network_ops import normalized_columns_initializer, linear, conv2d, flatten, mu_sigma_layer
+from misc.network_ops import normalized_columns_initializer, linear, conv2d, flatten
 
 
 class ActorCriticNetworkDiscrete(object):
     """Neural network for the Actor of an Actor-Critic algorithm using a discrete action space"""
 
-    def __init__(self, state_shape, n_actions, n_hidden):
+    def __init__(self, state_shape, n_actions, n_hidden_units, n_hidden_layers):
         super(ActorCriticNetworkDiscrete, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
-        self.n_hidden = n_hidden
 
         self.states = tf.placeholder(
             tf.float32, [None] + list(state_shape), name="states")
@@ -26,28 +25,19 @@ class ActorCriticNetworkDiscrete(object):
             tf.float32, [None, n_actions], name="actions_taken")
         self.r = tf.placeholder(tf.float32, [None], name="r")
 
-        L1_action = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.n_hidden,
-            activation_fn=tf.tanh,
-            weights_initializer=normalized_columns_initializer(1.0),
-            biases_initializer=tf.zeros_initializer(),
-            scope="L1_action")
-
-        # Fully connected for actor & critic
-        self.logits = linear(L1_action, n_actions, "actionlogits",
+        x = self.states
+        for i in range(n_hidden_layers):
+            x = tf.tanh(linear(x, n_hidden_units, "L{}_action".format(i + 1),
+                               initializer=normalized_columns_initializer(1.0)))
+        self.logits = linear(x, n_actions, "actionlogits",
                              normalized_columns_initializer(0.01))
 
-        L1_value = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.n_hidden,
-            activation_fn=tf.tanh,
-            weights_initializer=normalized_columns_initializer(1.0),
-            biases_initializer=tf.zeros_initializer(),
-            scope="L1_value")
-
+        x = self.states
+        for i in range(n_hidden_layers):
+            x = tf.tanh(linear(x, n_hidden_units, "L{}_value".format(i + 1),
+                               initializer=normalized_columns_initializer(1.0)))
         self.value = tf.reshape(
-            linear(L1_value, 1, "value", normalized_columns_initializer(1.0)), [-1])
+            linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
         self.probs = tf.nn.softmax(self.logits)
 
@@ -189,33 +179,48 @@ def ActorCriticDiscreteLoss(network, vf_coef=0.5, entropy_coef=0.01, reducer="su
 class ActorCriticNetworkContinuous(object):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
 
-    def __init__(self, state_shape, action_space, n_hidden):
+    def __init__(self, state_shape, action_space, n_hidden_units, n_hidden_layers=1):
         super(ActorCriticNetworkContinuous, self).__init__()
         self.state_shape = state_shape
-        self.n_hidden = n_hidden
 
         self.states = tf.placeholder(
             "float", [None] + list(state_shape), name="states")
-        self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
+        self.actions_taken = tf.placeholder(tf.float32, [None] + list(action_space.shape), name="actions_taken")
+        self.adv = tf.placeholder(tf.float32, [None], name="advantage")
+        self.r = tf.placeholder(tf.float32, [None], name="return")
 
-        self.L1 = tf.tanh(linear(self.states, self.n_hidden, "L1",
-                                 initializer=normalized_columns_initializer(0.01)))
+        x = self.states
+        for i in range(n_hidden_layers):
+            x = tf.tanh(linear(x, n_hidden_units, "L{}_mean".format(i + 1),
+                               initializer=normalized_columns_initializer(1.0)))
+        self.mean = linear(x, 1, "mean", initializer=normalized_columns_initializer(0.01))
+        self.mean = tf.check_numerics(self.mean, "mean")
 
-        mu, sigma = mu_sigma_layer(self.L1, 1)
-        mu = tf.check_numerics(mu, "mu")
-        sigma = tf.check_numerics(sigma, "mu")
+        log_std = tf.get_variable(
+            name="logstd",
+            shape=[1] + list(action_space.shape),
+            initializer=tf.zeros_initializer()
+        )
+        std = tf.exp(log_std, name="std")
+        std = tf.check_numerics(std, "std")
 
-        self.normal_dist = tf.distributions.Normal(mu, sigma)
-        self.action = self.normal_dist.sample(1)
+        self.action = self.mean + std * tf.random_normal(tf.shape(self.mean))
+        self.action = tf.reshape(self.action, list(action_space.shape))
         self.action = tf.clip_by_value(
             self.action, action_space.low[0], action_space.high[0], name="action")
-        self.value = tf.reshape(
-            linear(self.L1, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
-        self.action_log_prob = self.normal_dist.log_prob(self.actions_taken)
-        self.entropy = self.normal_dist.entropy()
+        x = self.states
+        for i in range(n_hidden_layers):
+            x = tf.tanh(linear(x, n_hidden_units, "L{}_value".format(i + 1),
+                               initializer=normalized_columns_initializer(1.0)))
+
+        self.value = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
+
+        neglogprob = 0.5 * tf.reduce_sum(tf.square((self.actions_taken - self.mean) / std), axis=-1) \
+            + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(self.actions_taken)[-1]) \
+            + tf.reduce_sum(log_std, axis=-1)
+        self.action_log_prob = -neglogprob
+        self.entropy = -tf.reduce_sum(log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
 
 def ActorCriticContinuousLoss(network, entropy_coef=0.01, reducer="sum"):

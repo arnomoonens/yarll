@@ -36,8 +36,8 @@ class A3C(Agent):
         self.config.update(dict(
             gamma=0.99,  # Discount past rewards by a percentage
             learning_rate=1e-4,
-            n_hidden=20,
-            critic_n_hidden=20,
+            n_hidden_units=20,
+            n_hidden_layers=1,
             gradient_clip_value=50,
             n_tasks=multiprocessing.cpu_count(),  # Use as much tasks as there are cores on the current system
             T_max=8e5,

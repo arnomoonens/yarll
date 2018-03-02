@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # # -*- coding: utf8 -*-
 
+import sys
+import argparse
 import os
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-import sys
-import argparse
 import numpy as np
 from mpi4py import MPI
 import tensorflow as tf
@@ -43,9 +43,6 @@ class DPPOWorker(object):
                 self.states = self.global_network.states
                 self.action = self.global_network.action
                 self.value = self.global_network.value
-                self.actions_taken = self.global_network.actions_taken
-                self.adv = self.global_network.adv
-                self.r = self.global_network.r
                 self.global_vars = tf.get_collection(
                     tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
                 self._global_step = tf.get_variable(
@@ -215,8 +212,8 @@ class DPPOWorkerContinuous(DPPOWorker):
 
     def build_networks(self):
         ac_net = ActorCriticNetworkContinuous(
-            self.env.action_space,
             list(self.env.observation_space.shape),
+            self.env.action_space,
             self.config["n_hidden_units"],
             self.config["n_hidden_layers"])
         return ac_net

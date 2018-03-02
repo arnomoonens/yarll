@@ -64,17 +64,17 @@ class PPO(Agent):
         self.action = self.new_network.action
         self.value = self.new_network.value
         self.states = self.new_network.states
-        self.r = self.new_network.r
-        self.adv = self.new_network.adv
         self.actions_taken = self.new_network.actions_taken
+        self.advantage = tf.placeholder(tf.float32, [None], name="advantage")
+        self.ret = tf.placeholder(tf.float32, [None], name="return")
 
         self.set_old_to_new = tf.group(
             *[v1.assign(v2) for v1, v2 in zip(self.old_network_vars, self.new_network_vars)])
 
         # Reduces by taking the mean instead of summing
         self.actor_loss = -tf.reduce_mean(cso_loss(
-            self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
-        self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
+            self.old_network, self.new_network, self.config["cso_epsilon"], self.advantage))
+        self.critic_loss = tf.reduce_mean(tf.square(self.value - self.ret))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
             self.config["entropy_coef"] * self.mean_entropy
@@ -197,8 +197,8 @@ class PPO(Agent):
                         self.old_network.states: batch_states,
                         self.actions_taken: batch_actions,
                         self.old_network.actions_taken: batch_actions,
-                        self.adv: batch_advs,
-                        self.r: batch_rs
+                        self.advantage: batch_advs,
+                        self.ret: batch_rs
                     }
                     results = self.session.run(fetches, feed_dict)
                     self.writer.add_summary(results[len(losses)], n_updates)

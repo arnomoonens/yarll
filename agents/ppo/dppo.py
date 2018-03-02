@@ -67,9 +67,9 @@ class DPPO(Agent):
         self.action = self.new_network.action
         self.value = self.new_network.value
         self.states = self.new_network.states
-        self.r = self.new_network.r
-        self.adv = self.new_network.adv
         self.actions_taken = self.new_network.actions_taken
+        self.advantage = tf.placeholder(tf.float32, [None], name="advantage")
+        self.ret = tf.placeholder(tf.float32, [None], name="return")
 
         with tf.variable_scope("old_network"):
             self.old_network = self.build_networks()
@@ -81,8 +81,8 @@ class DPPO(Agent):
 
         # Reduces by taking the mean instead of summing
         self.actor_loss = -tf.reduce_mean(cso_loss(
-            self.old_network, self.new_network, self.config["cso_epsilon"], self.adv))
-        self.critic_loss = tf.reduce_mean(tf.square(self.value - self.r))
+            self.old_network, self.new_network, self.config["cso_epsilon"], self.advantage))
+        self.critic_loss = tf.reduce_mean(tf.square(self.value - self.ret))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
             self.config["entropy_coef"] * self.mean_entropy
@@ -142,8 +142,8 @@ class DPPO(Agent):
             self.old_network.states: states,
             self.actions_taken: actions,
             self.old_network.actions_taken: actions,
-            self.adv: advs,
-            self.r: returns
+            self.advantage: advs,
+            self.ret: returns
         }
         if features != [] and features is not None:
             feed_dict[self.old_network.rnn_state_in] = features

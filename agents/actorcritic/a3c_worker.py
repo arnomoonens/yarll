@@ -149,8 +149,14 @@ class A3CTask(object):
             with tf.device(worker_device):
                 with tf.variable_scope("local"):
                     self.local_network = self.build_networks()
+                    self.states = self.local_network.states
+                    self.actions_taken = self.local_network.actions_taken
+                    self.advantage = tf.placeholder(tf.float32, [None], name="advantage")
+                    self.ret = tf.placeholder(tf.float32, [None], name="return")
                     self.actor_loss, self.critic_loss, self.loss = self.make_loss(
                         self.local_network,
+                        self.advantage,
+                        self.ret,
                         self.config["vf_coef"],
                         self.config["entropy_coef"],
                         self.config["loss_reducer"])
@@ -296,8 +302,8 @@ class A3CTask(object):
                 feed_dict = {
                     self.states: states,
                     self.actions_taken: np.asarray(trajectory.actions),
-                    self.adv: batch_adv,
-                    self.r: np.asarray(batch_r)
+                    self.advantage: batch_adv,
+                    self.ret: np.asarray(batch_r)
                 }
                 feature = trajectory.features[0]
                 if feature != [] and feature is not None:
@@ -323,11 +329,6 @@ class A3CTaskDiscrete(A3CTask):
             self.env.action_space.n,
             self.config["n_hidden_units"],
             self.config["n_hidden_layers"])
-
-        self.states = ac_net.states
-        self.actions_taken = ac_net.actions_taken
-        self.adv = ac_net.adv
-        self.r = ac_net.r
         return ac_net
 
 
@@ -353,10 +354,6 @@ class A3CTaskDiscreteCNN(A3CTaskDiscrete):
             self.env.action_space.n,
             self.config["n_hidden_units"],
             summary=False)
-        self.states = ac_net.states
-        self.actions_taken = ac_net.actions_taken
-        self.adv = ac_net.adv
-        self.r = ac_net.r
         return ac_net
 
 
@@ -382,10 +379,6 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
             self.env.action_space.n,
             self.config["n_hidden_units"],
             summary=False)
-        self.states = ac_net.states
-        self.actions_taken = ac_net.actions_taken
-        self.adv = ac_net.adv
-        self.r = ac_net.r
         self.initial_features = ac_net.state_init
         return ac_net
 
@@ -430,10 +423,6 @@ class A3CTaskContinuous(A3CTask):
             list(self.env.observation_space.shape),
             self.config["n_hidden_units"],
             self.config["n_hidden_layers"])
-        self.states = ac_net.states
-        self.actions_taken = ac_net.actions_taken
-        self.adv = ac_net.adv
-        self.r = ac_net.r
         return ac_net
 
     def get_env_action(self, action):

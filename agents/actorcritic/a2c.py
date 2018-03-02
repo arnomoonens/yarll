@@ -38,7 +38,8 @@ class A2C(Agent):
             n_iter=100,
             gamma=0.99,
             learning_rate=0.001,
-            n_hidden=20,
+            n_hidden_units=20,
+            n_hidden_layers=1,
             gradient_clip_value=0.5,
             n_local_steps=20,
             vf_coef=0.5,
@@ -54,12 +55,14 @@ class A2C(Agent):
 
         self.action = self.ac_net.action
         self.states = self.ac_net.states
-        self.r = self.ac_net.r
-        self.adv = self.ac_net.adv
         self.actions_taken = self.ac_net.actions_taken
+        self.advantage = tf.placeholder(tf.float32, [None], name="advantage")
+        self.ret = tf.placeholder(tf.float32, [None], name="return")
 
         self.actor_loss, self.critic_loss, self.loss = self.make_loss(
             self.ac_net,
+            self.advantage,
+            self.ret,
             self.config["vf_coef"],
             self.config["entropy_coef"],
             self.config["loss_reducer"]
@@ -119,7 +122,7 @@ class A2C(Agent):
     def choose_action(self, state, features):
         action, value = self.session.run(
             [self.ac_net.action, self.ac_net.value], feed_dict={self.states: [state]})
-        return {"action": action, "value": value}
+        return {"action": action, "value": value[0]}
 
     def get_env_action(self, action):
         return np.argmax(action)
@@ -144,8 +147,8 @@ class A2C(Agent):
             feed_dict = {
                 self.states: states,
                 self.actions_taken: np.asarray(trajectory.actions),
-                self.adv: batch_adv,
-                self.r: np.asarray(batch_r)
+                self.advantage: batch_adv,
+                self.ret: np.asarray(batch_r)
             }
             feature = trajectory.features[0]
             if feature != [] and feature is not None:
@@ -200,7 +203,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
         action, rnn_state, value = self.session.run(
             [self.ac_net.action, self.ac_net.rnn_state_out, self.ac_net.value],
             feed_dict=feed_dict)
-        return {"action": action, "value": value, "features": rnn_state}
+        return {"action": action, "value": value[0], "features": rnn_state}
 
     def get_critic_value(self, states, features):
         feed_dict = {

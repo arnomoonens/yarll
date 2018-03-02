@@ -20,10 +20,8 @@ class ActorCriticNetworkDiscrete(object):
 
         self.states = tf.placeholder(
             tf.float32, [None] + list(state_shape), name="states")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
         self.actions_taken = tf.placeholder(
             tf.float32, [None, n_actions], name="actions_taken")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
 
         x = self.states
         for i in range(n_hidden_layers):
@@ -66,10 +64,8 @@ class ActorCriticNetworkDiscreteCNN(object):
 
         self.states = tf.placeholder(
             tf.float32, [None] + state_shape, name="states")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
         self.actions_taken = tf.placeholder(
             tf.float32, [None, n_actions], name="actions_taken")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
 
         x = self.states
         # Convolution layers
@@ -114,9 +110,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
 
         self.states = tf.placeholder(
             tf.float32, [None] + state_shape, name="states")
-        self.adv = tf.placeholder(tf.float32, name="advantage")
         self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
-        self.r = tf.placeholder(tf.float32, [None], name="r")
 
         x = self.states
         # Convolution layers
@@ -164,13 +158,13 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         self.entropy = self.probs * self.log_probs
 
 
-def ActorCriticDiscreteLoss(network, vf_coef=0.5, entropy_coef=0.01, reducer="sum"):
+def ActorCriticDiscreteLoss(network, advantage, ret, vf_coef=0.5, entropy_coef=0.01, reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     log_probs = tf.nn.log_softmax(network.logits)
     actor_loss = - \
         tf_reducer(tf.reduce_sum(
-            log_probs * network.actions_taken, [1]) * network.adv)
-    critic_loss = tf_reducer(tf.square(network.value - network.r))
+            log_probs * network.actions_taken, [1]) * advantage)
+    critic_loss = tf_reducer(tf.square(network.value - ret))
     entropy = tf_reducer(network.probs * log_probs)
     loss = actor_loss + vf_coef * critic_loss - entropy_coef * entropy
     return actor_loss, critic_loss, loss
@@ -183,11 +177,8 @@ class ActorCriticNetworkContinuous(object):
         super(ActorCriticNetworkContinuous, self).__init__()
         self.state_shape = state_shape
 
-        self.states = tf.placeholder(
-            "float", [None] + list(state_shape), name="states")
+        self.states = tf.placeholder("float", [None] + list(state_shape), name="states")
         self.actions_taken = tf.placeholder(tf.float32, [None] + list(action_space.shape), name="actions_taken")
-        self.adv = tf.placeholder(tf.float32, [None], name="advantage")
-        self.r = tf.placeholder(tf.float32, [None], name="return")
 
         x = self.states
         for i in range(n_hidden_layers):
@@ -223,12 +214,12 @@ class ActorCriticNetworkContinuous(object):
         self.entropy = -tf.reduce_sum(log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
 
-def ActorCriticContinuousLoss(network, entropy_coef=0.01, reducer="sum"):
+def ActorCriticContinuousLoss(network, advantage, ret, entropy_coef=0.01, reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     actor_loss = - \
         tf_reducer(network.normal_dist.log_prob(
-            network.actions_taken) * network.adv)
-    critic_loss = tf_reducer(tf.square(network.value - network.r))
+            network.actions_taken) * advantage)
+    critic_loss = tf_reducer(tf.square(network.value - ret))
     entropy = tf_reducer(network.normal_dist.entropy())
     loss = actor_loss + 0.5 * critic_loss - entropy_coef * entropy
     return actor_loss, critic_loss, loss

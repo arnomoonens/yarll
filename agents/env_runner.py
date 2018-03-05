@@ -1,43 +1,8 @@
 # -*- coding: utf8 -*-
 
 import tensorflow as tf
+from memory.experiences_memory import ExperiencesMemory
 
-class Trajectory(object):
-    """Experience gathered from an environment."""
-    def __init__(self):
-        super(Trajectory, self).__init__()
-        self.states = []
-        self.actions = []
-        self.rewards = []
-        self.values = []
-        self.features = []
-        self.terminals = []
-        self.steps = 0
-
-    def add(self, state, action, reward, value=None, features=None, terminal=False):
-        """Add a single transition to the trajectory."""
-        self.states.append(state)
-        self.actions.append(action)
-        self.rewards.append(reward)
-        self.values.append(value)
-        self.features.append(features)
-        self.terminals.append(terminal)
-        self.steps += 1
-
-    def extend(self, other):
-        """
-        Extend a trajectory with another one
-        given that the current one hasn't ended yet.
-        """
-        if self.terminals[-1]:
-            raise AssertionError("Can't extend a terminal trajectory.")
-        self.states.extend(other.states)
-        self.actions.extend(other.actions)
-        self.rewards.extend(other.rewards)
-        self.values.extend(other.values)
-        self.features.extend(other.features)
-        self.terminals.extend(other.terminals)
-        self.steps += other.steps
 
 class EnvRunner(object):
     """Environment runner using a policy"""
@@ -45,6 +10,7 @@ class EnvRunner(object):
         super(EnvRunner, self).__init__()
         self.env = env
         self.policy = policy
+        self.state = None
         self.features = policy.initial_features
         self.config = dict(
             batch_update="timesteps",
@@ -79,14 +45,14 @@ class EnvRunner(object):
         if reset:
             self.reset_env()
             self.policy.new_trajectory()
-        traj = Trajectory()
+        memory = ExperiencesMemory()
         for i in range(n_steps):
             results = self.choose_action(self.state)
             action = results["action"]
             value = results.get("value", None)
             new_features = results.get("features", None)
             new_state, rew, done, _ = self.step_env(action)
-            traj.add(self.state, action, rew, value, terminal=done, features=self.features)
+            memory.add(self.state, action, rew, value, terminal=done, features=self.features)
             self.state = new_state
             self.features = new_features
             self.episode_reward += rew
@@ -110,7 +76,7 @@ class EnvRunner(object):
                     break
             if render:
                 self.env.render()
-        return traj
+        return memory
 
     def get_trajectory(self, stop_at_trajectory_end=True, render=False):
         return self.get_steps(self.config["episode_max_length"], stop_at_trajectory_end, render)

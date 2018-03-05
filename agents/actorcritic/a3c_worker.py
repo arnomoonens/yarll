@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(
 from environment.registration import make  # pylint: disable=C0413
 from misc.utils import discount_rewards, FastSaver, load, json_to_dict, cluster_spec  # pylint: disable=C0413
 from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss  # pylint: disable=C0413
-from agents.env_runner import Trajectory  # pylint: disable=C0413
+from memory.experiences_memory import ExperiencesMemory
 
 
 def env_runner(env, policy, n_steps, render=False, summary_writer=None):
@@ -33,7 +33,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
         'wrapper_config.TimeLimit.max_episode_steps')
 
     while True:
-        trajectory = Trajectory()
+        memory = ExperiencesMemory()
 
         for _ in range(n_steps):
             # Choose the next action (using a neural network) depending on the current state
@@ -46,7 +46,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
                 policy.get_env_action(action))
             episode_steps += 1
             episode_reward += reward
-            trajectory.add(state, action, reward, value, features, terminal)
+            memory.add(state, action, reward, value, features, terminal)
             state = new_state
             features = new_features
             if terminal or episode_steps >= timestep_limit:
@@ -66,7 +66,7 @@ def env_runner(env, policy, n_steps, render=False, summary_writer=None):
                 break
             if render:
                 env.render()
-        yield trajectory
+        yield memory
 
 
 class RunnerThread(threading.Thread):

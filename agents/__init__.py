@@ -86,7 +86,7 @@ register_agent(name="DPPO",
 register_agent(name="DDPG",
                entry_point="agents.ddpg:DDPG",
                state_dimensions="single",
-               action_space="discrete"
+               action_space="continuous"
               )
 register_agent(name="CEM",
                entry_point="agents.cem:CEM",

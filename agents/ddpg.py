@@ -16,7 +16,13 @@ def soft_target_update(source_network_vars, target_network_vars, tau):
     return tf.group(*updates)
 
 def hard_target_update(source_network_vars, target_network_vars):
-    return soft_target_update(source_network_vars, target_network_vars, 1.0)
+    """
+    Copy the values of the source network variables to the target network variables.
+    The same as using `soft_target_update` with tau=0.
+    However, this is not done this way as it would need already initialized values for
+    the target network variables.
+    """
+    return tf.group(*[tf.assign(t, s) for s, t in zip(source_network_vars, target_network_vars)])
 
 class DDPG(Agent):
     def __init__(self, env, monitor_path: str, **usercfg):
@@ -32,6 +38,7 @@ class DDPG(Agent):
             ou_theta=0.15,
             ou_sigma=0.2,
             epsilon=1,
+            gamma=0.99,
             batch_size=128,
             discount=0.99,
             tau=0.001,
@@ -45,21 +52,18 @@ class DDPG(Agent):
         self.n_actions: int = env.action_space.shape[0]
         self.states = tf.placeholder(
             tf.float32, [None] + list(env.observation_space.shape), name="states")
-        self.actions_taken = tf.placeholder(
-            tf.float32, [None, self.n_actions], name="actions_taken")
         self.critic_target = tf.placeholder(tf.float32, [None], name="critic_target")
 
         # Current networks
         actor, actor_vars = self.build_actor()
         self.actor_output = actor
-        critic, critic_vars = self.build_critic()
+        critic, critic_vars = self.build_critic(actor)
         self.value = critic
 
-        self.current_nets_init_op = tf.variables_initializer(actor_vars + critic_vars)
-
         # Target networks
-        target_actor, target_actor_vars = self.build_actor()
-        target_critic, target_critic_vars = self.build_critic()
+        with tf.variable_scope("target"):
+            target_actor, target_actor_vars = self.build_actor()
+            target_critic, target_critic_vars = self.build_critic(target_actor)
         self.target_network_value = target_critic
 
         self.target_init_op = tf.group(
@@ -74,7 +78,28 @@ class DDPG(Agent):
 
         self.critic_loss = tf.reduce_mean(tf.square(critic - self.critic_target))
 
-        self.critic_loss =
+        self.actor_loss = -tf.reduce_mean(self.value)
+
+        actor_grads = tf.gradients(self.actor_loss, actor_vars)
+        critic_grads = tf.gradients(self.critic_loss, critic_vars)
+
+        with tf.variable_scope("optimizers"):
+            actor_optimizer = tf.train.AdamOptimizer(
+                self.config["actor_learning_rate"],
+                name="actor_optim")
+
+            self.actor_train_op = actor_optimizer.apply_gradients(zip(actor_grads, actor_vars))
+
+            critic_optimizer = tf.train.AdamOptimizer(
+                self.config["critic_learning_rate"],
+                name="critic_optim")
+
+            self.critic_train_op = critic_optimizer.apply_gradients(zip(critic_grads, critic_vars))
+
+        optimizer_variables = [
+            var for var in tf.global_variables() if var.name.startswith("optimizers")]
+
+        self.init_op = tf.variables_initializer(actor_vars + critic_vars + optimizer_variables)
 
         self.action_noise = OrnsteinUhlenbeckActionNoise(
             self.n_actions,
@@ -83,7 +108,7 @@ class DDPG(Agent):
         )
 
         self.replay_buffer = Memory(
-            self.config["replay_buffer_size"],
+            int(self.config["replay_buffer_size"]),
             self.env.action_space.shape,
             self.env.observation_space.shape
             )
@@ -92,7 +117,7 @@ class DDPG(Agent):
         with tf.variable_scope("actor"):
             x = self.states
             for i in range(self.config["n_actor_layers"]):
-                x = linear(x, self.config["n_actor_hidden_units"], "L{}".format(i + 1),
+                x = linear(x, self.config["n_hidden_units"], "L{}".format(i + 1),
                            initializer=normalized_columns_initializer(1.0))
                 if self.config["layer_norm"]:
                     x = tf.contrib.layers.layer_norm(x, center=True, scale=True)
@@ -103,17 +128,17 @@ class DDPG(Agent):
                 tf.GraphKeys.TRAINABLE_VARIABLES, scope=tf.get_variable_scope().name)
         return x, trainable_vars
 
-    def build_critic(self):
+    def build_critic(self, actions):
         with tf.variable_scope("critic"):
             x = self.states
-            x = linear(x, self.config["n_actor_hidden_units"], "L1",
+            x = linear(x, self.config["n_hidden_units"], "L1",
                        initializer=normalized_columns_initializer(1.0))
             if self.config["layer_norm"]:
                 x = tf.contrib.layers.layer_norm(x, center=True, scale=True)
             x = tf.nn.relu(x)
 
-            x = tf.concat([x, self.actions_taken], axis=-1)
-            x = linear(x, self.config["n_actor_hidden_units"], "L2",
+            x = tf.concat([x, actions], axis=-1)
+            x = linear(x, self.config["n_hidden_units"], "L2",
                        initializer=normalized_columns_initializer(1.0))
             if self.config["layer_norm"]:
                 x = tf.contrib.layers.layer_norm(x, center=True, scale=True)
@@ -128,7 +153,7 @@ class DDPG(Agent):
         feed_dict = {
             self.states: [state]
         }
-        action = tf.get_default_session().run([self.actor_output], feed_dict=feed_dict)
+        action = tf.get_default_session().run([self.actor_output], feed_dict=feed_dict)[0][0]
         action += self.action_noise()
         action = np.clip(action, self.env.action_space.low, self.env.action_space.high)
         return action
@@ -137,10 +162,11 @@ class DDPG(Agent):
     def learn(self):
         max_action = self.env.action_space.high
         with tf.Session() as sess, sess.as_default():
-            sess.run([self.current_nets_init_op, self.target_init_op])
+            sess.run(self.init_op)
+            sess.run(self.target_init_op)
             state = None
-            for episode in range(self.config["n_episodes"]):
-                for timestep in range(self.config["n_timesteps"]):
+            for _ in range(self.config["n_episodes"]):
+                for _ in range(self.config["n_timesteps"]):
                     if state is None:
                         state = self.env.reset()
 
@@ -162,8 +188,11 @@ class DDPG(Agent):
                         next_q_values = sess.run(self.target_network_value, feed_dict=feed_dict)
                         target_q = sample["rewards"] + (1.0 - sample["terminals1"]) * \
                         self.config["gamma"] * next_q_values
-
-
+                        feed_dict = {
+                            self.states: sample["states0"],
+                            self.critic_target: np.squeeze(target_q)
+                        }
+                        sess.run([self.actor_train_op, self.critic_train_op], feed_dict=feed_dict)
 
                     # Update critic and actor
                     # Update target networks

@@ -178,7 +178,10 @@ class ActorCriticNetworkContinuous(object):
         self.state_shape = state_shape
 
         self.states = tf.placeholder("float", [None] + list(state_shape), name="states")
-        self.actions_taken = tf.placeholder(tf.float32, [None] + list(action_space.shape), name="actions_taken")
+        self.actions_taken = tf.placeholder(
+            tf.float32,
+            [None] + list(action_space.shape),
+            name="actions_taken")
 
         x = self.states
         for i in range(n_hidden_layers):

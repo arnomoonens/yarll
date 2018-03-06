@@ -45,6 +45,7 @@ class EnvRunner(object):
         super(EnvRunner, self).__init__()
         self.env = env
         self.policy = policy
+        self.state = None
         self.features = policy.initial_features
         self.config = dict(
             batch_update="timesteps",
@@ -80,7 +81,7 @@ class EnvRunner(object):
             self.reset_env()
             self.policy.new_trajectory()
         traj = Trajectory()
-        for i in range(n_steps):
+        for _ in range(n_steps):
             results = self.choose_action(self.state)
             action = results["action"]
             value = results.get("value", None)

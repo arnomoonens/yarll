@@ -4,10 +4,10 @@
 import sys
 import argparse
 import os
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import numpy as np
 from mpi4py import MPI
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
 
 sys.path.insert(0, os.path.abspath(os.path.join(

@@ -64,23 +64,23 @@ class DPPOWorker(object):
                 for var_receiver, tf_var in zip(var_receivers, self.global_vars):
                     self.comm.Bcast(var_receiver, root=0)
                     tf_var.load(var_receiver)
-                trajectory = self.env_runner.get_steps(
+                experiences = self.env_runner.get_steps(
                     self.config["n_local_steps"], stop_at_trajectory_end=False)
-                T = trajectory.steps
-                value = 0 if trajectory.terminals[-1] else self.get_critic_value(
-                    np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
-                vpred = np.asarray(trajectory.values + [value])
+                T = experiences.steps
+                value = 0 if experiences.terminals[-1] else self.get_critic_value(
+                    np.asarray(experiences.states)[None, -1], experiences.features[-1])
+                vpred = np.asarray(experiences.values + [value])
                 gamma = self.config["gamma"]
                 lambda_ = self.config["gae_lambda"]
-                terminals = np.append(trajectory.terminals, 0)
+                terminals = np.append(experiences.terminals, 0)
                 gaelam = advantages = np.empty(T, 'float32')
                 lastgaelam = 0
                 for t in reversed(range(T)):
                     nonterminal = 1 - terminals[t + 1]
-                    delta = trajectory.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
+                    delta = experiences.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
                     gaelam[t] = lastgaelam = delta + gamma * lambda_ * nonterminal * lastgaelam
-                returns = advantages + trajectory.values
-                processed = trajectory.states, trajectory.actions, advantages, returns, trajectory.features[0]
+                returns = advantages + experiences.values
+                processed = experiences.states, experiences.actions, advantages, returns, experiences.features[0]
                 self.comm.gather(processed, root=0)
 
     @property

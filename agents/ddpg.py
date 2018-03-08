@@ -57,13 +57,14 @@ class DDPG(Agent):
         self.n_actions: int = env.action_space.shape[0]
         self.states = tf.placeholder(
             tf.float32, [None] + list(env.observation_space.shape), name="states")
+        self.actions_taken = tf.placeholder(tf.float32, [None, self.n_actions], name="actions_taken")
         self.critic_target = tf.placeholder(tf.float32, [None], name="critic_target")
 
         # Current networks
         actor, actor_vars = self.build_actor()
         self.actor_output = actor
-        critic, critic_vars = self.build_critic(actor)
-        self.value = critic
+        critic_with_placeholder, critic_vars = self.build_critic(self.actions_taken)
+        critic_with_actor, _ = self.build_critic(actor, reuse_variables=True)
 
         # Target networks
         with tf.variable_scope("target"):
@@ -82,9 +83,9 @@ class DDPG(Agent):
         )
 
         l2_loss = tf.reduce_sum([tf.nn.l2_loss(v) for v in critic_vars])
-        self.critic_loss = tf.reduce_mean(tf.square(critic - self.critic_target)) + l2_loss
+        self.critic_loss = tf.reduce_mean(tf.square(critic_with_placeholder - self.critic_target)) + l2_loss
 
-        self.actor_loss = -tf.reduce_mean(self.value)
+        self.actor_loss = -tf.reduce_mean(critic_with_actor)
 
         actor_grads = tf.gradients(self.actor_loss, actor_vars)
         critic_grads = tf.gradients(self.critic_loss, critic_vars)
@@ -145,17 +146,19 @@ class DDPG(Agent):
                 tf.GraphKeys.TRAINABLE_VARIABLES, scope=tf.get_variable_scope().name)
         return x, trainable_vars
 
-    def build_critic(self, actions):
-        with tf.variable_scope("critic"):
+    def build_critic(self, actions, reuse_variables=False):
+        with tf.variable_scope("critic", reuse=reuse_variables):
             x = self.states
-            x = linear_fan_in(x, self.config["n_hidden_units"])
-            if self.config["layer_norm"]:
-                x = tf.contrib.layers.layer_norm(x, center=True, scale=True)
-            x = tf.nn.relu(x)
+            with tf.variable_scope("L1"):
+                x = linear_fan_in(x, self.config["n_hidden_units"])
+                if self.config["layer_norm"]:
+                    x = tf.contrib.layers.layer_norm(x, center=True, scale=True)
+                x = tf.nn.relu(x)
 
             x = tf.concat([x, actions], axis=-1)
-            x = linear_fan_in(x, self.config["n_hidden_units"])
-            x = tf.nn.relu(x)
+            with tf.variable_scope("L2"):
+                x = linear_fan_in(x, self.config["n_hidden_units"])
+                x = tf.nn.relu(x)
 
             x = linear(x, 1, "value", initializer=tf.random_uniform_initializer(-3e-3, 3e-3))
             trainable_vars = tf.get_collection(
@@ -230,6 +233,7 @@ class DDPG(Agent):
                         ]
                         feed_dict = {
                             self.states: sample["states0"],
+                            self.actions_taken: sample["actions"],
                             self.critic_target: np.squeeze(target_q)
                         }
                         summary, _, _ = sess.run(fetches, feed_dict=feed_dict)

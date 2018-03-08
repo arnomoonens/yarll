@@ -13,12 +13,18 @@ def normalized_columns_initializer(std=1.0):
         return tf.constant(out)
     return _initializer
 
-# TODO: make a tensorflow initializer instead?
+def fan_in_initializer(fan_in_size):
+    def _initializer(shape, dtype=None, partition_info=None):
+        bound = 1 / np.sqrt(fan_in_size)
+        out = np.random.uniform(-bound, bound, shape)
+        return tf.constant(out.astype(np.float32))
+    return _initializer
+
+
 def linear_fan_in(x, output_size):
     input_size = x.shape[1].value
-    bound = 1 / np.sqrt(input_size)
-    w = tf.Variable(tf.random_uniform([input_size, output_size], -bound, bound), name="w")
-    b = tf.Variable(tf.random_uniform([output_size], -bound, bound), name="b")
+    w = tf.get_variable("w", [input_size, output_size], initializer=fan_in_initializer(input_size))
+    b = tf.get_variable("b", [output_size], initializer=fan_in_initializer(input_size))
     x = tf.nn.xw_plus_b(x, w, b)
     return x
 

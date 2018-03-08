@@ -145,3 +145,37 @@ def cluster_spec(num_workers, num_ps, num_masters=0):
             port += 1
         cluster["master"] = all_masters
     return cluster
+
+
+class RunningMeanStd(object):
+    """
+    Calculates the running mean and standard deviation of values of shape `shape` using
+    Welford's algorithm.
+    Based on: https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Online_algorithm
+    """
+
+    def __init__(self, shape, epsilon=1e-2):
+        super(RunningMeanStd, self).__init__()
+        self.count = epsilon
+        self.mean = np.zeros(shape)
+        self.M2 = np.full(shape, epsilon, dtype=float)
+
+    def add_value(self, x):
+        """
+        Update count, mean and M2 using a new value `x`.
+        """
+        self.count += 1
+        delta = x - self.mean
+        self.mean = self.mean + delta / self.count
+        delta2 = x - self.mean
+        self.M2 = self.M2 + delta * delta2
+
+    @property
+    def std(self):
+        if self.count < 2:
+            return float('nan')
+        else:
+            return self.M2 / (self.count - 1)
+
+def normalize(x, mean, std):
+    return (x - mean) / std

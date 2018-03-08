@@ -99,17 +99,14 @@ class A2C(Agent):
             tf.add_to_collection("states", self.states)
             self.saver = FastSaver()
         n_steps = tf.to_float(self.n_steps)
-        summary_actor_loss = tf.summary.scalar(
-            "Actor_loss", self.actor_loss / n_steps)
-        summary_critic_loss = tf.summary.scalar(
-            "Critic_loss", self.critic_loss / n_steps)
+        summary_actor_loss = tf.summary.scalar("Actor_loss", self.actor_loss / n_steps)
+        summary_critic_loss = tf.summary.scalar("Critic_loss", self.critic_loss / n_steps)
         summary_loss = tf.summary.scalar("Loss", self.loss / n_steps)
         self.loss_summary_op = tf.summary.merge(
             [summary_actor_loss, summary_critic_loss, summary_loss])
         self.writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), self.session.graph)
-        self.env_runner = EnvRunner(
-            self.env, self, usercfg, summary_writer=self.writer)
+        self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
         return
 
     @property

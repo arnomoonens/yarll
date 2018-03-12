@@ -26,7 +26,7 @@ def linear_fan_in(x, output_size):
     w = tf.get_variable("w", [input_size, output_size], initializer=fan_in_initializer(input_size))
     b = tf.get_variable("b", [output_size], initializer=fan_in_initializer(input_size))
     x = tf.nn.xw_plus_b(x, w, b)
-    return x
+    return x, [w, b]
 
 def linear(x, size, name, initializer=None, bias_init=0):
     w = tf.get_variable(name + "/w", [x.get_shape()[1], size], initializer=initializer)

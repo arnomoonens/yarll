@@ -29,9 +29,11 @@ IMAGES_EXT = ".png"
 
 logging.getLogger("tensorflow").setLevel(logging.WARNING)
 
-# Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
 def moving_average(a, n):
-    """Compute the moving average of an array a of numbers using a window length n."""
+    """
+    Compute the moving average of an array a of numbers using a window length n.
+    Source: http://stackoverflow.com/questions/14313510/how-to-calculate-moving-average-using-numpy
+    """
     ret = np.cumsum(a, dtype=float)
     ret[n:] = ret[n:] - ret[:-n]
     return ret[n - 1:] / n

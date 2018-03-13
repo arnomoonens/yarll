@@ -13,7 +13,7 @@ def normalized_columns_initializer(std=1.0):
         return tf.constant(out)
     return _initializer
 
-def fan_in_initializer(fan_in_size):
+def fan_in_initializer(fan_in_size: int):
     def _initializer(shape, dtype=None, partition_info=None):
         bound = 1 / np.sqrt(fan_in_size)
         out = np.random.uniform(-bound, bound, shape)
@@ -21,7 +21,7 @@ def fan_in_initializer(fan_in_size):
     return _initializer
 
 
-def linear_fan_in(x, output_size):
+def linear_fan_in(x, output_size: int):
     input_size = x.shape[1].value
     w = tf.get_variable("w", [input_size, output_size], initializer=fan_in_initializer(input_size))
     b = tf.get_variable("b", [output_size], initializer=fan_in_initializer(input_size))

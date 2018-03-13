@@ -7,7 +7,7 @@ class OrnsteinUhlenbeckActionNoise(object):
     Ornstein Uhlenbeck process action noise.
     """
 
-    def __init__(self, n_actions: int, sigma: float, theta: float =.15, dt=1e-2, x0=None):
+    def __init__(self, n_actions: int, sigma: float, theta: float=.15, dt=1e-2, x0=None):
         self.theta: float = theta
         self.mu: np.ndarray = np.zeros(n_actions)
         self.sigma: float = sigma

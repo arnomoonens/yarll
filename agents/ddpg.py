@@ -7,33 +7,7 @@ import tensorflow as tf
 from agents.agent import Agent
 from memory.memory import Memory
 from misc.noise import OrnsteinUhlenbeckActionNoise
-from misc.network_ops import fan_in_initializer, linear_fan_in
-
-def batch_norm_layer(x, training_phase, scope_bn, activation=None):
-    return tf.cond(
-        training_phase,
-        lambda: tf.contrib.layers.batch_norm(
-            x,
-            activation_fn=activation,
-            center=True,
-            scale=True,
-            updates_collections=None,
-            is_training=True,
-            reuse=None,
-            scope=scope_bn,
-            decay=0.9,
-            epsilon=1e-5),
-        lambda: tf.contrib.layers.batch_norm(
-            x,
-            activation_fn=activation,
-            center=True,
-            scale=True,
-            updates_collections=None,
-            is_training=False,
-            reuse=True,
-            scope=scope_bn,
-            decay=0.9,
-            epsilon=1e-5))
+from misc.network_ops import batch_norm_layer, fan_in_initializer, linear_fan_in
 
 class DDPG(Agent):
     def __init__(self, env, monitor_path: str, **usercfg):

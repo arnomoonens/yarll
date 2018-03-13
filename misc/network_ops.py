@@ -121,11 +121,28 @@ def reset_accumulative_gradients_op(net_vars, accum_grads, identifier=0):
             reset_grad_ops.append(reset_ops)
         return tf.group(*reset_grad_ops, name="reset_accum_group_{}".format(identifier))
 
-def sync_networks_op(source_net, local_net_vars, identifier=0):
-    """Make an operation to sync weights of 2 networks."""
-    sync_ops = []
-    with tf.name_scope(name="sync_ops_{}".format(identifier), values=[]):
-        for (target_var, source_var) in zip(local_net_vars, source_net.vars):
-            ops = tf.assign(target_var, source_var)
-            sync_ops.append(ops)
-        return tf.group(*sync_ops, name="sync_group_{}".format(identifier))
+def batch_norm_layer(x, training_phase, scope_bn, activation=None):
+    return tf.cond(
+        training_phase,
+        lambda: tf.contrib.layers.batch_norm(
+            x,
+            activation_fn=activation,
+            center=True,
+            scale=True,
+            updates_collections=None,
+            is_training=True,
+            reuse=None,
+            scope=scope_bn,
+            decay=0.9,
+            epsilon=1e-5),
+        lambda: tf.contrib.layers.batch_norm(
+            x,
+            activation_fn=activation,
+            center=True,
+            scale=True,
+            updates_collections=None,
+            is_training=False,
+            reuse=True,
+            scope=scope_bn,
+            decay=0.9,
+            epsilon=1e-5))

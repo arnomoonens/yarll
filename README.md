@@ -7,9 +7,10 @@ This code is part of [my master thesis](https://github.com/arnomoonens/Master-Th
 ## Status
 
 Different algorithms have currently been implemented:
+
 - [Advantage Actor Critic](./agents/actorcritic/a2c.py)
 - [Asynchronous Advantage Actor Critic (A3C)](./agents/actorcritic/a3c.py)
-- [Deep Deterministic Policy Gradient](./agents/ddpg.py)
+- [Deep Deterministic Policy Gradient (DDPG)](./agents/ddpg.py)
 - [Proximal Policy Optimization (PPO)](./agents/ppo/ppo.py)
 - [Distributed Policy Optimization (DPPO)](./agents/ppo/dppo.py)
 - [REINFORCE](./agents/reinforce.py) (convolutional neural network part has not been tested yet)

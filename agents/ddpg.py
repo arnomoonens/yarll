@@ -97,13 +97,16 @@ class DDPG(Agent):
         layer2_size = 300
 
         x = self.states
-        x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
+        if self.config["layer_norm"]:
+            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
         with tf.variable_scope("L1"):
             x, l1_vars = linear_fan_in(x, layer1_size)
-            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_1", activation=tf.nn.relu)
+            if self.config["layer_norm"]:
+                x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_1", activation=tf.nn.relu)
         with tf.variable_scope("L2"):
             x, l2_vars = linear_fan_in(x, layer2_size)
-            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_2", activation=tf.nn.relu)
+            if self.config["layer_norm"]:
+                x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_2", activation=tf.nn.relu)
 
         with tf.variable_scope("L3"):
             W3 = tf.Variable(tf.random_uniform([layer2_size, self.n_actions], -3e-3, 3e-3), name="w")
@@ -119,15 +122,18 @@ class DDPG(Agent):
         target_net = [ema.average(v) for v in actor_vars]
 
         x = self.states
-        x = batch_norm_layer(
-            x, training_phase=self.is_training, scope_bn="target_batch_norm_0", activation=tf.identity)
+        if self.config["layer_norm"]:
+            x = batch_norm_layer(
+                x, training_phase=self.is_training, scope_bn="target_batch_norm_0", activation=tf.identity)
 
         x = tf.nn.xw_plus_b(x, target_net[0], target_net[1])
-        x = batch_norm_layer(
-            x, training_phase=self.is_training, scope_bn="target_batch_norm_1", activation=tf.nn.relu)
+        if self.config["layer_norm"]:
+            x = batch_norm_layer(
+                x, training_phase=self.is_training, scope_bn="target_batch_norm_1", activation=tf.nn.relu)
         x = tf.nn.xw_plus_b(x, target_net[2], target_net[3])
-        x = batch_norm_layer(
-            x, training_phase=self.is_training, scope_bn="target_batch_norm_2", activation=tf.nn.relu)
+        if self.config["layer_norm"]:
+            x = batch_norm_layer(
+                x, training_phase=self.is_training, scope_bn="target_batch_norm_2", activation=tf.nn.relu)
 
         action_output = tf.tanh(tf.nn.xw_plus_b(x, target_net[4], target_net[5]))
 
@@ -139,7 +145,8 @@ class DDPG(Agent):
 
         x = self.states
         with tf.variable_scope("L1"):
-            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
+            if self.config["layer_norm"]:
+                x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
             x, l1_vars = linear_fan_in(x, layer1_size)
             x = tf.nn.relu(x)
         with tf.variable_scope("L2"):
@@ -164,6 +171,8 @@ class DDPG(Agent):
         target_net = [ema.average(v) for v in critic_vars]
 
         x = self.states
+        if self.config["layer_norm"]:
+            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
         x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[0], target_net[1]))
         x = tf.nn.relu(tf.matmul(x, target_net[2]) + tf.matmul(self.actions_taken, target_net[3]) + target_net[4])
         q_value_output = tf.nn.xw_plus_b(x, target_net[5], target_net[6])

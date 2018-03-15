@@ -146,3 +146,14 @@ def batch_norm_layer(x, training_phase, scope_bn, activation=None):
             scope=scope_bn,
             decay=0.9,
             epsilon=1e-5))
+
+
+def kl_divergence(logits1, logits2):
+    a0 = logits1 - tf.reduce_max(logits1, axis=-1, keep_dims=True)
+    a1 = logits2 - tf.reduce_max(logits2, axis=-1, keep_dims=True)
+    ea0 = tf.exp(a0)
+    ea1 = tf.exp(a1)
+    z0 = tf.reduce_sum(ea0, axis=-1, keep_dims=True)
+    z1 = tf.reduce_sum(ea1, axis=-1, keep_dims=True)
+    p0 = ea0 / z0
+    return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=-1)

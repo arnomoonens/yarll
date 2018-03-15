@@ -12,19 +12,13 @@ from agents.env_runner import EnvRunner
 from misc.utils import FastSaver
 
 
-def cso_loss(old_network, new_network, epsilon, advantage):
-    ratio = tf.exp(new_network.action_log_prob - old_network.action_log_prob)
-    ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
-    return tf.minimum(ratio * advantage, ratio_clipped * advantage)
-
-
 class PPO(Agent):
     """Proximal Policy Optimization agent."""
     RNN = False
 
-    def __init__(self, env, monitor_path, video=False, **usercfg):
+    def __init__(self, env, monitor_path: str, video=False, **usercfg) -> None:
         super(PPO, self).__init__(**usercfg)
-        self.monitor_path = monitor_path
+        self.monitor_path: str = monitor_path
         self.env = wrappers.Monitor(
             env,
             monitor_path,
@@ -72,8 +66,7 @@ class PPO(Agent):
             *[v1.assign(v2) for v1, v2 in zip(self.old_network_vars, self.new_network_vars)])
 
         # Reduces by taking the mean instead of summing
-        self.actor_loss = -tf.reduce_mean(cso_loss(
-            self.old_network, self.new_network, self.config["cso_epsilon"], self.advantage))
+        self.actor_loss = -tf.reduce_mean(self.make_actor_loss(self.old_network, self.new_network, self.advantage))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.ret))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
@@ -130,6 +123,12 @@ class PPO(Agent):
         init = tf.global_variables_initializer()
         self.session.run(init)
         return
+
+    def make_actor_loss(self, old_network, new_network, advantage):
+        epsilon = self.config["cso_epsilon"]
+        ratio = tf.exp(new_network.action_log_prob - old_network.action_log_prob)
+        ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
+        return tf.minimum(ratio * advantage, ratio_clipped * advantage)
 
     def build_networks(self):
         raise NotImplementedError
@@ -211,7 +210,7 @@ class PPO(Agent):
 
 
 class PPODiscrete(PPO):
-    def build_networks(self):
+    def build_networks(self) -> ActorCriticNetworkDiscrete:
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -220,7 +219,7 @@ class PPODiscrete(PPO):
 
 
 class PPODiscreteCNN(PPODiscrete):
-    def build_networks(self):
+    def build_networks(self) -> ActorCriticNetworkDiscreteCNN:
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -228,7 +227,7 @@ class PPODiscreteCNN(PPODiscrete):
 
 
 class PPOContinuous(PPO):
-    def build_networks(self):
+    def build_networks(self) -> ActorCriticNetworkContinuous:
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,

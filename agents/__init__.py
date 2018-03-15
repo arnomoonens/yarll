@@ -83,6 +83,21 @@ register_agent(name="DPPO",
                state_dimensions="single",
                action_space="continuous"
               )
+register_agent(name="TRPO",
+               entry_point="agents.trpo.trpo:TRPODiscrete",
+               state_dimensions="single",
+               action_space="discrete"
+              )
+register_agent(name="TRPO",
+               entry_point="agents.trpo.trpo:TRPODiscreteCNN",
+               state_dimensions="multi",
+               action_space="discrete"
+              )
+register_agent(name="TRPO",
+               entry_point="agents.trpo.trpo:TRPOContinuous",
+               state_dimensions="single",
+               action_space="continuous"
+              )
 register_agent(name="DDPG",
                entry_point="agents.ddpg:DDPG",
                state_dimensions="single",

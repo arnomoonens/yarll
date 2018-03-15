@@ -1,5 +1,5 @@
 {
-    "experiment_name": "Pong-REINFORCE",
+    "experiment_name": "Pong-A3C",
     "environments": {
         "type": "single",
         "source": "PongDeterministic-v4"
@@ -7,14 +7,14 @@
     "agent": {
         "name": "A3C",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-KT",
-			"RNN": true, 
+            "monitor_path": "/tmp/Pong-v0-A3C",
+            "RNN": true,
             "video": false,
             "save_model": true,
             "monitor": true,
-			"T_max": 8000,
-			"n_tasks": 1,
-			"shared_optimizer": false 
+            "T_max": 8000,
+            "n_tasks": 1,
+            "shared_optimizer": false
         }
     }
 }

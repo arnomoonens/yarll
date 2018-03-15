@@ -1,8 +1,8 @@
 {
-    "experiment_name": "CartPole-KT",
+    "experiment_name": "CartPole-CEM",
     "environments": {
         "type": "single",
-        "source": "Pendulum-v0"
+        "source": "CartPole-v0"
     },
     "agent": {
         "name": "CEM",

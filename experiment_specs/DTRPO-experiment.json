@@ -1,5 +1,5 @@
 {
-    "experiment_name": "CartPole-DPPO",
+    "experiment_name": "CartPole-TRPO",
     "environments": {
         "type": "single",
         "source": "CartPole-v0"
@@ -7,7 +7,7 @@
     "agent": {
         "name": "TRPO",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-DPPO",
+            "monitor_path": "/tmp/CartPole-v0-DTRPO",
             "n_hidden_units": 10,
             "n_hidden_layers": 1,
             "gradient_clip_value": 50.0,
@@ -21,7 +21,7 @@
             "video": false,
             "save_model": true,
             "monitor": true,
-	        "n_iter": 400000
+            "n_iter": 400000
         }
     }
 }

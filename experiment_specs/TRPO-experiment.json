@@ -1,5 +1,5 @@
 {
-    "experiment_name": "CartPole-PPO",
+    "experiment_name": "CartPole-TRPO",
     "environments": {
         "type": "single",
         "source": "CartPole-v0"
@@ -7,17 +7,17 @@
     "agent": {
         "name": "TRPO",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-PPO",
-			"n_hidden": 10,
-			"gradient_clip_value": 50.0,
-			"batch_size": 64,
-			"learning_rate": 3e-4,
-			"vf_coef": 1.0,
-			"n_local_steps": 2048,
+            "monitor_path": "/tmp/CartPole-v0-TRPO",
+            "n_hidden": 10,
+            "gradient_clip_value": 50.0,
+            "batch_size": 64,
+            "learning_rate": 3e-4,
+            "vf_coef": 1.0,
+            "n_local_steps": 2048,
             "video": false,
             "save_model": true,
             "monitor": true,
-	    "n_iter": 400000
+        "n_iter": 400000
         }
     }
 }

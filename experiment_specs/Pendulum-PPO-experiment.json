@@ -1,5 +1,5 @@
 {
-    "experiment_name": "CartPole-PPO",
+    "experiment_name": "Pendulum-PPO",
     "environments": {
         "type": "single",
         "source": "Pendulum-v0"
@@ -7,18 +7,18 @@
     "agent": {
         "name": "PPO",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-PPO",
-			"n_hidden_units": 20,
-			"n_hidden_layers": 2,
-			"batch_size": 64,
-			"learning_rate": 3e-4,
-			"vf_coef": 1.0,
-			"entropy_coef": 0.0,
-			"n_local_steps": 2048,
+            "monitor_path": "/tmp/Pendulum-v0-PPO",
+            "n_hidden_units": 20,
+            "n_hidden_layers": 2,
+            "batch_size": 64,
+            "learning_rate": 3e-4,
+            "vf_coef": 1.0,
+            "entropy_coef": 0.0,
+            "n_local_steps": 2048,
             "video": false,
             "save_model": true,
             "monitor": true,
-	    "n_iter": 400000
+        "n_iter": 400000
         }
     }
 }

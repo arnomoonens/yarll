@@ -1,5 +1,5 @@
 {
-    "experiment_name": "Pong-REINFORCE",
+    "experiment_name": "Pong-A2C",
     "environments": {
         "type": "single",
         "source": "PongDeterministic-v4"
@@ -7,12 +7,12 @@
     "agent": {
         "name": "A2C",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-KT",
-			"RNN": true,
+            "monitor_path": "/tmp/Pong-v0-A2C",
+            "RNN": true,
             "video": false,
             "save_model": true,
             "monitor": true,
-			"n_iter": 800000
+            "n_iter": 800000
         }
     }
 }

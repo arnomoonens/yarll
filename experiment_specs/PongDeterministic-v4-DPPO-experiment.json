@@ -1,5 +1,5 @@
 {
-    "experiment_name": "CartPole-A2C",
+    "experiment_name": "Pong-DPPO",
     "environments": {
         "type": "single",
         "source": "PongDeterministic-v4"
@@ -7,12 +7,12 @@
     "agent": {
         "name": "DPPO",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-A2C",
-			"gradient_clip_value": 1.0,
+            "monitor_path": "/tmp/PongDeterministic-v4-DPPO",
+            "gradient_clip_value": 1.0,
             "video": false,
             "save_model": true,
             "monitor": true,
-	    "n_iter": 400000
+        "n_iter": 400000
         }
     }
 }

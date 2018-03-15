@@ -1,13 +1,13 @@
 {
-    "experiment_name": "CartPole-CEM",
+    "experiment_name": "CartPole-A2C",
     "environments": {
         "type": "single",
         "source": "CartPole-v0"
     },
     "agent": {
-        "name": "REINFORCE",
+        "name": "A2C",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-RE",
+            "monitor_path": "/tmp/CartPole-v0-A2C",
             "video": false,
             "save_model": true,
             "monitor": true

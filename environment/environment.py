@@ -1,25 +1,7 @@
 # -*- coding: utf8 -*-
 
-from gym import make, Wrapper
+from environment.wrappers import DescriptionWrapper
 
-class Environment(Wrapper):
-    """Wrapper for a OpenAI Gym environment."""
-
-    changeable_parameters = []
-
-    def __init__(self, name, add_at_iteration=0, change_variables="all", **kwargs):
-        super(Environment, self).__init__(make("Old" + name).env)
-        self.name = name
-        self.add_at_iteration = add_at_iteration
-        self.args = kwargs
-        self.change_variables = change_variables
-
-    def to_dict(self):
-        """
-        Extract the name and other important aspects of the environment.
-        By default, these include the changeable parameters.
-        """
-        d = {"name": self.name}
-        for p in self.changeable_parameters:
-            d[p["name"]] = self.__getattribute__(p["name"])
-        return d
+class Environment(DescriptionWrapper):
+    def __init__(self, env, **kwargs):
+        super(Environment, self).__init__(env)

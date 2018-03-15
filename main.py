@@ -46,7 +46,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         config["description"] = description
     config["seed"] = str(seed)
     config["start_time"] = datetime.datetime.now().astimezone().isoformat()
-    save_config(monitor_path, config, [env.to_dict() for env in envs])
+    save_config(monitor_path, config, [env.metadata["parameters"] for env in envs])
     agent.learn()
 
 

@@ -1,11 +1,11 @@
 # -*- coding: utf8 -*-
+import gym
+from environment.wrappers import DescriptionWrapper
 
-from .environment import Environment
-
-class CartPole(Environment):
+class CartPole(DescriptionWrapper):
     """Cartpole-v0 environment wrapper."""
 
-    changeable_parameters = [
+    changeable_parameters: list = [
         {
             "name": "length",
             "type": "range",
@@ -26,20 +26,21 @@ class CartPole(Environment):
         },
     ]
 
-    def __init__(self, length=None, masspole=None, masscart=None, **kwargs):
-        super(CartPole, self).__init__("CartPole-v0", **kwargs)
+    def __init__(self, length=None, masspole=None, masscart=None, ** kwargs):
         self.length = length
         self.masspole = masspole
         self.masscart = masscart
+        super(CartPole, self).__init__(gym.make("OldCartPole-v0"), **kwargs)
         self.change_parameters(length=length, masspole=masspole, masscart=masscart)
+        self.metadata["parameters"].update(self.changeable_parameters_values())
 
     def change_parameters(self, length=None, masspole=None, masscart=None):
         """Change a CartPole environment using a different length and/or masspole."""
         if length is not None:
-            self.env.length = length
+            self.unwrapped.length = length
         if masspole is not None:
-            self.env.masspole = masspole
+            self.unwrapped.masspole = masspole
         if masscart is not None:
-            self.env.masscart = masscart
-        self.env.total_mass = self.env.masspole + self.env.masscart  # Recalculate
-        self.env.polemass_length = self.env.masspole * self.env.length  # Recalculate
+            self.unwrapped.masscart = masscart
+        self.unwrapped.total_mass = self.unwrapped.masspole + self.unwrapped.masscart  # Recalculate
+        self.unwrapped.polemass_length = self.unwrapped.masspole * self.unwrapped.length  # Recalculate

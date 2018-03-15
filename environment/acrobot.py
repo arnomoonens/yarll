@@ -1,8 +1,8 @@
 # -*- coding: utf8 -*-
 
-from .environment import Environment
+from environment.wrappers import DescriptionWrapper
 
-class Acrobot(Environment):
+class Acrobot(DescriptionWrapper):
     """Acrobot-v1 environment wrapper."""
 
     changeable_parameters = [
@@ -47,10 +47,10 @@ class Acrobot(Environment):
     def change_parameters(self, link_length_1=None, link_length_2=None, link_mass_1=None, link_mass_2=None):
         """Change a Acrobot environment using a different length and/or masspole."""
         if link_length_1 is not None:
-            self.env.LINK_LENGTH_1 = link_length_1
+            self.unwrapped.LINK_LENGTH_1 = link_length_1
         if link_length_2 is not None:
-            self.env.LINK_LENGTH_2 = link_length_2
+            self.unwrapped.LINK_LENGTH_2 = link_length_2
         if link_mass_1 is not None:
-            self.env.LINK_MASS_1 = link_mass_1
+            self.unwrapped.LINK_MASS_1 = link_mass_1
         if link_mass_2 is not None:
-            self.env.LINK_MASS_2 = link_mass_2
+            self.unwrapped.LINK_MASS_2 = link_mass_2

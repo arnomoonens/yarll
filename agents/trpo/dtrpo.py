@@ -1,5 +1,4 @@
 # -*- coding: utf8 -*-
-import tensorflow as tf
 
 from agents.ppo.dppo import DPPO
 from agents.trpo.trpo import trpo_loss

@@ -10,7 +10,7 @@ from misc.noise import OrnsteinUhlenbeckActionNoise
 from misc.network_ops import batch_norm_layer, fan_in_initializer, linear_fan_in
 
 class DDPG(Agent):
-    def __init__(self, env, monitor_path: str, **usercfg):
+    def __init__(self, env, monitor_path: str, **usercfg) -> None:
         super(DDPG, self).__init__(**usercfg)
         self.env = env
         self.monitor_path: str = monitor_path
@@ -61,11 +61,6 @@ class DDPG(Agent):
 
         l2_loss = tf.add_n([self.config["l2_loss_coef"] * tf.nn.l2_loss(var) for var in self.critic_vars])
         self.critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.q_value_output)) + l2_loss
-        self.critic_loss = tf.Print(
-            self.critic_loss,
-            [self.critic_target, self.q_value_output, l2_loss, self.critic_loss],
-            message="QTarget, QOUT, L2, loss=",
-            first_n=200)
         self.critic_train_op = tf.train.AdamOptimizer(
             self.config["critic_learning_rate"],
             name="critic_optimizer").minimize(self.critic_loss)

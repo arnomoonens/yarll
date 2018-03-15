@@ -11,6 +11,10 @@ ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
 from agents.env_runner import EnvRunner
 from misc.utils import FastSaver
 
+def ppo_loss(old_log, new_log, epsilon, advantage):
+    ratio = tf.exp(new_log - old_log)
+    ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
+    return tf.minimum(ratio * advantage, ratio_clipped * advantage)
 
 class PPO(Agent):
     """Proximal Policy Optimization agent."""
@@ -125,10 +129,7 @@ class PPO(Agent):
         return
 
     def make_actor_loss(self, old_network, new_network, advantage):
-        epsilon = self.config["cso_epsilon"]
-        ratio = tf.exp(new_network.action_log_prob - old_network.action_log_prob)
-        ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
-        return tf.minimum(ratio * advantage, ratio_clipped * advantage)
+        return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_coef"], advantage)
 
     def build_networks(self):
         raise NotImplementedError

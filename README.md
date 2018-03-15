@@ -13,6 +13,8 @@ Different algorithms have currently been implemented:
 - [Deep Deterministic Policy Gradient (DDPG)](./agents/ddpg.py)
 - [Proximal Policy Optimization (PPO)](./agents/ppo/ppo.py)
 - [Distributed Policy Optimization (DPPO)](./agents/ppo/dppo.py)
+- [Trust Region Policy Optimization (TRPO)](./agents/trpo/trpo.py)
+- [Distributed Trust Region Policy Optimization (DTRPO)](./agents/trpo/dtrpo.py)
 - [REINFORCE](./agents/reinforce.py) (convolutional neural network part has not been tested yet)
 - [Cross-Entropy Method](./agents/cem.py)
 - [Sarsa with with function approximation and eligibility traces](./agents/sarsa/sarsa_fa.py)

@@ -7,9 +7,9 @@ from mpi4py import MPI
 import numpy as np
 
 from agents.agent import Agent
+from agents.ppo.ppo import ppo_loss
 from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
-from agents.ppo.ppo import cso_loss
 from misc.utils import FastSaver
 
 
@@ -21,8 +21,8 @@ class DPPO(Agent):
     def __init__(self, env, monitor_path, **usercfg):
         super(DPPO, self).__init__()
         self.env = env
-        self.env_name = env.spec.id
-        self.monitor_path = monitor_path
+        self.env_name: str = env.spec.id
+        self.monitor_path: str = monitor_path
 
         self.comm = MPI.COMM_SELF
 
@@ -48,7 +48,7 @@ class DPPO(Agent):
 
         self.task_type = None  # To be filled in by subclasses
 
-        self.n_updates = 0
+        self.n_updates: int = 0
 
         with tf.variable_scope("new_network"):
             self.new_network = self.build_networks()
@@ -80,8 +80,7 @@ class DPPO(Agent):
             *[v1.assign(v2) for v1, v2 in zip(self.old_network_vars, self.new_network_vars)])
 
         # Reduces by taking the mean instead of summing
-        self.actor_loss = -tf.reduce_mean(cso_loss(
-            self.old_network, self.new_network, self.config["cso_epsilon"], self.advantage))
+        self.actor_loss = -tf.reduce_mean(self.make_actor_loss(self.old_network, self.new_network, self.advantage))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.ret))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
@@ -130,7 +129,8 @@ class DPPO(Agent):
         optimizer_variables = [var for var in tf.global_variables() if var.name.startswith("optimizer")]
         self.init_op = tf.variables_initializer(self.new_network_vars + optimizer_variables + [self._global_step])
 
-        return
+    def make_actor_loss(self, old_network, new_network, advantage):
+        return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_coef"], advantage)
 
     def build_networks(self):
         raise NotImplementedError

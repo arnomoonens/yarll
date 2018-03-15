@@ -1,26 +1,23 @@
 # -*- coding: utf8 -*-
 import tensorflow as tf
 
-from agents.ppo.ppo import PPO
+from agents.ppo.dppo import DPPO
+from agents.trpo.trpo import trpo_loss
 from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
-from misc.network_ops import kl_divergence
 
-def trpo_loss(old_log, new_log, beta, advantage):
-    return tf.exp(new_log - old_log) * advantage - beta * kl_divergence(old_log, new_log)
-
-class TRPO(PPO):
+class DTRPO(DPPO):
     """Trust Region Policy Optimization agent."""
 
-    def __init__(self, env, monitor_path: str, video=False, **usercfg) -> None:
-        usercfg["kl_coef"] = 1.0 # beta
-        super(TRPO, self).__init__(env, monitor_path, video, **usercfg)
+    def __init__(self, env, monitor_path: str, **usercfg) -> None:
+        usercfg["kl_coef"] = 1.0  # beta
+        super(DTRPO, self).__init__(env, monitor_path, **usercfg)
 
     def make_actor_loss(self, old_network, new_network, advantage):
         return trpo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["kl_coef"], advantage)
 
 
-class TRPODiscrete(TRPO):
+class DTRPODiscrete(DTRPO):
     def build_networks(self) -> ActorCriticNetworkDiscrete:
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
@@ -29,7 +26,7 @@ class TRPODiscrete(TRPO):
             self.config["n_hidden_layers"])
 
 
-class TRPODiscreteCNN(TRPODiscrete):
+class DTRPODiscreteCNN(DTRPODiscrete):
     def build_networks(self) -> ActorCriticNetworkDiscreteCNN:
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
@@ -37,7 +34,7 @@ class TRPODiscreteCNN(TRPODiscrete):
             self.config["n_hidden_units"])
 
 
-class TRPOContinuous(TRPO):
+class DTRPOContinuous(DTRPO):
     def build_networks(self) -> ActorCriticNetworkContinuous:
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),

@@ -1,0 +1,18 @@
+{
+    "experiment_name": "Pong-REINFORCE",
+    "environments": {
+        "type": "single",
+        "source": "PongDeterministic-v4"
+    },
+    "agent": {
+        "name": "PPO",
+        "args": {
+            "monitor_path": "/tmp/CartPole-v0-KT",
+			"RNN": true,
+            "video": false,
+            "save_model": true,
+            "monitor": true,
+			"T_max": 8000
+        }
+    }
+}

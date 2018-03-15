@@ -93,7 +93,7 @@ ENV/
 /DeepRL.sublime-workspace
 Environment/*.json
 *.orig
-*-experiment.json
+/*-experiment.json
 *~
 .*.swp
 .vscode/

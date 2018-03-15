@@ -1,0 +1,16 @@
+{
+    "experiment_name": "CartPole-CEM",
+    "environments": {
+        "type": "single",
+        "source": "CartPole-v0"
+    },
+    "agent": {
+        "name": "REINFORCE",
+        "args": {
+            "monitor_path": "/tmp/CartPole-v0-RE",
+            "video": false,
+            "save_model": true,
+            "monitor": true
+        }
+    }
+}

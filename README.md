@@ -41,15 +41,15 @@ pip install -r requirements.txt
 
 ### Algorithms/experiments
 
-You can run algorithms by passing an experiment specification (in _json_ format) to `main.py`:
+You can run algorithms by passing the path to an experiment specification (which is a file in _json_ format) to `main.py`:
 
 ```Shell
 
-python main.py <experiment_description>
+python main.py <path_to_experiment_specification>
 
 ```
 
-[Example of an experiment specification](./experiment_spec_example.json)
+Examples of experiment specifications can be found in the [_experiment_specs_](./experiment_specs) folder.
 
 ### Statistics
 

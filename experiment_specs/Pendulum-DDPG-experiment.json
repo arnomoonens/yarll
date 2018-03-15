@@ -1,0 +1,18 @@
+{
+    "experiment_name": "CartPole-PPO",
+    "environments": {
+        "type": "single",
+        "source": "Pendulum-v0"
+    },
+    "agent": {
+        "name": "DDPG",
+        "args": {
+            "monitor_path": "/tmp/CartPole-v0-PPO",
+            "video": false,
+            "n_hidden_units": 64,
+            "save_model": true,
+            "monitor": true,
+	        "n_episodes": 400000
+        }
+    }
+}

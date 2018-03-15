@@ -1,5 +1,5 @@
 {
-    "experiment_name": "CartPole-SarsaFA",
+    "experiment_name": "MountainCar-SarsaFA",
     "environments": {
         "type": "single",
         "source": "MountainCar-v0"
@@ -7,8 +7,8 @@
     "agent": {
         "name": "SarsaFA",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-SarsaFA",
-            "video": false,
+            "monitor_path": "/tmp/MountainCar-SarsaFA",
+            "video": true,
             "save_model": true,
             "monitor": true
         }

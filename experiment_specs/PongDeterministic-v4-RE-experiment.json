@@ -12,8 +12,7 @@
             "video": false,
             "save_model": true,
             "monitor": true,
-            "n_iter": 200,
-            "switch_at_iter": 10
+            "n_iter": 200
         }
     }
 }

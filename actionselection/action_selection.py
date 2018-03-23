@@ -5,5 +5,5 @@ class ActionSelection(object):
         return
 
     @staticmethod
-    def select_action(self, probabilities):
-        return
+    def select_action(probabilities):
+        raise NotImplementedError()

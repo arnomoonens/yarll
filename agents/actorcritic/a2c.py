@@ -2,8 +2,8 @@
 
 import os
 import logging
-import numpy as np
 import tensorflow as tf
+import numpy as np
 
 from gym import wrappers
 
@@ -14,8 +14,7 @@ ActorCriticNetworkContinuous, ActorCriticContinuousLoss
 from agents.env_runner import EnvRunner
 from misc.utils import discount_rewards, FastSaver
 
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Don't use the scientific notation to print results
 np.set_printoptions(suppress=True)
@@ -24,7 +23,7 @@ np.set_printoptions(suppress=True)
 class A2C(Agent):
     """Advantage Actor Critic"""
 
-    def __init__(self, env, monitor_path, video=True, **usercfg):
+    def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(A2C, self).__init__(**usercfg)
         self.monitor_path = monitor_path
 
@@ -116,12 +115,12 @@ class A2C(Agent):
     def get_critic_value(self, state, features):
         return self.session.run([self.ac_net.value], feed_dict={self.states: state})[0].flatten()
 
-    def choose_action(self, state, features):
+    def choose_action(self, state, features) -> dict:
         action, value = self.session.run(
             [self.ac_net.action, self.ac_net.value], feed_dict={self.states: [state]})
         return {"action": action, "value": value[0]}
 
-    def get_env_action(self, action):
+    def get_env_action(self, action) -> int:
         return np.argmax(action)
 
     def learn(self):
@@ -190,7 +189,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
             self.config["n_hidden_units"])
         self.initial_features = self.ac_net.state_init
 
-    def choose_action(self, state, features):
+    def choose_action(self, state, features) -> dict:
         """Choose an action."""
         feed_dict = {
             self.ac_net.states: [state],

@@ -4,8 +4,9 @@
 Functions and networks for actor-critic agents.
 """
 
-import numpy as np
+from typing import Sequence
 import tensorflow as tf
+import numpy as np
 
 from misc.network_ops import normalized_columns_initializer, linear, conv2d, flatten
 
@@ -13,7 +14,7 @@ from misc.network_ops import normalized_columns_initializer, linear, conv2d, fla
 class ActorCriticNetworkDiscrete(object):
     """Neural network for the Actor of an Actor-Critic algorithm using a discrete action space"""
 
-    def __init__(self, state_shape, n_actions, n_hidden_units, n_hidden_layers):
+    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
         super(ActorCriticNetworkDiscrete, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
@@ -55,7 +56,7 @@ class ActorCriticNetworkDiscrete(object):
 class ActorCriticNetworkDiscreteCNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
-    def __init__(self, state_shape, n_actions, n_hidden, summary=True):
+    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden: int, summary: bool = True) -> None:
         super(ActorCriticNetworkDiscreteCNN, self).__init__()
         self.state_shape = state_shape
         self.n_actions = n_actions
@@ -101,9 +102,9 @@ class ActorCriticNetworkDiscreteCNN(object):
 class ActorCriticNetworkDiscreteCNNRNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
-    def __init__(self, state_shape: list, n_actions: int, n_hidden: int, summary: bool = True):
+    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden: int, summary: bool = True) -> None:
         super(ActorCriticNetworkDiscreteCNNRNN, self).__init__()
-        self.state_shape: list = state_shape
+        self.state_shape: Sequence[int] = state_shape
         self.n_actions: int = n_actions
         self.n_hidden: int = n_hidden
         self.summary: bool = summary
@@ -158,7 +159,7 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         self.entropy = self.probs * self.log_probs
 
 
-def ActorCriticDiscreteLoss(network, advantage, ret, vf_coef=0.5, entropy_coef=0.01, reducer="sum"):
+def ActorCriticDiscreteLoss(network, advantage, ret, vf_coef: float = 0.5, entropy_coef: float = 0.01, reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     log_probs = tf.nn.log_softmax(network.logits)
     actor_loss = - \
@@ -173,7 +174,7 @@ def ActorCriticDiscreteLoss(network, advantage, ret, vf_coef=0.5, entropy_coef=0
 class ActorCriticNetworkContinuous(object):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
 
-    def __init__(self, state_shape, action_space, n_hidden_units, n_hidden_layers=1):
+    def __init__(self, state_shape: Sequence[int], action_space, n_hidden_units: int, n_hidden_layers: int = 1) -> None:
         super(ActorCriticNetworkContinuous, self).__init__()
         self.state_shape = state_shape
 
@@ -217,7 +218,7 @@ class ActorCriticNetworkContinuous(object):
         self.entropy = -tf.reduce_sum(log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
 
-def ActorCriticContinuousLoss(network, advantage, ret, entropy_coef=0.01, reducer: str = "sum"):
+def ActorCriticContinuousLoss(network, advantage, ret, entropy_coef: float = 0.01, reducer: str = "sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     actor_loss = - \
         tf_reducer(network.normal_dist.log_prob(

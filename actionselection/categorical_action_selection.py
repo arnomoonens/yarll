@@ -10,12 +10,12 @@ class ProbabilisticCategoricalActionSelection(CategoricalActionSelection):
     """Sample from categorical distribution, specified by a vector of class probabilities"""
 
     @staticmethod
-    def select_action(self, probabilities):
+    def select_action(probabilities):
         return np.random.choice(len(probabilities), p=probabilities)
 
 class MaxCategoricalActionSelection(CategoricalActionSelection):
     """Choose the action with the highest probability."""
 
     @staticmethod
-    def select_action(self, probabilities):
+    def select_action(probabilities):
         return np.argmax(probabilities)

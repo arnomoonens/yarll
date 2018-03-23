@@ -14,9 +14,20 @@ from misc.exceptions import WrongShapeError
 # Policies
 # ================================================================
 
-class DeterministicDiscreteActionLinearPolicy(object):
+class Policy(object):
+    """
+    Cross-Entropy Method policy.
+    """
+
+    def act(self, ob):
+        """
+        Decide which action to take given an observation.
+        """
+        raise NotImplementedError()
+
+class DeterministicDiscreteActionLinearPolicy(Policy):
     """Deterministicially select an action from a discrete action space using a linear function."""
-    def __init__(self, theta, ob_space, ac_space):
+    def __init__(self, theta, ob_space, ac_space) -> None:
         """
         dim_ob: dimension of observations
         n_actions: number of actions
@@ -36,9 +47,9 @@ class DeterministicDiscreteActionLinearPolicy(object):
         a = y.argmax()
         return a
 
-class DeterministicContinuousActionLinearPolicy(object):
+class DeterministicContinuousActionLinearPolicy(Policy):
     """Deterministicially select an action from a continuous action space using a linear function."""
-    def __init__(self, theta, ob_space, ac_space):
+    def __init__(self, theta, ob_space, ac_space) -> None:
         """
         dim_ob: dimension of observations
         dim_ac: dimension of action vector
@@ -59,7 +70,7 @@ class DeterministicContinuousActionLinearPolicy(object):
 
 class CEM(Agent):
     """Cross-Entropy Method learner"""
-    def __init__(self, env, monitor_path, video=True, **usercfg):
+    def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(CEM, self).__init__(**usercfg)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.config.update(dict(
@@ -79,7 +90,7 @@ class CEM(Agent):
         self.theta_mean = np.zeros(self.dim_theta)
         self.theta_std = np.ones(self.dim_theta)
 
-    def make_policy(self, theta):
+    def make_policy(self, theta) -> Policy:
         if isinstance(self.env.action_space, Discrete):
             return DeterministicDiscreteActionLinearPolicy(theta, self.env.observation_space, self.env.action_space)
         elif isinstance(self.env.action_space, Box):
@@ -87,12 +98,12 @@ class CEM(Agent):
         else:
             raise NotImplementedError
 
-    def noisy_evaluation(self, theta):
-        policy = self.make_policy(theta)
+    def noisy_evaluation(self, theta) -> float:
+        policy: Policy = self.make_policy(theta)
         rew = self.do_episode(policy)
         return rew
 
-    def do_episode(self, policy, render=False):
+    def do_episode(self, policy: Policy, render=False):
         total_rew = 0
         ob = self.env.reset()
         for _ in range(self.config["num_steps"]):
@@ -108,7 +119,8 @@ class CEM(Agent):
     def learn(self):
         for iteration in range(self.config["n_iter"]):
             # Sample parameter vectors
-            thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta) for _ in range(self.config["batch_size"])]
+            thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta)
+                      for _ in range(self.config["batch_size"])]
             rewards = [self.noisy_evaluation(theta) for theta in thetas]
             # Get elite parameters
             n_elite = int(self.config["batch_size"] * self.config["elite_frac"])
@@ -117,6 +129,9 @@ class CEM(Agent):
             # Update theta_mean, theta_std
             self.theta_mean = np.mean(elite_thetas, axis=0)
             self.theta_std = np.std(elite_thetas, axis=0)
-            print("iteration {:d}. mean f: {:>8.3g}. max f: {:>8.3g}".format(iteration, np.mean(rewards), np.max(rewards)))
+            print("iteration {:d}. mean f: {:>8.3g}. max f: {:>8.3g}".format(
+                iteration,
+                np.mean(rewards),
+                np.max(rewards)))
             self.do_episode(self.make_policy(self.theta_mean))
         self.do_episode(self.make_policy(self.theta_mean), render=True)

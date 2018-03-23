@@ -5,6 +5,7 @@ import json
 import os
 from os import path
 import random
+from typing import Any, Callable, Sequence, Union
 import pkg_resources
 from scipy import signal
 import numpy as np
@@ -14,7 +15,7 @@ import cv2
 import gym
 from gym.spaces.box import Box
 
-def discount_rewards(x, gamma):
+def discount_rewards(x: Sequence, gamma: float) -> np.ndarray:
     """
     Given vector x, computes a vector y such that
     y[i] = x[i] + gamma * x[i+1] + gamma^2 x[i+2] + ...
@@ -22,14 +23,14 @@ def discount_rewards(x, gamma):
     return signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
 
 # Source: http://stackoverflow.com/a/12201744/1735784
-def rgb2gray(rgb):
+def rgb2gray(rgb: np.ndarray) -> np.ndarray:
     """
     Convert an RGB image to a grayscale image.
     Uses the formula Y' = 0.299*R + 0.587*G + 0.114*B
     """
     return np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
 
-def _process_frame42(frame):
+def _process_frame42(frame: np.ndarray) -> np.ndarray:
     frame = frame[34:34 + 160, :160]
     # Resize by half, then down to 42x42 (essentially mipmapping). If
     # we resize directly we lose pixels that, when mapped to 42x42,
@@ -47,11 +48,11 @@ class AtariRescale42x42(gym.ObservationWrapper):
         super(AtariRescale42x42, self).__init__(env)
         self.observation_space = Box(0.0, 1.0, [42, 42, 1])
 
-    def observation(self, observation):
+    def observation(self, observation: np.ndarray) -> np.ndarray:
         return _process_frame42(observation)
 
 
-def preprocess_image(img):
+def preprocess_image(img: np.ndarray) -> np.ndarray:
     """
     Preprocess an image by converting it to grayscale and dividing its values by 256
     """
@@ -59,7 +60,7 @@ def preprocess_image(img):
     img = img[::2, ::2]  # downsample by factor of 2
     return (rgb2gray(img) / 256.0)[:, :, None]
 
-def save_config(directory, config, envs):
+def save_config(directory: str, config: dict, envs: list):
     """Save the configuration of an agent to a file."""
     config["envs"] = envs
     # Save git information if possible
@@ -77,12 +78,12 @@ def save_config(directory, config, envs):
     with open(path.join(directory, "config.json"), "w") as outfile:
         json.dump(config, outfile, indent=4)
 
-def json_to_dict(filename):
+def json_to_dict(filename: str) -> dict:
     """Load a json file as a dictionary."""
     with open(filename) as f:
         return json.load(f)
 
-def ge(minimum):
+def ge(minimum: int) -> Callable[[Any], int]:
     """Require the value for an argparse argument to be an integer >= minimum."""
     def f(value):
         ivalue = int(value)
@@ -102,23 +103,21 @@ class FastSaver(tf.train.Saver):
     """
     def save(self, sess, save_path, global_step=None, latest_filename=None,
              meta_graph_suffix="meta", write_meta_graph=True):
-        super(FastSaver, self).save(sess, save_path, global_step, latest_filename,
-                                    meta_graph_suffix, False)
+        super(FastSaver, self).save(sess, save_path, global_step, latest_filename, meta_graph_suffix, False)
 
-def set_seed(seed):
+def set_seed(seed: int):
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
     random.seed(seed)
     tf.set_random_seed(seed)
-    return
 
-def load(name):
+def load(name: str):
     """Load an object by string."""
     entry_point = pkg_resources.EntryPoint.parse("x={}".format(name))
     result = entry_point.load(False)
     return result
 
-def cluster_spec(num_workers, num_ps, num_masters=0):
+def cluster_spec(num_workers: int, num_ps: int, num_masters: int = 0) -> dict:
     """
     Generate a cluster specification (for distributed Tensorflow).
     """
@@ -177,5 +176,6 @@ class RunningMeanStd(object):
         else:
             return self.M2 / (self.count - 1)
 
-def normalize(x, mean, std):
+number_array = Union[int, float, np.ndarray]
+def normalize(x: number_array, mean: number_array, std: number_array) -> Union[float, np.ndarray]:
     return (x - mean) / std

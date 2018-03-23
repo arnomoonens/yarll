@@ -129,7 +129,7 @@ class PPO(Agent):
         return
 
     def make_actor_loss(self, old_network, new_network, advantage):
-        return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_coef"], advantage)
+        return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_epsilon"], advantage)
 
     def build_networks(self):
         raise NotImplementedError
@@ -160,11 +160,11 @@ class PPO(Agent):
         lambda_ = self.config["gae_lambda"]
         terminals = np.append(experiences.terminals, 0)
         gaelam = advantages = np.empty(T, 'float32')
-        lastgaelam = 0
+        last_gaelam = 0
         for t in reversed(range(T)):
             nonterminal = 1 - terminals[t + 1]
             delta = experiences.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
-            gaelam[t] = lastgaelam = delta + gamma * lambda_ * nonterminal * lastgaelam
+            gaelam[t] = last_gaelam = delta + gamma * lambda_ * nonterminal * last_gaelam
         rs = advantages + experiences.values
         return experiences.states, experiences.actions, advantages, rs, experiences.features
 
@@ -172,7 +172,11 @@ class PPO(Agent):
         """Run learning algorithm"""
         config = self.config
         n_updates = 0
+        changed_env = False
         for _ in range(config["n_iter"]):
+            if self.env_runner.n_episodes >= 1000 and not changed_env:
+                self.env.env.env.change_parameters(masscart=1.0558, length=4.0128, masspole=3.3189)
+                changed_env = True
             # Collect trajectories until we get timesteps_per_batch total timesteps
             states, actions, advs, rs, _ = self.get_processed_trajectories()
             advs = np.array(advs)

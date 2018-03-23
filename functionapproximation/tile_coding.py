@@ -1,12 +1,13 @@
 # -*- coding: utf8 -*-
 
+from typing import List, Tuple
 import numpy as np
 
 from functionapproximation.function_approximator import FunctionApproximator
 
 class TileCoding(FunctionApproximator):
     """Map states to tiles"""
-    def __init__(self, x_low, x_high, y_low, y_high, n_tilings, n_y_tiles, n_x_tiles, n_actions):
+    def __init__(self, x_low, x_high, y_low, y_high, n_tilings: int, n_y_tiles: int, n_x_tiles: int, n_actions: int) -> None:
         super(TileCoding, self).__init__(n_actions)
         self.x_low = x_low
         self.x_high = x_high
@@ -28,10 +29,13 @@ class TileCoding(FunctionApproximator):
         self.tiling_width = self.tile_width * self.n_x_tiles
         self.tiling_height = self.tile_height * self.n_y_tiles
 
-        self.tile_starts = []
+        self.tile_starts: List[Tuple[float, float]] = []
 
-        for _ in range(self.n_tilings):  # Each tiling starts at a random offset that is a fraction of the tile width and height
-            self.tile_starts.append((self.x_low + np.random.rand() * self.tile_width, self.y_low + np.random.rand() * self.tile_height))
+        # Each tiling starts at a random offset that is a fraction of the tile width and height
+        for _ in range(self.n_tilings):
+            self.tile_starts.append((
+                self.x_low + np.random.rand() * self.tile_width,
+                self.y_low + np.random.rand() * self.tile_height))
 
         self.features_shape = (self.n_tilings, self.n_y_tiles, self.n_x_tiles, self.n_actions)
         self.thetas = np.random.uniform(size=self.features_shape)  # Initialise randomly with values between 0 and 1
@@ -52,6 +56,7 @@ class TileCoding(FunctionApproximator):
         for i in range(self.n_tilings):
             shifted = state - self.tile_starts[i]
             x, y = shifted
-            if (x >= 0 and x <= self.tiling_width) and (y >= 0 and y <= self.tiling_height):
-                result[i][int(y // self.tile_height)][int(x // self.tile_width)][action] = 1  # Set the feature to active
+            if(x >= 0 and x <= self.tiling_width) and(y >= 0 and y <= self.tiling_height):
+                # Set the feature to active
+                result[i][int(y // self.tile_height)][int(x // self.tile_width)][action] = 1
         return result

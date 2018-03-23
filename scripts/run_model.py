@@ -17,7 +17,7 @@ class ModelRunner(object):
     Run an already learned model.
     Currently only supports one variation of an environment.
     """
-    def __init__(self, env, model_directory, save_directory, **usercfg):
+    def __init__(self, env, model_directory: str, save_directory: str, **usercfg):
         super(ModelRunner, self).__init__()
         self.env = env
         self.model_directory = model_directory
@@ -39,7 +39,7 @@ class ModelRunner(object):
         """Choose an action."""
         return self.session.run([self.action], feed_dict={self.states: [state]})[0]
 
-    def get_trajectory(self, render=False):
+    def get_trajectory(self, render: bool = False):
         """
         Run agent-environment loop for one whole episode (trajectory)
         Return dictionary of results

@@ -13,7 +13,7 @@
             "save_model": true,
             "monitor": true,
             "T_max": 8000,
-            "n_tasks": 1,
+            "n_tasks": 4,
             "shared_optimizer": false
         }
     }

@@ -6,8 +6,9 @@ import queue
 import threading
 import argparse
 import sys
-import numpy as np
+from typing import Optional
 import tensorflow as tf
+import numpy as np
 from gym import wrappers
 
 sys.path.insert(0, os.path.abspath(os.path.join(
@@ -108,7 +109,7 @@ class RunnerThread(threading.Thread):
 class A3CTask(object):
     """Single A3C learner thread."""
 
-    def __init__(self, env_id, task_id, cluster, monitor_path, config, clip_gradients=True, video=False, seed=None):
+    def __init__(self, env_id: str, task_id: int, cluster, monitor_path: str, config: dict, clip_gradients: bool = True, video: bool = False, seed: Optional[int] = None) -> None:
         super(A3CTask, self).__init__()
         self.task_id = task_id
         self.config = config
@@ -318,7 +319,7 @@ class A3CTask(object):
 class A3CTaskDiscrete(A3CTask):
     """A3CTask for a discrete action space."""
 
-    def __init__(self, env_id, task_id, cluster, monitor_path, config, clip_gradients=True, video=False, seed=None):
+    def __init__(self, env_id: str, task_id: int, cluster, monitor_path: str, config: dict, clip_gradients: bool = True, video: bool = False, seed: Optional[int] = None) -> None:
         self.make_loss = ActorCriticDiscreteLoss
         super(A3CTaskDiscrete, self).__init__(env_id, task_id, cluster,
                                               monitor_path, config, clip_gradients, video, seed)
@@ -335,7 +336,7 @@ class A3CTaskDiscrete(A3CTask):
 class A3CTaskDiscreteCNN(A3CTaskDiscrete):
     """A3CTask for a discrete action space."""
 
-    def __init__(self, env_id, task_id, cluster, monitor_path, config, clip_gradients=True, video=False, seed=None):
+    def __init__(self, env_id: str, task_id: int, cluster, monitor_path: str, config: dict, clip_gradients: bool = True, video: bool = False, seed: Optional[int] = None) -> None:
         self.make_loss = ActorCriticDiscreteLoss
         super(A3CTaskDiscreteCNN, self).__init__(
             env_id,
@@ -360,7 +361,7 @@ class A3CTaskDiscreteCNN(A3CTaskDiscrete):
 class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
     """A3CTask for a discrete action space."""
 
-    def __init__(self, env_id, task_id, cluster, monitor_path, config, clip_gradients=True, video=False, seed=None):
+    def __init__(self, env_id: str, task_id: int, cluster, monitor_path: str, config: dict, clip_gradients: bool = True, video: bool = False, seed: Optional[int] = None) -> None:
         self.make_loss = ActorCriticDiscreteLoss
         super(A3CTaskDiscreteCNNRNN, self).__init__(
             env_id,
@@ -389,8 +390,7 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
 
         feed_dict[self.local_network.rnn_state_in] = features
         action, rnn_state, value = tf.get_default_session().run(
-            [self.local_network.action, self.local_network.rnn_state_out,
-                self.local_network.value],
+            [self.local_network.action, self.local_network.rnn_state_out, self.local_network.value],
             feed_dict=feed_dict)
         return {"action": action, "value": value, "features": rnn_state}
 
@@ -405,7 +405,7 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
 class A3CTaskContinuous(A3CTask):
     """A3CTask for a continuous action space."""
 
-    def __init__(self, env_id, task_id, cluster, monitor_path, config, clip_gradients=True, video=False, seed=None):
+    def __init__(self, env_id: str, task_id: int, cluster, monitor_path: str, config: dict, clip_gradients: bool = True, video: bool = False, seed: Optional[int] = None) -> None:
         self.make_loss = ActorCriticContinuousLoss
         super(A3CTaskContinuous, self).__init__(
             env_id,

@@ -13,10 +13,10 @@ import tensorflow as tf
 from gym import wrappers
 
 from agents.agent import Agent
+from agents.env_runner import EnvRunner
 from misc.utils import discount_rewards, flatten, FastSaver
 from misc.network_ops import conv2d, mu_sigma_layer
 from misc.reporter import Reporter
-from agents.env_runner import EnvRunner
 
 class REINFORCE(Agent):
     """

@@ -6,7 +6,7 @@ import numpy as np
 def flatten(x):
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
 
-def normalized_columns_initializer(std=1.0):
+def normalized_columns_initializer(std: float = 1.0):
     def _initializer(shape, dtype=None, partition_info=None):
         out = np.random.randn(*shape).astype(np.float32)
         out *= std / np.sqrt(np.square(out).sum(axis=0, keepdims=True))
@@ -59,7 +59,7 @@ def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", 
                             collections=collections)
         return tf.nn.conv2d(x, w, stride_shape, pad) + b
 
-def mu_sigma_layer(inputs, n_outputs):
+def mu_sigma_layer(inputs, n_outputs: int):
     """
     Create a layer that makes a mu and sigma,
     e.g. to use in continuous action spaces.
@@ -85,7 +85,7 @@ def mu_sigma_layer(inputs, n_outputs):
     sigma = tf.nn.softplus(sigma) + 1e-5
     return mu, sigma
 
-def create_accumulative_gradients_op(net_vars, identifier=0):
+def create_accumulative_gradients_op(net_vars, identifier: int = 0):
     """Make an operation to create accumulative gradients"""
     accum_grads = []
     with tf.name_scope(name="create_accum_{}".format(identifier), values=net_vars):
@@ -96,7 +96,7 @@ def create_accumulative_gradients_op(net_vars, identifier=0):
             accum_grads.append(accum_grad)
         return accum_grads
 
-def add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier=0):
+def add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier: int = 0):
     """Make an operation to add a gradient to the total"""
     accum_grad_ops = []
     with tf.name_scope(name="grad_ops_{}".format(identifier), values=net_vars):
@@ -110,7 +110,7 @@ def add_accumulative_gradients_op(net_vars, accum_grads, loss, identifier=0):
             accum_grad_ops.append(accum_ops)
         return tf.group(*accum_grad_ops, name="accum_group_{}".format(identifier))
 
-def reset_accumulative_gradients_op(net_vars, accum_grads, identifier=0):
+def reset_accumulative_gradients_op(net_vars, accum_grads, identifier: int = 0):
     """Make an operation to reset the accumulation to zero."""
     reset_grad_ops = []
     with tf.name_scope(name="reset_grad_ops_{}".format(identifier), values=net_vars):
@@ -121,7 +121,7 @@ def reset_accumulative_gradients_op(net_vars, accum_grads, identifier=0):
             reset_grad_ops.append(reset_ops)
         return tf.group(*reset_grad_ops, name="reset_accum_group_{}".format(identifier))
 
-def batch_norm_layer(x, training_phase, scope_bn, activation=None):
+def batch_norm_layer(x, training_phase, scope_bn: str, activation=None):
     return tf.cond(
         training_phase,
         lambda: tf.contrib.layers.batch_norm(

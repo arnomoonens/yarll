@@ -53,14 +53,21 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
 parser = argparse.ArgumentParser()
 parser.add_argument("experiment", type=str, help="JSON file with the experiment specification.")
 parser.add_argument("--description", type=str, help="Experiment description.")
-parser.add_argument("--monitor_path", metavar="monitor_path", default=None, type=str, help="Path where Gym monitor files may be saved.")
-parser.add_argument("--only_last", default=False, action="store_true", help="Only use the last environment in a list of provided environments.")
+parser.add_argument("--monitor_path", metavar="monitor_path", default=None, type=str,
+                    help="Path where Gym monitor files may be saved.")
+parser.add_argument("--only_last", default=False, action="store_true",
+                    help="Only use the last environment in a list of provided environments.")
 parser.add_argument("--seed", default=None, type=int, help="Seed to use for the experiment.")
 
 def main():
     args = parser.parse_args()
-    run_experiment(json_to_dict(args.experiment), monitor_path=args.monitor_path, only_last=args.only_last, description=args.description, seed=args.seed)
-
+    run_experiment(
+        json_to_dict(args.experiment),
+        monitor_path=args.monitor_path,
+        only_last=args.only_last,
+        description=args.description,
+        seed=args.seed
+    )
 
 if __name__ == '__main__':
     main()

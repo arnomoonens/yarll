@@ -59,7 +59,7 @@ def exponential_smoothing(a, weight):
 def create_smoother(f, *args):
     return lambda x: f(x, *args)
 
-def plot(x, y, x_label, scalar, xmax=None, ymin=None, ymax=None):
+def plot(x, y, x_label: str, scalar, xmax=None, ymin=None, ymax=None):
     x_label_upper = x_label[0].upper() + x_label[1:]
     fig = plt.figure()
     plt.plot(x, y)
@@ -70,7 +70,7 @@ def plot(x, y, x_label, scalar, xmax=None, ymin=None, ymax=None):
     plt.title("{} per {}".format(scalar, x_label))
     fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
 
-def plot_tasks(data, x_label, smoothing_function=None, xmin=None, xmax=None, max_reward=None, legend=True, save_directory=None, show_plots=True):
+def plot_tasks(data, x_label: str, smoothing_function=None, xmin=None, xmax=None, max_reward=None, legend=True, save_directory=None, show_plots=True):
     x_label_upper = x_label[0].upper() + x_label[1:]
     for scalar, tasks in data.items():
         fig = plt.figure()

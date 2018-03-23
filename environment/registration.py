@@ -3,7 +3,7 @@
 # Inspired by https://github.com/openai/gym/blob/master/gym/envs/registration.py
 # When making an environment, we first look if we registered a version of it ourselves.
 # Else, we make just make one using the Environment class.
-from typing import List
+from typing import Sequence
 import numpy as np
 
 import gym
@@ -53,7 +53,7 @@ def make(env_id: str, **kwargs):
             env = cls(env)
     return env
 
-def make_environments(descriptions: List[dict]) -> list:
+def make_environments(descriptions: Sequence[dict]) -> list:
     """Make environments using a list of descriptions."""
     return [make(**d) for d in descriptions]
 

@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import gym
 from environment.wrappers import DescriptionWrapper
 
 class Acrobot(DescriptionWrapper):
@@ -33,7 +34,7 @@ class Acrobot(DescriptionWrapper):
     ]
 
     def __init__(self, link_length_1=None, link_length_2=None, link_mass_1=None, link_mass_2=None, **kwargs):
-        super(Acrobot, self).__init__("Acrobot-v1", **kwargs)
+        super(Acrobot, self).__init__(gym.make("OldAcrobot-v0"), **kwargs)
         self.link_length_1 = link_length_1
         self.link_length_2 = link_length_2
         self.link_mass_1 = link_mass_1

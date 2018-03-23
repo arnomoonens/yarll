@@ -1,9 +1,9 @@
 # -*- coding: utf8 -*-
 
-import numpy as np
 import logging
-
 import matplotlib
+import numpy as np
+
 gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
 for gui in gui_env:
     try:
@@ -22,7 +22,7 @@ class Reporter(object):
         self.ax1 = None
 
     @staticmethod
-    def print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories):
+    def print_iteration_stats(iteration: int, episode_rewards: np.ndarray, episode_lengths: np.ndarray, total_n_trajectories: int):
         """Print statistics about rewards and episode lengths of the current iteration."""
         logging.info("-----------------")
         logging.info("Iteration: \t\t {}".format(iteration))

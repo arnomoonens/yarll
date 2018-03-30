@@ -1,5 +1,4 @@
-protobuf
 numpy
-gym
+gym>=0.8.0
 tensorflow>=1.2.0
 matplotlib

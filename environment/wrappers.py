@@ -2,9 +2,8 @@
 
 import numpy as np
 import gym
-from gym import Wrapper
 
-class DescriptionWrapper(Wrapper):
+class DescriptionWrapper(gym.Wrapper):
     """
     Wrapper that mantains a description of the environment
     in its metadata.
@@ -16,7 +15,7 @@ class DescriptionWrapper(Wrapper):
         super(DescriptionWrapper, self).__init__(env)
         self.args: dict = kwargs
         self.metadata["changeable_parameters"] = self.changeable_parameters
-        self.metadata["parameters"] = {"name": self.__str__()}
+        self.metadata["parameters"] = {"env_id": self.spec.id}
         self.metadata["parameters"].update(self.changeable_parameters_values())
 
     def changeable_parameters_values(self) -> dict:

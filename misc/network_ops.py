@@ -121,6 +121,9 @@ def reset_accumulative_gradients_op(net_vars, accum_grads, identifier: int = 0):
             reset_grad_ops.append(reset_ops)
         return tf.group(*reset_grad_ops, name="reset_accum_group_{}".format(identifier))
 
+def create_sync_net_op(source_vars, target_vars):
+    return tf.group(*[v1.assign(v2) for v1, v2 in zip(target_vars, source_vars)], name="sync_net")
+
 def batch_norm_layer(x, training_phase, scope_bn: str, activation=None):
     return tf.cond(
         training_phase,
@@ -149,11 +152,11 @@ def batch_norm_layer(x, training_phase, scope_bn: str, activation=None):
 
 
 def kl_divergence(logits1, logits2):
-    a0 = logits1 - tf.reduce_max(logits1, axis=-1, keep_dims=True)
-    a1 = logits2 - tf.reduce_max(logits2, axis=-1, keep_dims=True)
+    a0 = logits1 - tf.reduce_max(logits1, axis=-1, keepdims=True)
+    a1 = logits2 - tf.reduce_max(logits2, axis=-1, keepdims=True)
     ea0 = tf.exp(a0)
     ea1 = tf.exp(a1)
-    z0 = tf.reduce_sum(ea0, axis=-1, keep_dims=True)
-    z1 = tf.reduce_sum(ea1, axis=-1, keep_dims=True)
+    z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
+    z1 = tf.reduce_sum(ea1, axis=-1, keepdims=True)
     p0 = ea0 / z0
     return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=-1)

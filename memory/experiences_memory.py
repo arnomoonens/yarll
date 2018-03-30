@@ -43,7 +43,12 @@ class ExperiencesMemory(object):
 
     @property
     def features(self):
-        return [exp.features for exp in self.experiences]
+        return[exp.features for exp in self.experiences]
+
+    @property
+    def terminal(self):
+        """Last experience is terminal."""
+        return self.experiences[-1].terminal
 
     @property
     def terminals(self):

@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(
 )))
 from environment.registration import make  # pylint: disable=C0413
 from misc.utils import load, json_to_dict  # pylint: disable=C0413
-from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss, ActorCriticNetworkContinuous, ActorCriticContinuousLoss  # pylint: disable=C0413
+from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, actor_critic_discrete_loss, ActorCriticNetworkContinuous, actor_critic_continuous_loss  # pylint: disable=C0413
 from agents.env_runner import EnvRunner  # pylint: disable=C0413
 
 
@@ -112,7 +112,7 @@ class DPPOWorkerDiscrete(DPPOWorker):
     """DPPOWorker for a discrete action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
-        self.make_loss = ActorCriticDiscreteLoss
+        self.make_loss = actor_critic_discrete_loss
         super(DPPOWorkerDiscrete, self).__init__(
             env_id,
             task_id,
@@ -135,7 +135,7 @@ class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
     """DPPOWorker for a discrete action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
-        self.make_loss = ActorCriticDiscreteLoss
+        self.make_loss = actor_critic_discrete_loss
         super(DPPOWorkerDiscreteCNN, self).__init__(
             env_id,
             task_id,
@@ -158,7 +158,7 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
     """DPPOWorker for a discrete action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
-        self.make_loss = ActorCriticDiscreteLoss
+        self.make_loss = actor_critic_discrete_loss
         super(DPPOWorkerDiscreteCNNRNN, self).__init__(
             env_id,
             task_id,
@@ -200,7 +200,7 @@ class DPPOWorkerContinuous(DPPOWorker):
     """DPPOWorker for a continuous action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
-        self.make_loss = ActorCriticContinuousLoss
+        self.make_loss = actor_critic_continuous_loss
         super(DPPOWorkerContinuous, self).__init__(
             env_id,
             task_id,

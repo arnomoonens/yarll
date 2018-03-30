@@ -9,8 +9,8 @@ from gym import wrappers
 
 from agents.agent import Agent
 from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
-ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, ActorCriticDiscreteLoss,\
-ActorCriticNetworkContinuous, ActorCriticContinuousLoss
+ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, actor_critic_discrete_loss,\
+ActorCriticNetworkContinuous, actor_critic_continuous_loss
 from agents.env_runner import EnvRunner
 from misc.utils import discount_rewards, FastSaver
 
@@ -162,7 +162,7 @@ class A2C(Agent):
 
 class A2CDiscrete(A2C):
     def __init__(self, *args, **kwargs):
-        self.make_loss = ActorCriticDiscreteLoss
+        self.make_loss = actor_critic_discrete_loss
         super(A2CDiscrete, self).__init__(*args, **kwargs)
 
     def build_networks(self):
@@ -211,7 +211,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
 
 class A2CContinuous(A2C):
     def __init__(self, *args, **kwargs):
-        self.make_loss = ActorCriticContinuousLoss
+        self.make_loss = actor_critic_continuous_loss
         super(A2CContinuous, self).__init__(*args, **kwargs)
 
     def build_networks(self):

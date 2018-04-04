@@ -15,16 +15,16 @@ from misc.utils import ge
 gym.envs.registration.logger.setLevel(logging.ERROR)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("env_name", type=str, help="Name of environment for which to generate instances")
+parser.add_argument("env_id", type=str, help="Name of environment for which to generate instances")
 parser.add_argument("n", type=ge(1), help="Number of environments to generate")
 parser.add_argument("destination", type=str, help="Where to write the environment descriptions (in json)")
 
 def main():
     args = parser.parse_args()
-    envs = environment.registration.make_random_environments(args.env_name, args.n)
-    dicts = [env.env.to_dict() for env in envs]
+    envs = environment.registration.make_random_environments(args.env_id, args.n)
+    dicts = [env.metadata["parameters"] for env in envs]
     with open(args.destination, "w") as f:
-        json.dump(dicts, f)
+        json.dump(dicts, f, indent=4)
 
 if __name__ == '__main__':
     main()

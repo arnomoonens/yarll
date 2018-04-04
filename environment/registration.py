@@ -70,4 +70,6 @@ def make_random_environments(env_id: str, n_envs: int) -> list:
             else:
                 raise NotImplementedError("Only able to make environments with range parameters.")
         envs.append(make(**args))
+    for env in envs:
+        print(id(env.metadata))
     return envs

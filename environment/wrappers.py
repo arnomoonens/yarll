@@ -13,15 +13,18 @@ class DescriptionWrapper(gym.Wrapper):
 
     def __init__(self, env, **kwargs):
         super(DescriptionWrapper, self).__init__(env)
+
         self.args: dict = kwargs
-        self.metadata["changeable_parameters"] = self.changeable_parameters
+        self.metadata = self.metadata.copy()
+        if "changeable_parameters" not in self.metadata:
+            self.metadata["changeable_parameters"] = self.changeable_parameters
         self.metadata["parameters"] = {"env_id": self.spec.id}
         self.metadata["parameters"].update(self.changeable_parameters_values())
 
     def changeable_parameters_values(self) -> dict:
         params: dict = {}
-        for p in self.changeable_parameters:
-            params[p["name"]] = self.__getattribute__(p["name"])
+        for p in self.metadata["changeable_parameters"]:
+            params[p["name"]] = self.unwrapped.__getattribute__(p["name"])
         return params
 
 class DiscreteObservationWrapper(gym.ObservationWrapper):

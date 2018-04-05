@@ -172,11 +172,7 @@ class PPO(Agent):
         """Run learning algorithm"""
         config = self.config
         n_updates = 0
-        changed_env = False
         for _ in range(config["n_iter"]):
-            if self.env_runner.n_episodes >= 1000 and not changed_env:
-                self.env.env.env.change_parameters(masscart=1.0558, length=4.0128, masspole=3.3189)
-                changed_env = True
             # Collect trajectories until we get timesteps_per_batch total timesteps
             states, actions, advs, rs, _ = self.get_processed_trajectories()
             advs = np.array(advs)

@@ -95,7 +95,7 @@ class ActorCriticNetworkDiscreteCNN(object):
 class ActorCriticNetworkDiscreteCNNRNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
-    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden: int, summary: bool = True) -> None:
+    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden: int, lstm_size: int = 256, summary: bool = True) -> None:
         super(ActorCriticNetworkDiscreteCNNRNN, self).__init__()
         self.state_shape: Sequence[int] = state_shape
         self.n_actions: int = n_actions
@@ -113,7 +113,6 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         # Flatten
         reshape = tf.expand_dims(flatten(x), [0])
 
-        lstm_size = 256
         self.enc_cell = tf.contrib.rnn.BasicLSTMCell(lstm_size)
         lstm_state_size = self.enc_cell.state_size
         c_init = np.zeros((1, lstm_state_size.c), np.float32)
@@ -148,7 +147,15 @@ class ActorCriticNetworkDiscreteCNNRNN(object):
         self.entropy = self.probs * self.log_probs
 
 
-def actor_critic_discrete_loss(logits, probs, value, actions_taken, advantage, ret, vf_coef: float = 0.5, entropy_coef: float = 0.01, reducer="sum"):
+def actor_critic_discrete_loss(logits,
+                               probs,
+                               value,
+                               actions_taken,
+                               advantage,
+                               ret,
+                               vf_coef: float = 0.5,
+                               entropy_coef: float = 0.01,
+                               reducer="sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     log_probs = tf.nn.log_softmax(logits)
     actor_loss = - tf_reducer(tf.reduce_sum(log_probs * actions_taken, [1]) * advantage)

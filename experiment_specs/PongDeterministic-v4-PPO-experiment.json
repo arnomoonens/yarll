@@ -8,7 +8,6 @@
         "name": "PPO",
         "args": {
             "monitor_path": "/tmp/PongDeterministic-v4-PPO",
-            "RNN": true,
             "video": false,
             "save_model": true,
             "monitor": true,

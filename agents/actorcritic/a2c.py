@@ -58,14 +58,8 @@ class A2C(Agent):
         self.advantage = tf.placeholder(tf.float32, [None], name="advantage")
         self.ret = tf.placeholder(tf.float32, [None], name="return")
 
-        self.actor_loss, self.critic_loss, self.loss = self.make_loss(
-            self.ac_net,
-            self.advantage,
-            self.ret,
-            self.config["vf_coef"],
-            self.config["entropy_coef"],
-            self.config["loss_reducer"]
-        )
+        self.actor_loss, self.critic_loss, self.loss = self.make_loss()
+
         self.vars = tf.get_collection(
             tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
@@ -98,15 +92,21 @@ class A2C(Agent):
             tf.add_to_collection("states", self.states)
             self.saver = FastSaver()
         n_steps = tf.to_float(self.n_steps)
-        summary_actor_loss = tf.summary.scalar("Actor_loss", self.actor_loss / n_steps)
-        summary_critic_loss = tf.summary.scalar("Critic_loss", self.critic_loss / n_steps)
-        summary_loss = tf.summary.scalar("Loss", self.loss / n_steps)
+        actor_loss_summary = tf.summary.scalar("model/actor_loss", tf.squeeze(self.actor_loss / n_steps))
+        critic_loss_summary = tf.summary.scalar("model/critic_loss", tf.squeeze(self.critic_loss / n_steps))
+        loss_summary = tf.summary.scalar("model/loss", tf.squeeze(self.loss / n_steps))
         self.loss_summary_op = tf.summary.merge(
-            [summary_actor_loss, summary_critic_loss, summary_loss])
+            [actor_loss_summary, critic_loss_summary, loss_summary])
         self.writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), self.session.graph)
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
         return
+
+    def build_networks(self):
+        return NotImplementedError("Abstract method")
+
+    def make_loss(self):
+        return NotImplementedError("Abstract method")
 
     @property
     def global_step(self):
@@ -162,7 +162,6 @@ class A2C(Agent):
 
 class A2CDiscrete(A2C):
     def __init__(self, *args, **kwargs):
-        self.make_loss = actor_critic_discrete_loss
         super(A2CDiscrete, self).__init__(*args, **kwargs)
 
     def build_networks(self):
@@ -171,6 +170,19 @@ class A2CDiscrete(A2C):
             self.env.action_space.n,
             self.config["n_hidden_units"],
             self.config["n_hidden_layers"])
+
+    def make_loss(self):
+        return actor_critic_discrete_loss(
+            self.ac_net.logits,
+            self.ac_net.probs,
+            self.ac_net.value,
+            self.ac_net.actions_taken,
+            self.advantage,
+            self.ret,
+            self.config["vf_coef"],
+            self.config["entropy_coef"],
+            self.config["loss_reducer"]
+        )
 
 
 class A2CDiscreteCNN(A2CDiscrete):
@@ -211,7 +223,6 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
 
 class A2CContinuous(A2C):
     def __init__(self, *args, **kwargs):
-        self.make_loss = actor_critic_continuous_loss
         super(A2CContinuous, self).__init__(*args, **kwargs)
 
     def build_networks(self):
@@ -220,3 +231,18 @@ class A2CContinuous(A2C):
             self.env.action_space,
             self.config["n_hidden_units"],
             self.config["n_hidden_layers"])
+
+    def make_loss(self):
+        return actor_critic_continuous_loss(
+            self.ac_net.action_log_prob,
+            self.ac_net.entropy,
+            self.ac_net.value,
+            self.advantage,
+            self.ret,
+            self.config["vf_coef"],
+            self.config["entropy_coef"],
+            self.config["loss_reducer"]
+        )
+
+    def get_env_action(self, action):
+        return action

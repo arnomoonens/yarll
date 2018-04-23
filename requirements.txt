@@ -1,4 +1,6 @@
 numpy
 gym>=0.8.0
-tensorflow>=1.2.0
+tensorflow>=1.6.0
 matplotlib
+scipy
+opencv-contrib-python

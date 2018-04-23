@@ -30,6 +30,7 @@ def env_runner(env, policy, n_steps: int, render=False, summary_writer=None):
     """
     episode_steps = 0
     episode_reward = 0
+    n_episodes = 0
     state = env.reset()
     features = policy.initial_features
     timestep_limit = env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')
@@ -51,6 +52,7 @@ def env_runner(env, policy, n_steps: int, render=False, summary_writer=None):
             state = new_state
             features = new_features
             if terminal or episode_steps >= timestep_limit:
+                n_episodes += 1
                 features = policy.initial_features
                 if episode_steps >= timestep_limit or not env.metadata.get('semantics.autoreset'):
                     state = env.reset()
@@ -58,7 +60,7 @@ def env_runner(env, policy, n_steps: int, render=False, summary_writer=None):
                     summary = tf.Summary()
                     summary.value.add(tag="global/Episode_length", simple_value=float(episode_steps))
                     summary.value.add(tag="global/Reward", simple_value=float(episode_reward))
-                    summary_writer.add_summary(summary, policy.global_step)
+                    summary_writer.add_summary(summary, n_episodes)
                     summary_writer.flush()
                 episode_steps = 0
                 episode_reward = 0
@@ -235,9 +237,9 @@ class A3CTask(object):
 
     def create_summary_losses(self):
         n_steps = tf.to_float(self.n_steps)
-        actor_loss_summary = tf.summary.scalar("Actor_loss", self.actor_loss / n_steps)
-        critic_loss_summary = tf.summary.scalar("Critic_loss", self.critic_loss / n_steps)
-        loss_summary = tf.summary.scalar("loss", self.loss / n_steps)
+        actor_loss_summary = tf.summary.scalar("model/actor_loss", tf.squeeze(self.actor_loss / n_steps))
+        critic_loss_summary = tf.summary.scalar("model/critic_loss", tf.squeeze(self.critic_loss / n_steps))
+        loss_summary = tf.summary.scalar("model/loss", tf.squeeze(self.loss / n_steps))
         return [actor_loss_summary, critic_loss_summary, loss_summary]
 
     def pull_batch_from_queue(self):
@@ -313,8 +315,8 @@ class A3CTaskDiscrete(A3CTask):
 
     def make_loss(self):
         return actor_critic_discrete_loss(
-            self.local_network.probs,
             self.local_network.logits,
+            self.local_network.probs,
             self.local_network.value,
             self.local_network.actions_taken,
             self.advantage,
@@ -372,8 +374,8 @@ class A3CTaskContinuous(A3CTask):
 
     def build_networks(self):
         ac_net = ActorCriticNetworkContinuous(
-            self.env.action_space,
             list(self.env.observation_space.shape),
+            self.env.action_space,
             self.config["n_hidden_units"],
             self.config["n_hidden_layers"])
         return ac_net

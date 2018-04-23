@@ -14,8 +14,12 @@ def main():
     header = ["RUN", "DESCR", "START", "BRANCH", "COMMITMSG"]
     data = []
     for d in dirs:
-        with open(os.path.join(args.directory, d, "config.json")) as f:
-            config = json.load(f)
+        config_path = os.path.join(args.directory, d, "config.json")
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                config = json.load(f)
+        else:
+            config = {}
         run_data = [
             d,
             config.get("description", ""),

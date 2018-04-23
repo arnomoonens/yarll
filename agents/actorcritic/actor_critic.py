@@ -95,7 +95,12 @@ class ActorCriticNetworkDiscreteCNN(object):
 class ActorCriticNetworkDiscreteCNNRNN(object):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
-    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden: int, lstm_size: int = 256, summary: bool = True) -> None:
+    def __init__(self,
+                 state_shape: Sequence[int],
+                 n_actions: int,
+                 n_hidden: int,
+                 lstm_size: int = 256,
+                 summary: bool = True) -> None:
         super(ActorCriticNetworkDiscreteCNNRNN, self).__init__()
         self.state_shape: Sequence[int] = state_shape
         self.n_actions: int = n_actions
@@ -212,7 +217,14 @@ class ActorCriticNetworkContinuous(object):
         self.entropy = -tf.reduce_sum(log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
 
-def actor_critic_continuous_loss(action_log_prob, entropy, value, advantage, ret, vf_coef: float = 0.5, entropy_coef: float = 0.01, reducer: str = "sum"):
+def actor_critic_continuous_loss(action_log_prob,
+                                 entropy,
+                                 value,
+                                 advantage,
+                                 ret,
+                                 vf_coef: float = 0.5,
+                                 entropy_coef: float = 0.01,
+                                 reducer: str = "sum"):
     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
     actor_loss = - tf_reducer(action_log_prob * advantage)
     critic_loss = tf_reducer(tf.square(value - ret))

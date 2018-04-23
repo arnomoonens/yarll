@@ -31,7 +31,7 @@ Example run after training using 16 threads for a total of 5 million timesteps o
 
 ## How to run
 
-First, install the requirements using [pip](https://pypi.python.org/pypi/pip):
+First, install the requirements using [pip](https://pypi.python.org/pypi/pip) (you can first remove _OpenCV_ from the `requirements.txt` file if it is already installed):
 
 ```Shell
 

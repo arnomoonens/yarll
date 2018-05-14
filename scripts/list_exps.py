@@ -2,6 +2,7 @@ import os
 import json
 import argparse
 import pandas as pd
+import dateutil
 
 
 parser = argparse.ArgumentParser()
@@ -23,7 +24,7 @@ def main():
         run_data = [
             d,
             config.get("description", ""),
-            config.get("start_time", ""),
+            dateutil.parser.parse(config["start_time"]).strftime("%d/%m/%y %H:%M") if "start_time" in config else "",
         ]
         run_data += [config["git"]["head"], config["git"]["message"]] if "git" in config else [""] * 2
         data.append(run_data)

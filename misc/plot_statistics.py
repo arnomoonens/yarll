@@ -16,7 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from misc.utils import ge  # pylint: disable=C0413
 from misc.exceptions import WrongArgumentsError  # pylint: disable=C0413
 
-gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
+gui_env = ['Qt5Agg', 'Qt4Agg', 'TKAgg', 'GTKAgg', 'WXAgg', 'agg']
 for gui in gui_env:
     try:
         matplotlib.use(gui, warn=False, force=True)
@@ -74,8 +74,6 @@ def plot_tasks(data, x_label: str, smoothing_function=None, xmin=None, xmax=None
     x_label_upper = x_label[0].upper() + x_label[1:]
     for scalar, tasks in data.items():
         fig = plt.figure()
-        # min_y = np.inf
-        # max_y = -np.inf
         for task, epochs_values in sorted(tasks.items(), key=operator.itemgetter(0)):
             mean = np.mean(epochs_values["values"], axis=0)
             if smoothing_function:
@@ -136,7 +134,7 @@ def tf_scalar_data(em):
     """Process scalar data of TensorFlow summaries."""
     runs = list(em.Runs().keys())
     scalars = em.Runs()[runs[0]]["tensors"]  # Assumes that the scalars of every run are the same
-    pattern = re.compile("\w+(\d+)$")
+    pattern = re.compile("[a-zA-Z]+(\d+)$")
     data = {}
     for scalar in scalars:
         scalar_data = {}
@@ -158,59 +156,33 @@ def tf_scalar_data(em):
         data[scalar] = scalar_data
     return data
 
-def plot_tf_scalar_summaries(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, save_directory=None, show_plots=True):
+def plot_tf_scalar_summaries(summaries_dir,
+                             xmin=None,
+                             xmax=None,
+                             smoothing_function=None,
+                             max_reward=None,
+                             x_label="episode",
+                             legend=True,
+                             save_directory=None,
+                             show_plots=True):
     """Plot TensorFlow scalar summaries."""
     em = EventMultiplexer().AddRunsFromDirectory(summaries_dir).Reload()
     data = tf_scalar_data(em)
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend, save_directory=save_directory, show_plots=show_plots)
-
-def plot_tf_scalar_summaries_subdirs(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, save_directory=None, show_plots=True):
-    """Process each subdirectory of summaries_dir separately before plotting TensorFlow scalar summaries."""
-    _, subdirs, _ = next(os.walk(summaries_dir))
-
-    data = {}
-    for subdir in subdirs:
-        if not subdir.startswith("exp"):
-            continue
-        em = EventMultiplexer().AddRunsFromDirectory(os.path.join(summaries_dir, subdir)).Reload()
-        subdir_data = tf_scalar_data(em)
-        for scalar, scalar_data in subdir_data.items():
-            if scalar not in data:
-                data[scalar] = scalar_data
-            else:
-                for task, epochs_values in scalar_data.items():
-                    data[scalar][task]["values"].extend(epochs_values["values"])
-
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend, save_directory=save_directory, show_plots=show_plots)
-
-def plot_tf_scalar_summaries_splitted(summaries_dir, xmin=None, xmax=None, smoothing_function=None, max_reward=None, x_label="episode", legend=True, splitted_length=25, save_directory=None, show_plots=True):
-    """Process sets of runs (of length splitted_length) separately before plotting TensorFlow scalar summaries."""
-    _, rundirs, _ = next(os.walk(summaries_dir))
-    data = {}
-    for runs_group in range(int(np.ceil(len(rundirs) / splitted_length))):
-        logging.info("Processing run group {}. Runs processed: {}/{}.".format(runs_group, runs_group * splitted_length, len(rundirs)))
-        em = EventMultiplexer()
-        for run_idx in range(runs_group * splitted_length, runs_group * splitted_length + splitted_length):
-            run_path = os.path.join(summaries_dir, "run" + str(run_idx + 1))
-            for subdir in GetLogdirSubdirectories(run_path):
-                rpath = os.path.relpath(subdir, summaries_dir)
-                em.AddRun(subdir, name=rpath)
-        em.Reload()
-        data_runs = tf_scalar_data(em)
-        for scalar, scalar_data in data_runs.items():
-            if scalar not in data:
-                data[scalar] = scalar_data
-            else:
-                for task, epochs_values in scalar_data.items():
-                    data[scalar][task]["values"].extend(epochs_values["values"])
-    logging.info("Data processed, plotting...")
-    plot_tasks(data, x_label, smoothing_function=smoothing_function, max_reward=max_reward, xmin=xmin, xmax=xmax, legend=legend, save_directory=save_directory, show_plots=show_plots)
+    plot_tasks(data,
+               x_label,
+               smoothing_function=smoothing_function,
+               max_reward=max_reward,
+               xmin=xmin,
+               xmax=xmax,
+               legend=legend,
+               save_directory=save_directory,
+               show_plots=show_plots)
 
 def exp_smoothing_weight_test(value):
-    """Require that the weight for exponential smoothing is a weight between 0 and 1"""
+    """Require that the weight for exponential smoothing is a weight between 0.0 and 1.0"""
     fvalue = float(value)
-    if fvalue < 0 or fvalue > 1:
-        raise argparse.ArgumentTypeError("{} must be a float between 0 and 1".format(value))
+    if fvalue < 0.0 or fvalue > 1.0:
+        raise argparse.ArgumentTypeError("{} must be a float between 0.0 and 1.0".format(value))
     return fvalue
 
 parser = argparse.ArgumentParser()
@@ -222,8 +194,6 @@ parser.add_argument("--xmax", type=ge(1), default=None, help="Maximum episode fo
 parser.add_argument("--max_reward", type=float, default=None, help="Maximum obtainable reward in the environment.")
 parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=None, help="Use exponential smoothing with a weight 0<=w<=1.")
 parser.add_argument("--moving_average", type=ge(1), default=None, help="Use a moving average with a window w>0")
-parser.add_argument("--subdirs", action="store_true", default=False, help="Process each subdirectory separately (solves memory issues).")
-parser.add_argument("--splitted", action="store_true", default=False, help="Process sets of runs separately (solves memory issues).")
 parser.add_argument("--save", type=str, dest="save_dir", default=None, help="Save plots to the given directory.")
 parser.add_argument("--show", action="store_true", default=False, help="Show plots.")
 parser.add_argument(
@@ -257,11 +227,6 @@ if __name__ == "__main__":
             "save_directory": args.save_dir,
             "show_plots": args.show
         }
-        if args.subdirs:
-            plot_tf_scalar_summaries_subdirs(**shared_args)
-        elif args.splitted:
-            plot_tf_scalar_summaries_splitted(splitted_length=25, **shared_args)
-        else:
-            plot_tf_scalar_summaries(**shared_args)
+        plot_tf_scalar_summaries(**shared_args)
     else:
         raise NotImplementedError("Only a Tensorflow monitor stats.json file or summaries directory is allowed.")

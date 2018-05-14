@@ -7,6 +7,9 @@ import time
 import sys
 import tensorflow as tf
 
+tf.logging.set_verbosity(tf.logging.ERROR)
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '5'
+
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../..")))
 from misc.utils import cluster_spec  # pylint: disable=C0413
 

@@ -130,7 +130,7 @@ class DPPO(Agent):
         self.init_op = tf.variables_initializer(self.new_network_vars + optimizer_variables + [self._global_step])
 
     def make_actor_loss(self, old_network, new_network, advantage):
-        return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_coef"], advantage)
+        return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_epsilon"], advantage)
 
     def build_networks(self):
         raise NotImplementedError
@@ -186,16 +186,19 @@ class DPPO(Agent):
         config = self.config
         current_folder = os.path.abspath(
             os.path.dirname(os.path.realpath(__file__)))
+        args = [
+            os.path.join(current_folder, "dppo_worker.py"),
+            self.env_name,
+            self.task_type,
+            self.config["config_path"],
+            "--monitor_path", self.monitor_path
+        ]
+        seed = self.config["seed"]
+        if seed is not None:
+            args += ["--seed", str(seed)]
         comm = self.comm.Spawn(
             sys.executable,
-            args=[
-                os.path.join(current_folder, "dppo_worker.py"),
-                self.env_name,
-                self.task_type,
-                self.config["config_path"],
-                "--seed", str(self.config["seed"]),
-                "--monitor_path", self.monitor_path
-            ],
+            args=args,
             maxprocs=self.config["n_workers"]
         )
         sess_config = tf.ConfigProto()

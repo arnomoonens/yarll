@@ -2,12 +2,13 @@
 from typing import Any, List, Optional
 import tensorflow as tf
 import numpy as np
-from memory.experiences_memory import ExperiencesMemory
+from memory.experiences_memory import ExperiencesMemory, Experience
+from misc.utils import RunningMeanStd, normalize
 
 
 class EnvRunner(object):
     """Environment runner using a policy"""
-    def __init__(self, env, policy, config: dict, state_preprocessor=None, summary_writer=None) -> None:
+    def __init__(self, env, policy, config: dict, normalize_states=False, state_preprocessor=None, summary_writer=None) -> None:
         super(EnvRunner, self).__init__()
         self.env = env
         self.policy = policy
@@ -25,11 +26,20 @@ class EnvRunner(object):
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
         self.summary_writer = summary_writer
+
+        # Normalize states before giving it as input to the network.
+        # Mean and std are only updated at the end of `get_steps`.
+        self.normalize_states = normalize_states
+        if normalize_states:
+            self.rms = RunningMeanStd(self.env.observation_space.shape)
         self.reset_env()
 
     def choose_action(self, state: np.ndarray):
         """Choose an action based on the current state in the environment."""
         return self.policy.choose_action(state, self.features)
+
+    def normalize(self, state):
+        return normalize(state, self.rms.mean, self.rms.std)
 
     def reset_env(self):
         """Reset the current environment and get the initial state"""
@@ -48,7 +58,8 @@ class EnvRunner(object):
             self.policy.new_trajectory()
         memory = ExperiencesMemory()
         for _ in range(n_steps):
-            results = self.choose_action(self.state)
+            input_state = self.normalize(self.state) if self.normalize_states and self.rms.count >= 2 else self.state
+            results = self.choose_action(input_state)
             action = results["action"]
             value = results.get("value", None)
             new_features = results.get("features", None)
@@ -65,9 +76,9 @@ class EnvRunner(object):
                     summary.value.add(tag="global/Reward", simple_value=float(self.episode_reward))
                     self.summary_writer.add_summary(summary, self.n_episodes)
                     self.summary_writer.flush()
-                    self.episode_reward = 0
-                    self.episode_steps = 0
-                    self.n_episodes += 1
+                self.episode_reward = 0
+                self.episode_steps = 0
+                self.n_episodes += 1
                 self.reset_env()
                 self.features = self.policy.initial_features
                 self.policy.new_trajectory()
@@ -77,6 +88,11 @@ class EnvRunner(object):
                     break
             if render:
                 self.env.render()
+
+        if self.normalize_states:
+            self.rms.add_values([exp.state for exp in memory.experiences])
+            for i, exp in enumerate(memory.experiences):
+                memory.experiences[i] = Experience(self.normalize(exp.state), exp.action, exp.reward, exp.value, exp.features, exp.terminal)
         return memory
 
     def get_trajectory(self, stop_at_trajectory_end: bool = True, render: bool = False) -> ExperiencesMemory:

@@ -8,15 +8,18 @@
         "name": "PPO",
         "args": {
             "monitor_path": "/tmp/Pendulum-v0-PPO",
-            "n_hidden_units": 20,
+            "n_hidden_units": 64,
             "n_hidden_layers": 2,
+            "n_epochs": 10,
             "batch_size": 64,
+			"cso_epsilon": 0.2,
             "learning_rate": 3e-4,
             "vf_coef": 1.0,
             "entropy_coef": 0.0,
             "n_local_steps": 2048,
             "video": false,
             "save_model": true,
+			"normalize_states": false,
             "monitor": true,
             "n_iter": 400000
         }

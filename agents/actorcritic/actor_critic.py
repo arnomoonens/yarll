@@ -187,21 +187,19 @@ class ActorCriticNetworkContinuous(object):
         for i in range(n_hidden_layers):
             x = tf.tanh(linear(x, n_hidden_units, "L{}_mean".format(i + 1),
                                initializer=normalized_columns_initializer(1.0)))
-        self.mean = linear(x, 1, "mean", initializer=normalized_columns_initializer(0.01))
+        self.mean = linear(x, action_space.shape[0], "mean", initializer=normalized_columns_initializer(0.01))
         self.mean = tf.check_numerics(self.mean, "mean")
 
-        log_std = tf.get_variable(
+        self.log_std = tf.get_variable(
             name="logstd",
-            shape=[1] + list(action_space.shape),
+            shape=list(action_space.shape),
             initializer=tf.zeros_initializer()
         )
-        std = tf.exp(log_std, name="std")
+        std = tf.exp(self.log_std, name="std")
         std = tf.check_numerics(std, "std")
 
         self.action = self.mean + std * tf.random_normal(tf.shape(self.mean))
         self.action = tf.reshape(self.action, list(action_space.shape))
-        self.action = tf.clip_by_value(
-            self.action, action_space.low[0], action_space.high[0], name="action")
 
         x = self.states
         for i in range(n_hidden_layers):
@@ -212,9 +210,9 @@ class ActorCriticNetworkContinuous(object):
 
         neglogprob = 0.5 * tf.reduce_sum(tf.square((self.actions_taken - self.mean) / std), axis=-1) \
             + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(self.actions_taken)[-1]) \
-            + tf.reduce_sum(log_std, axis=-1)
+            + tf.reduce_sum(self.log_std, axis=-1)
         self.action_log_prob = -neglogprob
-        self.entropy = -tf.reduce_sum(log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
+        self.entropy = -tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
 
 def actor_critic_continuous_loss(action_log_prob,

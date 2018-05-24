@@ -14,6 +14,7 @@ from misc.utils import FastSaver
 def ppo_loss(old_log, new_log, epsilon, advantage):
     ratio = tf.exp(new_log - old_log)
     ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
+    # ratio_clipped = tf.Print(ratio_clipped, [new_log, old_log, ratio, ratio_clipped], message="Ratio=")
     return tf.minimum(ratio * advantage, ratio_clipped * advantage)
 
 class PPO(Agent):
@@ -39,7 +40,9 @@ class PPO(Agent):
             n_iter=10000,
             batch_size=64,  # Timesteps per training batch
             n_local_steps=256,
+            normalize_states=False,
             gradient_clip_value=None,
+            adam_epsilon=1e-5,
             vf_coef=0.5,
             entropy_coef=0.01,
             cso_epsilon=0.2  # Clipped surrogate objective epsilon
@@ -69,8 +72,10 @@ class PPO(Agent):
         self.set_old_to_new = tf.group(
             *[v1.assign(v2) for v1, v2 in zip(self.old_network_vars, self.new_network_vars)])
 
-        # Reduces by taking the mean instead of summing
-        self.actor_loss = -tf.reduce_mean(self.make_actor_loss(self.old_network, self.new_network, self.advantage))
+        ratio = tf.exp(self.new_network.action_log_prob - self.old_network.action_log_prob)
+        ratio_clipped = tf.clip_by_value(ratio, 1.0 - self.config["cso_epsilon"], 1.0 + self.config["cso_epsilon"])
+        cso_loss = tf.minimum(ratio * self.advantage, ratio_clipped * self.advantage)
+        self.actor_loss = -tf.reduce_mean(cso_loss)
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.ret))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
@@ -95,6 +100,21 @@ class PPO(Agent):
         summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss)
         summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss)
         summary_loss = tf.summary.scalar("model/Loss", self.loss)
+
+        adv_mean, adv_std = tf.nn.moments(self.advantage, axes=[0])
+        summary_adv_mean = tf.summary.scalar("model/advantage/mean", adv_mean)
+        summary_adv_std = tf.summary.scalar("model/advantage/std", adv_std)
+
+        ratio_mean, ratio_std = tf.nn.moments(ratio, axes=[0])
+        summary_ratio_mean = tf.summary.scalar("model/ratio/mean", ratio_mean)
+        summary_ratio_std = tf.summary.scalar("model/ratio/std", ratio_std)
+
+        summary_new_log_prob_mean = tf.summary.scalar(
+            "model/new_log_prob/mean", tf.reduce_mean(self.new_network.action_log_prob))
+        summary_old_log_prob_mean = tf.summary.scalar(
+            "model/old_log_prob/mean", tf.reduce_mean(self.old_network.action_log_prob))
+
+        summary_ret = tf.summary.scalar("model/return/mean", tf.reduce_mean(self.ret))
         summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
         summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar(
@@ -104,19 +124,23 @@ class PPO(Agent):
             if "new_network" in v.name:
                 summaries.append(tf.summary.histogram(v.name, v))
         summaries += [summary_actor_loss, summary_critic_loss,
-                      summary_loss, summary_entropy, summary_grad_norm, summary_var_norm]
+                      summary_loss,
+                      summary_adv_mean, summary_adv_std,
+                      summary_ratio_mean, summary_ratio_std,
+                      summary_new_log_prob_mean, summary_old_log_prob_mean,
+                      summary_ret, summary_entropy, summary_grad_norm, summary_var_norm]
         self.model_summary_op = tf.summary.merge(summaries)
         self.writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), self.session.graph)
-        self.env_runner = EnvRunner(
-            self.env, self, usercfg, summary_writer=self.writer)
+        self.env_runner = EnvRunner(self.env, self, usercfg, normalize_states=self.config["normalize_states"], summary_writer=self.writer)
 
         # grads before clipping were passed to the summary, now clip and apply them
         if self.config["gradient_clip_value"] is not None:
             grads, _ = tf.clip_by_global_norm(
                 grads, self.config["gradient_clip_value"])
         self.optimizer = tf.train.AdamOptimizer(
-            self.config["learning_rate"],
+            learning_rate=self.config["learning_rate"],
+            epsilon=self.config["adam_epsilon"],
             name="optim")
         apply_grads = self.optimizer.apply_gradients(
             zip(grads, self.new_network_vars))
@@ -206,8 +230,7 @@ class PPO(Agent):
                 self.writer.flush()
 
             if self.config["save_model"]:
-                self.saver.save(self.session, os.path.join(
-                    self.monitor_path, "model"))
+                self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 
 class PPODiscrete(PPO):

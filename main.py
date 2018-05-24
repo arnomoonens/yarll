@@ -57,7 +57,7 @@ parser.add_argument("--monitor_path", metavar="monitor_path", default=None, type
                     help="Path where Gym monitor files may be saved.")
 parser.add_argument("--only_last", default=False, action="store_true",
                     help="Only use the last environment in a list of provided environments.")
-parser.add_argument("--seed", default=None, type=int, help="Seed to use for the experiment.")
+parser.add_argument("--seed", default=0, type=int, help="Seed to use for the experiment.")
 
 def main():
     args = parser.parse_args()

@@ -2,21 +2,22 @@
 # -*- coding: utf8 -*-
 
 import argparse
-import datetime
-import os
-
-import gym
-from gym.spaces import Discrete
-from environment.registration import make, make_environments
-from agents.registration import make_agent
 from misc.utils import json_to_dict, save_config, set_seed
-
-gym.logger.set_level(gym.logger.ERROR)
 
 def run_experiment(spec, monitor_path=None, only_last=False, description=None, seed=None):
     """Run an experiment using a specification dictionary."""
+
+    import os
+
     if seed is not None:
         set_seed(seed)
+
+    import datetime
+    import gym
+    gym.logger.set_level(gym.logger.ERROR)
+    from gym.spaces import Discrete
+    from environment.registration import make, make_environments
+    from agents.registration import make_agent
 
     args = spec["agent"]["args"]
     args["config_path"] = os.path.join(monitor_path, "config.json")

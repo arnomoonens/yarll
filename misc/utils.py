@@ -7,9 +7,9 @@ from os import path
 import random
 from typing import Any, Callable, Sequence, Union
 import pkg_resources
+import tensorflow as tf
 from scipy import signal
 import numpy as np
-import tensorflow as tf
 
 import cv2
 import gym
@@ -107,8 +107,8 @@ class FastSaver(tf.train.Saver):
 
 def set_seed(seed: int):
     os.environ["PYTHONHASHSEED"] = str(seed)
-    np.random.seed(seed)
     random.seed(seed)
+    np.random.seed(seed)
     tf.set_random_seed(seed)
 
 def load(name: str):

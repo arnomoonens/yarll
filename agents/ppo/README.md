@@ -14,7 +14,7 @@ Here, the master broadcasts the network to all the workers and waits until they 
 
 Make sure to run the experiment like this (when being in the `DeepRL` project folder):
 
-```
+```Shell
 
 mpirun -np 1 python main.py --monitor_path MONITOR_PATH --seed SEED EXPERIMENT_DESCRIPTION_PATH.json
 
@@ -37,7 +37,6 @@ The graphs for this environment can be seen below:
 
 ## TODO
 
-- Support environments with continuous action spaces.
+- Fix PPO with state normalization.
 - Add learner that uses an RNN.
 - Add histogram and distributions to DPPO summaries.
-- Test on other environments.

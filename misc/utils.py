@@ -154,13 +154,14 @@ class RunningMeanStd(object):
     def __init__(self, shape, epsilon=1e-2):
         super(RunningMeanStd, self).__init__()
         self.count = epsilon
-        self._sum = np.zeros(shape, dtype=float)
-        self._sumsq = np.full(shape, epsilon, dtype=float)
+        self._sum = np.zeros(shape, dtype="float64")
+        self._sumsq = np.full(shape, epsilon, dtype="float64")
 
     def add_value(self, x):
         """
         Update count, sum and sum squared using a new value `x`.
         """
+        x = np.asarray(x, dtype="float64")
         self.count += 1
         self._sum += x
         self._sumsq += np.square(x)
@@ -169,24 +170,21 @@ class RunningMeanStd(object):
         """
         Update count, sum and sum squared using multiple values `x`.
         """
+        x = np.asarray(x, dtype="float64")
         self.count += np.shape(x)[0]
         self._sum += np.sum(x, axis=0)
         self._sumsq += np.square(x).sum(axis=0)
 
     @property
     def mean(self):
-        if self.count < 1:
-            return float("nan")
-        else:
-            return self._sum / self.count
+        return self._sum / self.count
 
     @property
     def std(self):
-        if self.count < 2:
-            return float("nan")
-        else:
-            return np.maximum(self._sumsq / self.count - np.square(self.mean), 1e-2)
+        return np.sqrt(np.maximum((self._sumsq / self.count) - np.square(self.mean), 1e-2))
 
 number_array = Union[int, float, np.ndarray]
 def normalize(x: number_array, mean: number_array, std: number_array) -> Union[float, np.ndarray]:
+    if isinstance(x, np.ndarray):
+        x = x.astype("float64")
     return np.clip((x - mean) / std, -5.0, 5.0)

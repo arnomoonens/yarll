@@ -58,7 +58,7 @@ class EnvRunner(object):
             self.policy.new_trajectory()
         memory = ExperiencesMemory()
         for _ in range(n_steps):
-            input_state = self.normalize(self.state) if self.normalize_states and self.rms.count >= 2 else self.state
+            input_state = self.normalize(self.state) if self.normalize_states else self.state
             results = self.choose_action(input_state)
             action = results["action"]
             value = results.get("value", None)

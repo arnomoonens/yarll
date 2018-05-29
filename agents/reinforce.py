@@ -15,7 +15,7 @@ from gym import wrappers
 from agents.agent import Agent
 from agents.env_runner import EnvRunner
 from misc.utils import discount_rewards, flatten, FastSaver
-from misc.network_ops import conv2d, mu_sigma_layer
+from misc.network_ops import conv2d, linear, normalized_columns_initializer
 from misc.reporter import Reporter
 
 class REINFORCE(Agent):
@@ -25,7 +25,6 @@ class REINFORCE(Agent):
     def __init__(self, env, monitor_path, video=True, **usercfg):
         super(REINFORCE, self).__init__(**usercfg)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
-        self.env_runner = EnvRunner(self.env, self, usercfg)
         self.monitor_path = monitor_path
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
@@ -33,15 +32,19 @@ class REINFORCE(Agent):
             timesteps_per_batch=1000,
             n_iter=100,
             gamma=0.99,  # Discount past rewards by a percentage
-            decay=0.9,  # Decay of RMSProp optimizer
-            epsilon=1e-9,  # Epsilon of RMSProp optimizer
             learning_rate=0.05,
+            entropy_coef=1e-3,
+            n_hidden_layers=2,
             n_hidden_units=20,
             repeat_n_actions=1,
             save_model=False
         ))
         self.config.update(usercfg)
 
+        self.states = tf.placeholder(
+            tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
+        self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")  # Discrete action
+        self.advantage = tf.placeholder(tf.float32, name="advantage")  # Advantage
         self.build_network()
         self.make_trainer()
 
@@ -53,13 +56,11 @@ class REINFORCE(Agent):
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
             self.saver = FastSaver()
-        self.rewards = tf.placeholder("float", name="Rewards")
-        self.episode_lengths = tf.placeholder("float", name="Episode_lengths")
-        summary_loss = tf.summary.scalar("Loss", self.summary_loss)
-        summary_rewards = tf.summary.scalar("Rewards", self.rewards)
-        summary_episode_lengths = tf.summary.scalar("Episode_lengths", self.episode_lengths)
-        self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
+        summary_loss = tf.summary.scalar("model/loss", self.summary_loss)
+        self.summary_op = tf.summary.merge([summary_loss])
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
+
+        self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
 
     def choose_action(self, state, features):
         """Choose an action."""
@@ -92,10 +93,8 @@ class REINFORCE(Agent):
             # TODO: deal with RNN state
             summary, _ = self.session.run([self.summary_op, self.train], feed_dict={
                 self.states: all_state,
-                self.a_n: all_action,
-                self.adv_n: all_adv,
-                self.episode_lengths: np.mean(episode_lengths),
-                self.rewards: np.mean(episode_rewards)
+                self.actions_taken: all_action,
+                self.advantage: all_adv
             })
             self.writer.add_summary(summary, iteration)
             self.writer.flush()
@@ -109,18 +108,14 @@ class REINFORCEDiscrete(REINFORCE):
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def make_trainer(self):
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.a_n, tf.int32), self.env_runner.nA)), reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.adv_n
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.actions_taken, tf.int32), self.env_runner.nA)), reduction_indices=[1])
+        eligibility = tf.log(good_probabilities) * self.advantage
         loss = -tf.reduce_sum(eligibility)
         self.summary_loss = loss
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=0.9, epsilon=1e-9)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
         self.train = optimizer.minimize(loss)
 
     def build_network(self):
-        # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, [None, self.env_runner.nO], name="states")  # Observation
-        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         L1 = tf.contrib.layers.fully_connected(
             inputs=self.states,
@@ -146,11 +141,6 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
 
     def build_network(self):
         shape = list(self.env.observation_space.shape)
-
-        self.states = tf.placeholder(tf.float32, [None] + shape, name="states")
-        self.a_n = tf.placeholder(tf.float32, name="a_n")
-        self.N = tf.placeholder(tf.int32, name="N")
-        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         x = self.states
         # Convolution layers
@@ -184,13 +174,8 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
-        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
-        # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
-        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         n_states = tf.shape(self.states)[:1]
-
         states = tf.expand_dims(flatten(self.states), [0])
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
@@ -222,8 +207,6 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         super(REINFORCEDiscreteCNNRNN, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
-        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
         shape = list(self.env.observation_space.shape)
 
@@ -256,7 +239,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
 class REINFORCEContinuous(REINFORCE):
-    def __init__(self, env, RNN, monitor_path, video=True, **usercfg):
+    def __init__(self, env, monitor_path, RNN=False, video=True, **usercfg):
         self.rnn = RNN
         super(REINFORCEContinuous, self).__init__(env, monitor_path, video=video, **usercfg)
 
@@ -267,41 +250,46 @@ class REINFORCEContinuous(REINFORCE):
             self.build_network_normal()
 
     def make_trainer(self):
-        loss = -self.normal_dist.log_prob(self.a_n) * self.adv_n
+        loss = -self.action_log_prob * self.advantage
         # Add cross entropy cost to encourage exploration
-        loss -= 1e-1 * self.normal_dist.entropy()
-        loss = tf.clip_by_value(loss, -1e10, 1e10)
+        loss -= self.config["entropy_coef"] * self.entropy
         self.summary_loss = tf.reduce_mean(loss)
         optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
-        self.train = optimizer.minimize(loss, global_step=tf.contrib.framework.get_global_step())
+        self.train = optimizer.minimize(loss)
 
     def build_network_normal(self):
-        # Symbolic variables for observation, action, and advantage
-        self.states = tf.placeholder(tf.float32, [None, self.env_runner.nO], name="states")  # Observation
-        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Continuous action
-        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
 
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=self.config["n_hidden_units"],
-            activation_fn=tf.tanh,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
+        self.actions_taken = tf.placeholder(
+            tf.float32,
+            [None] + list(self.env.action_space.shape),
+            name="actions_taken")
 
-        mu, sigma = mu_sigma_layer(L1, 1)
+        x = self.states
+        for i in range(self.config["n_hidden_layers"]):
+            x = tf.tanh(linear(x, self.config["n_hidden_units"], "L{}_mean".format(i + 1),
+                               initializer=normalized_columns_initializer(1.0)))
+        self.mean = linear(x, self.env.action_space.shape[0], "mean", initializer=normalized_columns_initializer(0.01))
+        self.mean = tf.check_numerics(self.mean, "mean")
 
-        self.normal_dist = tf.contrib.distributions.Normal(mu, sigma)
-        self.action = self.normal_dist.sample(1)
-        self.action = tf.clip_by_value(self.action, self.env.action_space.low[0], self.env.action_space.high[0])
+        self.log_std = tf.get_variable(
+            name="logstd",
+            shape=list(self.env.action_space.shape),
+            initializer=tf.zeros_initializer()
+        )
+        std = tf.exp(self.log_std, name="std")
+        std = tf.check_numerics(std, "std")
+
+        self.action = self.mean + std * tf.random_normal(tf.shape(self.mean))
+        self.action = tf.reshape(self.action, list(self.env.action_space.shape))
+
+        neglogprob = 0.5 * tf.reduce_sum(tf.square((self.actions_taken - self.mean) / std), axis=-1) \
+            + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(self.actions_taken)[-1]) \
+            + tf.reduce_sum(self.log_std, axis=-1)
+        self.action_log_prob = -neglogprob
+        self.entropy = -tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
     def build_network_rnn(self):
-        self.states = tf.placeholder(tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
-        # self.n_states = tf.placeholder(tf.float32, shape=[None], name="n_states")  # Observation
-        self.a_n = tf.placeholder(tf.float32, name="a_n")  # Discrete action
-        self.adv_n = tf.placeholder(tf.float32, name="adv_n")  # Advantage
-
         n_states = tf.shape(self.states)[:1]
-
         states = tf.expand_dims(flatten(self.states), [0])
 
         enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])

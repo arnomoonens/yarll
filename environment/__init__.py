@@ -2,12 +2,14 @@ import gym
 from environment.registration import EnvSpec
 
 def register_env(name, entry_point: str, **kwargs):
-    old_env_name = "Old" + name
-    gym.envs.registry.env_specs[old_env_name] = gym.envs.registry.env_specs[name]
+    already_registered = name in gym.envs.registry.env_specs
+    if already_registered:
+        old_env_name = "Old" + name
+        gym.envs.registry.env_specs[old_env_name] = gym.envs.registry.env_specs[name]
     gym.envs.registry.env_specs[name] = EnvSpec(
         name,
         entry_point=entry_point,
-        kwargs={"old_env_name": old_env_name},
+        kwargs={"old_env_name": old_env_name} if already_registered else {},
         **kwargs)
 
 register_env(

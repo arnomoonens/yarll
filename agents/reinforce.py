@@ -57,7 +57,8 @@ class REINFORCE(Agent):
             tf.add_to_collection("states", self.states)
             self.saver = FastSaver()
         summary_loss = tf.summary.scalar("model/loss", self.summary_loss)
-        self.summary_op = tf.summary.merge([summary_loss])
+        summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
+        self.summary_op = tf.summary.merge([summary_loss, summary_entropy])
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
 
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
@@ -250,9 +251,7 @@ class REINFORCEContinuous(REINFORCE):
             self.build_network_normal()
 
     def make_trainer(self):
-        loss = -self.action_log_prob * self.advantage
-        # Add cross entropy cost to encourage exploration
-        loss -= self.config["entropy_coef"] * self.entropy
+        loss = tf.reduce_mean(-self.action_log_prob * self.advantage) - self.config["entropy_coef"] * self.entropy
         self.summary_loss = tf.reduce_mean(loss)
         optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
         self.train = optimizer.minimize(loss)
@@ -286,7 +285,7 @@ class REINFORCEContinuous(REINFORCE):
             + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(self.actions_taken)[-1]) \
             + tf.reduce_sum(self.log_std, axis=-1)
         self.action_log_prob = -neglogprob
-        self.entropy = -tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
+        self.entropy = tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
     def build_network_rnn(self):
         n_states = tf.shape(self.states)[:1]

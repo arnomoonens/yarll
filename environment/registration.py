@@ -35,7 +35,7 @@ class EnvSpec(gym.envs.registration.EnvSpec):
                 env = cls(**all_kwargs)
 
         # Make the enviroment aware of which spec it came from.
-        env.unwrapped._spec = self
+        env.unwrapped.spec = self
 
         return env
 

@@ -72,11 +72,10 @@ class DPPOWorker(object):
                 vpred = np.asarray(experiences.values + [value])
                 gamma = self.config["gamma"]
                 lambda_ = self.config["gae_lambda"]
-                terminals = np.append(experiences.terminals, 0)
                 gaelam = advantages = np.empty(T, 'float32')
                 last_gaelam = 0
                 for t in reversed(range(T)):
-                    nonterminal = 1 - terminals[t + 1]
+                    nonterminal = 1 - experiences.terminals[t]
                     delta = experiences.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
                     gaelam[t] = last_gaelam = delta + gamma * lambda_ * nonterminal * last_gaelam
                 returns = advantages + experiences.values

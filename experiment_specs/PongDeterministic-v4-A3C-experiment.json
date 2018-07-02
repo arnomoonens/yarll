@@ -7,14 +7,15 @@
     "agent": {
         "name": "A3C",
         "args": {
-            "monitor_path": "/tmp/Pong-v0-A3C",
-            "RNN": true,
+			"RNN": true,
+            "monitor_path": "/tmp/Pong-A3C",
             "video": false,
             "save_model": true,
             "monitor": true,
-            "T_max": 8000,
-            "n_tasks": 4,
-            "shared_optimizer": false
+            "T_max": 1e7,
+            "entropy_coef": 0.0,
+            "n_tasks": 16,
+            "share_optimizer": false
         }
     }
 }

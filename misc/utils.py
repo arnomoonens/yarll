@@ -11,7 +11,6 @@ import tensorflow as tf
 from scipy import signal
 import numpy as np
 
-import cv2
 import gym
 from gym.spaces.box import Box
 
@@ -31,6 +30,7 @@ def rgb2gray(rgb: np.ndarray) -> np.ndarray:
     return np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
 
 def _process_frame42(frame: np.ndarray) -> np.ndarray:
+    import cv2
     frame = frame[34:34 + 160, :160]
     # Resize by half, then down to 42x42 (essentially mipmapping). If
     # we resize directly we lose pixels that, when mapped to 42x42,

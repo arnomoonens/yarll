@@ -164,3 +164,8 @@ register_agent(name="SarsaFA",
                state_dimensions="single",
                action_space="discrete"
               )
+register_agent(name="SAC",
+               entry_point="agents.sac:SAC",
+               state_dimensions="single",
+               action_space="continuous"
+               )

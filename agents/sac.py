@@ -6,30 +6,26 @@ import tensorflow as tf
 
 from agents.agent import Agent
 from memory.memory import Memory
-from misc.noise import OrnsteinUhlenbeckActionNoise
-from misc.network_ops import batch_norm_layer, fan_in_initializer, linear_fan_in
+from misc.network_ops import linear
 
-class DDPG(Agent):
+class SAC(Agent):
     def __init__(self, env, monitor_path: str, **usercfg) -> None:
-        super(DDPG, self).__init__(**usercfg)
+        super(SAC, self).__init__(**usercfg)
         self.env = env
         self.monitor_path: str = monitor_path
 
         self.config.update(
             n_episodes=100000,
             n_timesteps=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
-            actor_learning_rate=1e-4,
-            critic_learning_rate=1e-3,
-            ou_theta=0.15,
-            ou_sigma=0.2,
+            actor_learning_rate=3e-4,
+            softq_learning_rate=3e-4,
+            value_learning_rate=3e-4,
             gamma=0.99,
             batch_size=64,
-            tau=0.001,
+            tau=0.01,
             l2_loss_coef=1e-2,
             n_actor_layers=2,
-            n_hidden_units=64,
-            actor_layer_norm=True,
-            critic_layer_norm=False,  # Batch norm for critic does not seem to work
+            n_hidden_units=128,
             replay_buffer_size=1e6,
             replay_start_size=10000  # Required number of replay buffer entries to start training
         )
@@ -75,12 +71,6 @@ class DDPG(Agent):
 
         self.init_op = tf.global_variables_initializer()
 
-        self.action_noise = OrnsteinUhlenbeckActionNoise(
-            self.n_actions,
-            self.config["ou_sigma"],
-            self.config["ou_theta"]
-        )
-
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
 
         self.n_updates = 0
@@ -89,28 +79,18 @@ class DDPG(Agent):
             self.monitor_path, "summaries"), tf.get_default_graph())
 
     def build_actor_network(self):
-        layer1_size = 400
-        layer2_size = 300
-
+        w_bound = 3e-3
         x = self.states
-        if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
-        with tf.variable_scope("L1"):
-            x, l1_vars = linear_fan_in(x, layer1_size)
-            if self.config["actor_layer_norm"]:
-                x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_1", activation=tf.nn.relu)
-        with tf.variable_scope("L2"):
-            x, l2_vars = linear_fan_in(x, layer2_size)
-            if self.config["actor_layer_norm"]:
-                x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_2", activation=tf.nn.relu)
+        with tf.variable_scope("actor"):
+            x = linear(x, self.config["n_hidden_units"], "L1", tf.random_uniform_initializer(-w_bound, w_bound))
+            x = tf.nn.relu(x)
 
-        with tf.variable_scope("L3"):
-            W3 = tf.Variable(tf.random_uniform([layer2_size, self.n_actions], -3e-3, 3e-3), name="w")
-            b3 = tf.Variable(tf.random_uniform([self.n_actions], -3e-3, 3e-3), name="b")
-            action_output = tf.tanh(tf.nn.xw_plus_b(x, W3, b3))
-            l3_vars = [W3, b3]
+            mean = linear(x, self.n_actions, "mean", tf.random_uniform_initializer(-w_bound, w_bound))
+            log_std = linear(x, self.n_actions, "log_std", tf.random_uniform_initializer(-w_bound, w_bound))
 
-        return action_output, l1_vars + l2_vars + l3_vars
+            actor_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
+        return mean, log_std, actor_vars
 
     def build_target_actor_network(self, actor_vars: list):
         ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
@@ -118,63 +98,34 @@ class DDPG(Agent):
         target_net = [ema.average(v) for v in actor_vars]
 
         x = self.states
-        if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(
-                x, training_phase=self.is_training, scope_bn="target_batch_norm_0", activation=tf.identity)
 
         x = tf.nn.xw_plus_b(x, target_net[0], target_net[1])
-        if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(
-                x, training_phase=self.is_training, scope_bn="target_batch_norm_1", activation=tf.nn.relu)
-        x = tf.nn.xw_plus_b(x, target_net[2], target_net[3])
-        if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(
-                x, training_phase=self.is_training, scope_bn="target_batch_norm_2", activation=tf.nn.relu)
 
         action_output = tf.tanh(tf.nn.xw_plus_b(x, target_net[4], target_net[5]))
 
         return action_output, target_update
 
-    def build_critic_network(self):
-        layer1_size = 400
-        layer2_size = 300
+    def build_softq_network(self):
+        x = tf.concat([self.states, self.actions], 1)
+        with tf.variable_scope("softq"):
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1"))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2"))
+            x = linear(x, 1, "softq", tf.random_uniform_initializer(-3e-3, 3e-3))
 
+            softq_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
+        return x, softq_vars
+
+    def build_value_network(self):
         x = self.states
-        with tf.variable_scope("L1"):
-            if self.config["critic_layer_norm"]:  # Defaults to False (= don't use it)
-                x = batch_norm_layer(x, training_phase=self.is_training,
-                                     scope_bn="batch_norm_0", activation=tf.identity)
-            x, l1_vars = linear_fan_in(x, layer1_size)
-            x = tf.nn.relu(x)
-        with tf.variable_scope("L2"):
-            W2 = tf.get_variable(
-                "w", [layer1_size, layer2_size], initializer=fan_in_initializer(layer1_size + self.n_actions))
-            W2_action = tf.get_variable(
-                "w_action", [self.n_actions, layer2_size], initializer=fan_in_initializer(layer1_size + self.n_actions))
-            b2 = tf.get_variable(
-                "b", [layer2_size], initializer=fan_in_initializer(layer1_size + self.n_actions))
-            x = tf.nn.relu(tf.matmul(x, W2) + tf.matmul(self.actions_taken, W2_action) + b2)
-        with tf.variable_scope("L3"):
-            W3 = tf.Variable(tf.random_uniform([layer2_size, 1], -3e-3, 3e-3), name="w")
-            b3 = tf.Variable(tf.random_uniform([1], -3e-3, 3e-3), name="b")
-            q_value_output = tf.nn.xw_plus_b(x, W3, b3, name="q_value")
+        with tf.variable_scope("value"):
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1"))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2"))
+            x = linear(x, 1, "value", tf.random_uniform_initializer(-3e-3, 3e-3))
 
-        return q_value_output, l1_vars + [W2, W2_action, b2, W3, b3]
+            value_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
-    def build_target_critic_network(self, critic_vars: list):
-
-        ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
-        target_update = ema.apply(critic_vars)
-        target_net = [ema.average(v) for v in critic_vars]
-
-        x = self.states
-        if self.config["critic_layer_norm"]:
-            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
-        x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[0], target_net[1]))
-        x = tf.nn.relu(tf.matmul(x, target_net[2]) + tf.matmul(self.actions_taken, target_net[3]) + target_net[4])
-        q_value_output = tf.nn.xw_plus_b(x, target_net[5], target_net[6])
-
-        return q_value_output, target_update
+        return x, value_vars
 
     def actor_gradients(self, state_batch: np.ndarray, action_batch: np.ndarray):
         q, grads = tf.get_default_session().run([self.q_value_output, self.action_gradients], feed_dict={

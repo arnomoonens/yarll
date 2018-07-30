@@ -26,6 +26,7 @@ class SAC(Agent):
             l2_loss_coef=1e-2,
             n_actor_layers=2,
             n_hidden_units=128,
+            n_train_steps=4, # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
             replay_start_size=10000  # Required number of replay buffer entries to start training
         )
@@ -35,32 +36,20 @@ class SAC(Agent):
         self.n_actions: int = env.action_space.shape[0]
         self.states = tf.placeholder(tf.float32, [None] + self.state_shape, name="states")
         self.actions_taken = tf.placeholder(tf.float32, [None, self.n_actions], name="actions_taken")
-        self.critic_target = tf.placeholder(tf.float32, [None, 1], name="critic_target")
+        self.softq_target = tf.placeholder(tf.float32, [None, 1], name="softq_target")
+        self.value_target = tf.placeholder(tf.float32, [None, 1], name="value_target")
         self.is_training = tf.placeholder(tf.bool, name="is_training")
 
-        with tf.variable_scope("actor"):
-            self.action_output, self.actor_vars = self.build_actor_network()
-
+        # Make networks
+        self.action, self.action_logprob, self.actor_vars = self.build_actor_network()
         self.target_action_output, actor_target_update = self.build_target_actor_network(self.actor_vars)
+        self.softq, self.softq_vars = self.build_softq_network()
+        self.value, self.value_vars = self.build_value_network()
 
-        self.q_gradient_input = tf.placeholder("float", [None, self.n_actions], name="q_grad_input")
-        self.actor_policy_gradients = tf.gradients(
-		          self.action_output, self.actor_vars, -self.q_gradient_input, name="actor_gradients")
-        self.actor_train_op = tf.train.AdamOptimizer(
-            self.config["actor_learning_rate"],
-            name="actor_optimizer").apply_gradients(list(zip(self.actor_policy_gradients, self.actor_vars)))
-
-        with tf.variable_scope("critic"):
-            self.q_value_output, self.critic_vars = self.build_critic_network()
-
-        self.target_q_value_output, critic_target_update = self.build_target_critic_network(self.critic_vars)
-
-        l2_loss = tf.add_n([self.config["l2_loss_coef"] * tf.nn.l2_loss(var) for var in self.critic_vars])
-        self.critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.q_value_output)) + l2_loss
-        self.critic_train_op = tf.train.AdamOptimizer(
-            self.config["critic_learning_rate"],
-            name="critic_optimizer").minimize(self.critic_loss)
-        self.action_gradients = tf.gradients(self.q_value_output, self.actions_taken, name="action_gradients")
+        # Make losses
+        self.value_loss = tf.reduce_mean(self.value * (self.value - self.value_target))
+        self.softq_loss = tf.reduce_mean(self.softq * (self.softq - self.softq_target))
+        self.actor_loss = tf.reduce_mean(self.action_logprob * (self.action_logprob - self.softq + self.value))
 
         summaries = []
         for v in self.actor_vars + self.critic_vars:
@@ -88,9 +77,14 @@ class SAC(Agent):
             mean = linear(x, self.n_actions, "mean", tf.random_uniform_initializer(-w_bound, w_bound))
             log_std = linear(x, self.n_actions, "log_std", tf.random_uniform_initializer(-w_bound, w_bound))
 
+            normal_dist = tf.distributions.Normal(mean, tf.exp(log_std))
+            actions = normal_dist.sample()
+
+            logprob = normal_dist.log_prob(self.actions_taken)
+
             actor_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
-        return mean, log_std, actor_vars
+        return actions, logprob, actor_vars
 
     def build_target_actor_network(self, actor_vars: list):
         ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
@@ -214,11 +208,6 @@ class SAC(Agent):
         tf.get_default_session().run([self.update_targets_op, self.model_summary_op])
         self.n_updates += 1
 
-    def noise_action(self, state: np.ndarray):
-        """Choose an action based on the actor and exploration noise."""
-        action = self.action(state)
-        return action + self.action_noise()
-
     def learn(self):
         max_action = self.env.action_space.high
         with tf.Session() as sess, sess.as_default():
@@ -228,16 +217,16 @@ class SAC(Agent):
                 episode_reward = 0
                 episode_length = 0
                 for _ in range(self.config["n_timesteps"]):
-                    action = self.noise_action(state)
-                    new_state, reward, done, _ = self.env.step(action * max_action)
+                    action = self.action(state)
+                    new_state, reward, done, _ = self.env.step(action * max_action) # TODO: change this max_action thing
                     episode_length += 1
                     episode_reward += reward
                     self.replay_buffer.add(state, action, reward, new_state, done)
                     if self.replay_buffer.n_entries > self.config["replay_start_size"]:
-                        self.train()
+                        for _ in range(self.config["n_train_steps"]):
+                            self.train()
                     state = new_state
                     if done:
-                        self.action_noise.reset()
                         summary = tf.Summary()
                         summary.value.add(tag="global/Episode_length",
                                           simple_value=float(episode_length))

@@ -2,19 +2,18 @@
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/c329c8cdd744463dbda6a726e20f2383)](https://www.codacy.com/app/arnomoonens/DeepRL?utm_source=github.com&utm_medium=referral&utm_content=arnomoonens/DeepRL&utm_campaign=badger)
 
-This code is part of [my master thesis](https://github.com/arnomoonens/Master-Thesis) at the [VUB](http://www.vub.ac.be), Brussels.
-
 ## Status
 
-Different algorithms have currently been implemented:
+Different algorithms have currently been implemented (in no particular order):
 
 - [Advantage Actor Critic](./agents/actorcritic/a2c.py)
 - [Asynchronous Advantage Actor Critic (A3C)](./agents/actorcritic/a3c.py)
 - [Deep Deterministic Policy Gradient (DDPG)](./agents/ddpg.py)
 - [Proximal Policy Optimization (PPO)](./agents/ppo/ppo.py)
-- [Distributed Policy Optimization (DPPO)](./agents/ppo/dppo.py)
+  - [Distributed version (DPPO)](./agents/ppo/dppo.py)
+- [Soft Actor-Critic (SAC)](./agents/sac.py)
 - [Trust Region Policy Optimization (TRPO)](./agents/trpo/trpo.py)
-- [Distributed Trust Region Policy Optimization (DTRPO)](./agents/trpo/dtrpo.py)
+  - [Distributed version (DTRPO)](./agents/trpo/dtrpo.py)
 - [REINFORCE](./agents/reinforce.py) (convolutional neural network part has not been tested yet)
 - [Cross-Entropy Method](./agents/cem.py)
 - [Sarsa with with function approximation and eligibility traces](./agents/sarsa/sarsa_fa.py)

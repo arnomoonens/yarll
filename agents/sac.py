@@ -41,22 +41,20 @@ class SAC(Agent):
         self.is_training = tf.placeholder(tf.bool, name="is_training")
 
         # Make networks
-        self.action, self.action_logprob, self.actor_vars = self.build_actor_network()
-        self.target_action_output, actor_target_update = self.build_target_actor_network(self.actor_vars)
-        self.softq, self.softq_vars = self.build_softq_network()
-        self.value, self.value_vars = self.build_value_network()
+        self.action_output, self.action_logprob, self.actor_vars = self.build_actor_network()
+        self.softq_output, self.softq_vars = self.build_softq_network()
+        self.value_output, self.value_vars = self.build_value_network()
+        self.target_value_output, self.value_target_update = self.build_target_value_network(self.value_vars)
 
         # Make losses
-        self.value_loss = tf.reduce_mean(self.value * (self.value - self.value_target))
-        self.softq_loss = tf.reduce_mean(self.softq * (self.softq - self.softq_target))
-        self.actor_loss = tf.reduce_mean(self.action_logprob * (self.action_logprob - self.softq + self.value))
+        self.value_loss = tf.reduce_mean(self.value_output * (self.value_output - self.value_target))
+        self.softq_loss = tf.reduce_mean(self.softq_output * (self.softq_output - self.softq_target))
+        self.actor_loss = tf.reduce_mean(self.action_logprob * (self.action_logprob - self.softq_output + self.value_output))
 
         summaries = []
-        for v in self.actor_vars + self.critic_vars:
+        for v in self.actor_vars + self.softq_vars + self.value_vars:
             summaries.append(tf.summary.histogram(v.name, v))
         self.model_summary_op = tf.summary.merge(summaries)
-
-        self.update_targets_op = tf.group(actor_target_update, critic_target_update, name="update_targets")
 
         self.init_op = tf.global_variables_initializer()
 
@@ -86,18 +84,17 @@ class SAC(Agent):
 
         return actions, logprob, actor_vars
 
-    def build_target_actor_network(self, actor_vars: list):
+    def build_target_value_network(self, value_vars: list):
         ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
-        target_update = ema.apply(actor_vars)
-        target_net = [ema.average(v) for v in actor_vars]
+        target_update = ema.apply(value_vars)
+        target_net = [ema.average(v) for v in value_vars]
 
         x = self.states
+        x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[0], target_net[1]))
+        x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[2], target_net[3]))
+        value = tf.nn.xw_plus_b(x, target_net[4], target_net[5])
 
-        x = tf.nn.xw_plus_b(x, target_net[0], target_net[1])
-
-        action_output = tf.tanh(tf.nn.xw_plus_b(x, target_net[4], target_net[5]))
-
-        return action_output, target_update
+        return value, target_update
 
     def build_softq_network(self):
         x = tf.concat([self.states, self.actions], 1)
@@ -121,26 +118,15 @@ class SAC(Agent):
 
         return x, value_vars
 
-    def actor_gradients(self, state_batch: np.ndarray, action_batch: np.ndarray):
-        q, grads = tf.get_default_session().run([self.q_value_output, self.action_gradients], feed_dict={
-            self.states: state_batch,
-            self.actions_taken: action_batch,
-            self.is_training: False
-        })
-        summary = tf.Summary()
-        summary.value.add(tag="model/actor_loss", simple_value=float(-np.mean(q)))
-        self.summary_writer.add_summary(summary, self.n_updates)
-        return grads[0]
-
-    def target_q(self, states: np.ndarray, actions: np.ndarray):
-        return tf.get_default_session().run(self.target_q_value_output, feed_dict={
+    def target_value(self, states: np.ndarray, actions: np.ndarray):
+        return tf.get_default_session().run(self.target_value_output, feed_dict={
             self.states: states,
             self.actions_taken: actions,
             self.is_training: False
         })
 
-    def q_value(self, states: np.ndarray, actions: np.ndarray):
-        return tf.get_default_session().run(self.q_value_output, feed_dict={
+    def softq_value(self, states: np.ndarray, actions: np.ndarray):
+        return tf.get_default_session().run(self.softq_output, feed_dict={
             self.states: states,
             self.actions_taken: actions,
             self.is_training: False
@@ -160,13 +146,6 @@ class SAC(Agent):
             self.is_training: False
         })[0]
 
-    def target_actions(self, states: np.ndarray) -> np.ndarray:
-        """Get the actions for a batch of states using the target actor network."""
-        return tf.get_default_session().run(self.target_action_output, feed_dict={
-            self.states: states,
-            self.is_training: True
-        })
-
     def train(self):
         sample = self.replay_buffer.get_batch(self.config["batch_size"])
 
@@ -180,7 +159,7 @@ class SAC(Agent):
             self.config["gamma"] * q_value_batch.squeeze()
         critic_targets = np.resize(critic_targets, [self.config["batch_size"], 1]).astype(np.float32)
         # Update actor weights
-        fetches = [self.q_value_output, self.critic_loss, self.critic_train_op]
+        fetches = [self.softq_value_output, self.softq_loss, self.softq_train_op]
         predicted_q, critic_loss, _ = tf.get_default_session().run(fetches, feed_dict={
             self.critic_target: critic_targets,
             self.states: sample["states0"],
@@ -194,18 +173,8 @@ class SAC(Agent):
         summary.value.add(tag="model/predicted_q_std", simple_value=np.std(predicted_q))
         self.summary_writer.add_summary(summary, self.n_updates)
 
-        # Update the actor using the sampled gradient:
-        action_batch_for_gradients = self.actions(sample["states0"])
-        q_gradient_batch = self.actor_gradients(sample["states0"], action_batch_for_gradients)
-
-        tf.get_default_session().run(self.actor_train_op, feed_dict={
-            self.q_gradient_input: q_gradient_batch,
-            self.states: sample["states0"],
-            self.is_training: True
-        })
-
         # Update the target networks
-        tf.get_default_session().run([self.update_targets_op, self.model_summary_op])
+        tf.get_default_session().run([self.value_target_update, self.model_summary_op])
         self.n_updates += 1
 
     def learn(self):
@@ -218,7 +187,7 @@ class SAC(Agent):
                 episode_length = 0
                 for _ in range(self.config["n_timesteps"]):
                     action = self.action(state)
-                    new_state, reward, done, _ = self.env.step(action * max_action) # TODO: change this max_action thing
+                    new_state, reward, done, _ = self.env.step(action) # TODO: change this max_action thing
                     episode_length += 1
                     episode_reward += reward
                     self.replay_buffer.add(state, action, reward, new_state, done)

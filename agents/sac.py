@@ -48,6 +48,7 @@ class SAC(Agent):
 
         # Make losses
         # softq_target = r(s_t, a_t) - gamma * target_value_output(s_{t+1})
+        self.softq_target = tf.Print(self.softq_target, [self.softq_target], message="softq=", first_n=5)
         self.softq_loss = tf.reduce_mean(self.softq_output * (self.softq_output - self.softq_target))
         value_target = self.softq_output + self.action_logprob
         self.value_loss = tf.reduce_mean(self.value_output * (self.value_output - value_target))
@@ -56,13 +57,13 @@ class SAC(Agent):
 
         # Make train ops
         softq_train_op = tf.train.AdamOptimizer(
-            self.config["learning_rate"],
+            self.config["softq_learning_rate"],
             name="softq_optimizer").minimize(self.softq_loss)
         value_train_op = tf.train.AdamOptimizer(
-            self.config["learning_rate"],
+            self.config["value_learning_rate"],
             name="value_optimizer").minimize(self.value_loss)
         actor_train_op = tf.train.AdamOptimizer(
-            self.config["learning_rate"],
+            self.config["actor_learning_rate"],
             name="actor_optimizer").minimize(self.actor_loss)
 
         self.train_op = tf.group(softq_train_op, value_train_op, actor_train_op, name="train_op")
@@ -113,7 +114,7 @@ class SAC(Agent):
         return value, target_update
 
     def build_softq_network(self):
-        x = tf.concat([self.states, self.actions], 1)
+        x = tf.concat([self.states, self.actions_taken], 1)
         with tf.variable_scope("softq"):
             x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1"))
             x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2"))
@@ -174,7 +175,7 @@ class SAC(Agent):
         softq_targets = np.resize(softq_targets, [self.config["batch_size"], 1]).astype(np.float32)
         # Update actor weights
         fetches = [self.softq_output, self.softq_loss, self.train_op]
-        predicted_q, critic_loss, _ = tf.get_default_session().run(fetches, feed_dict={
+        predicted_q, softq_loss, _ = tf.get_default_session().run(fetches, feed_dict={
             self.softq_target: softq_targets,
             self.states: sample["states0"],
             self.actions_taken: action_batch,
@@ -182,7 +183,7 @@ class SAC(Agent):
         })
 
         summary = tf.Summary()
-        summary.value.add(tag="model/critic_loss", simple_value=float(critic_loss))
+        summary.value.add(tag="model/softq_loss", simple_value=float(softq_loss))
         summary.value.add(tag="model/predicted_softq_mean", simple_value=np.mean(predicted_q))
         summary.value.add(tag="model/predicted_softq_std", simple_value=np.std(predicted_q))
         self.summary_writer.add_summary(summary, self.n_updates)

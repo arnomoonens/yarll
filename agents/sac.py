@@ -25,6 +25,7 @@ class SAC(Agent):
             tau=0.01,
             l2_loss_coef=1e-2,
             n_actor_layers=2,
+            logprob_epsilon=1e-6, # For numerical stability when computing tf.log
             n_hidden_units=128,
             n_train_steps=4, # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
@@ -41,7 +42,8 @@ class SAC(Agent):
         self.is_training = tf.placeholder(tf.bool, name="is_training")
 
         # Make networks
-        self.action_output, self.action_logprob, self.actor_vars = self.build_actor_network()
+        # action_output are the squashed actions and action_original those straight from the normal distribution
+        self.action_output, self.action_original, self.action_logprob, self.actor_vars = self.build_actor_network()
         self.softq_output, self.softq_vars = self.build_softq_network()
         self.value_output, self.value_vars = self.build_value_network()
         self.target_value_output, self.value_target_update = self.build_target_value_network(self.value_vars)
@@ -94,12 +96,14 @@ class SAC(Agent):
 
             normal_dist = tf.distributions.Normal(mean, tf.exp(log_std))
             actions = normal_dist.sample()
+            squashed_actions = tf.tanh(actions) # Squash output between [-1, 1]
 
-            logprob = normal_dist.log_prob(self.actions_taken)
+            logprob = normal_dist.log_prob(actions) - \
+            tf.log(1.0 - tf.pow(self.actions_taken, 2) + self.config["logprob_epsilon"])
 
             actor_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
-        return actions, logprob, actor_vars
+        return squashed_actions, actions, logprob, actor_vars
 
     def build_target_value_network(self, value_vars: list):
         ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
@@ -202,7 +206,7 @@ class SAC(Agent):
                 episode_length = 0
                 for _ in range(self.config["n_timesteps"]):
                     action = self.action(state)
-                    new_state, reward, done, _ = self.env.step(action) # TODO: change this max_action thing
+                    new_state, reward, done, _ = self.env.step(action * max_action)
                     episode_length += 1
                     episode_reward += reward
                     self.replay_buffer.add(state, action, reward, new_state, done)

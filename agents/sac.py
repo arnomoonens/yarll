@@ -23,7 +23,6 @@ class SAC(Agent):
             gamma=0.99,
             batch_size=128,
             tau=0.01,
-            l2_loss_coef=1e-2,
             n_actor_layers=2,
             logprob_epsilon=1e-6, # For numerical stability when computing tf.log
             n_hidden_units=128,
@@ -50,11 +49,9 @@ class SAC(Agent):
         self.target_value_output, self.value_target_update = self.build_target_value_network(self.value_vars)
 
         # Make losses
-        # softq_target = r(s_t, a_t) - gamma * target_value_output(s_{t+1})
-        self.softq_target = tf.Print(self.softq_target, [self.softq_target], message="softq=", first_n=5)
-        self.softq_loss = tf.reduce_mean(0.5 * tf.square(self.softq_output - self.softq_target))
-        self.value_loss = tf.reduce_mean(0.5 * tf.square(self.value_output - self.value_target))
-        self.actor_loss = tf.reduce_mean(self.action_logprob * self.advantage)
+        self.softq_loss = tf.reduce_mean(0.5 * tf.square(self.softq_output - self.softq_target), name="softq_loss")
+        self.value_loss = tf.reduce_mean(0.5 * tf.square(self.value_output - self.value_target), name="value_loss")
+        self.actor_loss = tf.reduce_mean(self.action_logprob * self.advantage, name="actor_loss")
 
         # Make train ops
         softq_train_op = tf.train.AdamOptimizer(
@@ -92,11 +89,11 @@ class SAC(Agent):
 
             mean = linear(x, self.n_actions, "mean", tf.random_uniform_initializer(-w_bound, w_bound))
             log_std = linear(x, self.n_actions, "log_std", tf.random_uniform_initializer(-w_bound, w_bound))
-            log_std = tf.clip_by_value(log_std, -20, 2)
+            log_std_clipped = tf.clip_by_value(log_std, -20, 2, name="log_std_clipped") # TODO: is this in the paper?
 
-            normal_dist = tf.distributions.Normal(mean, tf.exp(log_std))
-            actions = normal_dist.sample()
-            squashed_actions = tf.tanh(actions) # Squash output between [-1, 1]
+            normal_dist = tf.distributions.Normal(mean, tf.exp(log_std_clipped), name="actions_normal_distr")
+            actions = normal_dist.sample(name="actions")
+            squashed_actions = tf.tanh(actions, name="squashed_actions") # Squash output between [-1, 1]
 
             logprob = normal_dist.log_prob(actions) - \
             tf.log(1.0 - tf.pow(self.actions_taken, 2) + self.config["logprob_epsilon"])
@@ -113,7 +110,7 @@ class SAC(Agent):
         x = self.states
         x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[0], target_net[1]))
         x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[2], target_net[3]))
-        value = tf.nn.xw_plus_b(x, target_net[4], target_net[5])
+        value = tf.nn.xw_plus_b(x, target_net[4], target_net[5], name="target_value")
 
         return value, target_update
 
@@ -172,7 +169,7 @@ class SAC(Agent):
             self.is_training: False
         })[0]
 
-    def train(self):
+    def train(self, model_summary=True):
         sample = self.replay_buffer.get_batch(self.config["batch_size"])
 
         # for n_actions = 1
@@ -199,8 +196,10 @@ class SAC(Agent):
 
         value_targets = next_q_value_batch - log_prob
         # Update actor weights
-        fetches = [self.softq_output, self.softq_loss, self.actor_loss, self.value_loss, self.train_op]
-        predicted_q, softq_loss, actor_loss, value_loss, _ = tf.get_default_session().run(fetches, feed_dict={
+        fetches = [self.train_op]
+        if model_summary:
+            fetches = [self.softq_output, self.softq_loss, self.actor_loss, self.value_loss] + fetches
+        results = tf.get_default_session().run(fetches, feed_dict={
             self.softq_target: softq_targets,
             self.states: sample["states0"],
             self.actions_taken: action_batch,
@@ -209,16 +208,20 @@ class SAC(Agent):
             self.is_training: True
         })
 
-        summary = tf.Summary()
-        summary.value.add(tag="model/softq_loss", simple_value=float(softq_loss))
-        summary.value.add(tag="model/value_loss", simple_value=float(value_loss))
-        summary.value.add(tag="model/actor_loss", simple_value=float(actor_loss))
-        summary.value.add(tag="model/predicted_softq_mean", simple_value=np.mean(predicted_q))
-        summary.value.add(tag="model/predicted_softq_std", simple_value=np.std(predicted_q))
-        self.summary_writer.add_summary(summary, self.n_updates)
+        if model_summary:
+            summary = tf.Summary()
+            summary.value.add(tag="model/predicted_softq_mean", simple_value=np.mean(results[0]))
+            summary.value.add(tag="model/predicted_softq_std", simple_value=np.std(results[0]))
+            summary.value.add(tag="model/softq_loss", simple_value=float(results[1]))
+            summary.value.add(tag="model/actor_loss", simple_value=float(results[2]))
+            summary.value.add(tag="model/value_loss", simple_value=float(results[3]))
+            self.summary_writer.add_summary(summary, self.n_updates)
 
         # Update the target networks
-        tf.get_default_session().run([self.value_target_update, self.model_summary_op])
+        fetches = [self.value_target_update]
+        if model_summary:
+            fetches = fetches + [self.model_summary_op]
+        tf.get_default_session().run(fetches)
         self.n_updates += 1
 
     def learn(self):
@@ -238,7 +241,7 @@ class SAC(Agent):
                     self.replay_buffer.add(state, action, reward, new_state, done)
                     if self.replay_buffer.n_entries > self.config["replay_start_size"]:
                         for _ in range(self.config["n_train_steps"]):
-                            self.train()
+                            self.train(model_summary=(self.n_updates % 50) == 0)
                     state = new_state
                     if done or episode_length >= timestep_limit:
                         summary = tf.Summary()

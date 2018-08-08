@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from agents.agent import Agent
 from memory.memory import Memory
-from misc.network_ops import linear
+from misc.network_ops import linear, normalized_columns_initializer
 
 class SAC(Agent):
     def __init__(self, env, monitor_path: str, **usercfg) -> None:
@@ -63,7 +63,6 @@ class SAC(Agent):
         actor_train_op = tf.train.AdamOptimizer(
             self.config["actor_learning_rate"],
             name="actor_optimizer").minimize(self.actor_loss)
-
         self.train_op = tf.group(softq_train_op, value_train_op, actor_train_op, name="train_op")
 
         summaries = []
@@ -84,11 +83,19 @@ class SAC(Agent):
         w_bound = 3e-3
         x = self.states
         with tf.variable_scope("actor"):
-            x = linear(x, self.config["n_hidden_units"], "L1", tf.random_uniform_initializer(-w_bound, w_bound))
-            x = tf.nn.relu(x)
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
 
-            mean = linear(x, self.n_actions, "mean", tf.random_uniform_initializer(-w_bound, w_bound))
-            log_std = linear(x, self.n_actions, "log_std", tf.random_uniform_initializer(-w_bound, w_bound))
+            mean = linear(x,
+                          self.n_actions,
+                          "mean",
+                          tf.random_uniform_initializer(-w_bound, w_bound),
+                          tf.random_uniform_initializer(-w_bound, w_bound))
+            log_std = linear(x,
+                             self.n_actions,
+                             "log_std",
+                             tf.random_uniform_initializer(-w_bound, w_bound),
+                             tf.random_uniform_initializer(-w_bound, w_bound))
             log_std_clipped = tf.clip_by_value(log_std, -20, 2, name="log_std_clipped") # TODO: is this in the paper?
 
             normal_dist = tf.distributions.Normal(mean, tf.exp(log_std_clipped), name="actions_normal_distr")
@@ -117,9 +124,9 @@ class SAC(Agent):
     def build_softq_network(self):
         x = tf.concat([self.states, self.actions_taken], 1)
         with tf.variable_scope("softq"):
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1"))
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2"))
-            x = linear(x, 1, "softq", tf.random_uniform_initializer(-3e-3, 3e-3))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
+            x = linear(x, 1, "softq", tf.random_uniform_initializer(-3e-3, 3e-3), tf.random_uniform_initializer(-3e-3, 3e-3))
 
             softq_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
@@ -128,9 +135,9 @@ class SAC(Agent):
     def build_value_network(self):
         x = self.states
         with tf.variable_scope("value"):
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1"))
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2"))
-            x = linear(x, 1, "value", tf.random_uniform_initializer(-3e-3, 3e-3))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
+            x = linear(x, 1, "value", tf.random_uniform_initializer(-3e-3, 3e-3), tf.random_uniform_initializer(-3e-3, 3e-3))
 
             value_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 

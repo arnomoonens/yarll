@@ -225,8 +225,9 @@ class SAC(Agent):
         self.n_updates += 1
 
     def learn(self):
-        max_action = self.env.action_space.high
         timestep_limit = self.env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')
+        action_low = self.env.action_space.low
+        action_high = self.env.action_space.high
         with tf.Session() as sess, sess.as_default():
             sess.run(self.init_op)
             for episode in range(self.config["n_episodes"]):
@@ -235,7 +236,9 @@ class SAC(Agent):
                 episode_length = 0
                 for _ in range(self.config["n_timesteps"]):
                     action = self.action(state)
-                    new_state, reward, done, _ = self.env.step(action * max_action)
+                    to_execute = 2 * (action - action_low) / (action_high - action_low) - 1
+                    to_execute = np.clip(to_execute, action_low, action_high)
+                    new_state, reward, done, _ = self.env.step(to_execute)
                     episode_length += 1
                     episode_reward += reward
                     self.replay_buffer.add(state, action, reward, new_state, done)

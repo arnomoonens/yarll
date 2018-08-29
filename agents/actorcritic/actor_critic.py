@@ -10,8 +10,10 @@ import numpy as np
 
 from misc.network_ops import normalized_columns_initializer, linear, conv2d, flatten
 
+class ActorCriticNetwork(object):
+    pass
 
-class ActorCriticNetworkDiscrete(object):
+class ActorCriticNetworkDiscrete(ActorCriticNetwork):
     """
     Neural network for the Actor of an Actor-Critic algorithm using a discrete action space.
     """
@@ -50,7 +52,7 @@ class ActorCriticNetworkDiscrete(object):
         self.entropy = self.probs * self.log_probs
 
 
-class ActorCriticNetworkDiscreteCNN(object):
+class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
     def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden: int, summary: bool = True) -> None:
@@ -92,7 +94,7 @@ class ActorCriticNetworkDiscreteCNN(object):
         self.entropy = self.probs * self.log_probs
 
 
-class ActorCriticNetworkDiscreteCNNRNN(object):
+class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
     def __init__(self,
@@ -170,7 +172,7 @@ def actor_critic_discrete_loss(logits,
     return actor_loss, critic_loss, loss
 
 
-class ActorCriticNetworkContinuous(object):
+class ActorCriticNetworkContinuous(ActorCriticNetwork):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
 
     def __init__(self, state_shape: Sequence[int], action_space, n_hidden_units: int, n_hidden_layers: int = 1) -> None:

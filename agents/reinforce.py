@@ -22,9 +22,14 @@ class REINFORCE(Agent):
     """
     REINFORCE with baselines
     """
-    def __init__(self, env, monitor_path, video=True, **usercfg):
+    def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = True, **usercfg) -> None:
         super(REINFORCE, self).__init__(**usercfg)
-        self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
+        self.env = env
+        if monitor:
+            self.env = wrappers.Monitor(self.env,
+                                        monitor_path,
+                                        force=True,
+                                        video_callable=(None if video else False))
         self.monitor_path = monitor_path
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
@@ -48,10 +53,6 @@ class REINFORCE(Agent):
         self.build_network()
         self.make_trainer()
 
-        init = tf.global_variables_initializer()
-        # Launch the graph.
-        self.session = tf.Session()
-        self.session.run(init)
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
@@ -59,9 +60,22 @@ class REINFORCE(Agent):
         summary_loss = tf.summary.scalar("model/loss", self.summary_loss)
         summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
         self.summary_op = tf.summary.merge([summary_loss, summary_entropy])
+
+        self.init_op = tf.global_variables_initializer()
+        # Launch the graph.
+        self.session = tf.Session()
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
 
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
+
+    def _initialize(self):
+        self.session.run(self.init_op)
+
+    def build_network(self):
+        raise NotImplementedError()
+
+    def make_trainer(self):
+        raise NotImplementedError()
 
     def choose_action(self, state, features):
         """Choose an action."""
@@ -70,6 +84,7 @@ class REINFORCE(Agent):
 
     def learn(self):
         """Run learning algorithm"""
+        self._initialize()
         reporter = Reporter()
         config = self.config
         total_n_trajectories = 0

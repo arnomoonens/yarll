@@ -20,7 +20,7 @@
             "video": false,
             "save_model": true,
 			"normalize_states": false,
-            "monitor": true,
+            "monitor": false,
             "n_iter": 400000
         }
     }

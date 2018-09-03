@@ -73,7 +73,6 @@ class DDPG(Agent):
 
         self.update_targets_op = tf.group(actor_target_update, critic_target_update, name="update_targets")
 
-        self.init_op = tf.global_variables_initializer()
 
         self.action_noise = OrnsteinUhlenbeckActionNoise(
             self.n_actions,
@@ -83,10 +82,16 @@ class DDPG(Agent):
 
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
 
+        self.session = tf.Session()
+        self.init_op = tf.global_variables_initializer()
+
         self.n_updates = 0
 
         self.summary_writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), tf.get_default_graph())
+
+    def _initalize(self):
+        self.session.run(self.init_op)
 
     def build_actor_network(self):
         layer1_size = 400
@@ -270,8 +275,8 @@ class DDPG(Agent):
 
     def learn(self):
         max_action = self.env.action_space.high
-        with tf.Session() as sess, sess.as_default():
-            sess.run(self.init_op)
+        self._initalize()
+        with self.session as sess, sess.as_default():
             for episode in range(self.config["n_episodes"]):
                 state = self.env.reset()
                 episode_reward = 0

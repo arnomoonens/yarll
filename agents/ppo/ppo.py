@@ -20,14 +20,16 @@ class PPO(Agent):
     """Proximal Policy Optimization agent."""
     RNN = False
 
-    def __init__(self, env, monitor_path: str, video=False, **usercfg) -> None:
+    def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = False, **usercfg) -> None:
         super(PPO, self).__init__(**usercfg)
         self.monitor_path: str = monitor_path
-        self.env = wrappers.Monitor(
-            env,
-            monitor_path,
-            force=True,
-            video_callable=(None if video else False))
+        self.env = env
+        if monitor:
+            self.env = wrappers.Monitor(
+                self.env,
+                monitor_path,
+                force=True,
+                video_callable=(None if video else False))
 
         self.config.update(dict(
             n_hidden_units=20,
@@ -150,9 +152,11 @@ class PPO(Agent):
         inc_step = self._global_step.assign_add(self.n_steps)
         self.train_op = tf.group(apply_grads, inc_step)
 
-        init = tf.global_variables_initializer()
-        self.session.run(init)
+        self.init_op = tf.global_variables_initializer()
         return
+
+    def _initialize(self):
+        self.session.run(self.init_op)
 
     def make_actor_loss(self, old_network, new_network, advantage):
         return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_epsilon"], advantage)
@@ -195,6 +199,7 @@ class PPO(Agent):
 
     def learn(self):
         """Run learning algorithm"""
+        self._initialize()
         config = self.config
         n_updates = 0
         for _ in range(config["n_iter"]):

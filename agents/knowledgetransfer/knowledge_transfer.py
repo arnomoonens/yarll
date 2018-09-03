@@ -134,13 +134,14 @@ class KnowledgeTransfer(Agent):
             zip(self.accum_grads, net_vars))
         self.reset_accum_grads = reset_accumulative_gradients_op(net_vars, self.accum_grads, 0)
 
-        init = tf.global_variables_initializer()
+        self.init_op = tf.global_variables_initializer()
 
-        # Launch the graph.
-        self.session.run(init)
+    def _initialize(self):
+        self.session.run(self.init_op)
 
     def learn(self):
         """Run learning algorithm"""
+        self._initialize()
         reporter = Reporter()
         config = self.config
         total_n_trajectories = np.zeros(len(self.envs))

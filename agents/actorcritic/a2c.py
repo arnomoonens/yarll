@@ -83,10 +83,9 @@ class A2C(Agent):
         inc_step = self._global_step.assign_add(self.n_steps)
         self.train_op = tf.group(apply_grads, inc_step)
 
-        init = tf.global_variables_initializer()
+        self.init_op = tf.global_variables_initializer()
         # Launch the graph.
         self.session = tf.Session()
-        self.session.run(init)
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)
@@ -101,6 +100,9 @@ class A2C(Agent):
             self.monitor_path, "summaries"), self.session.graph)
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
         return
+
+    def _initialize(self):
+        self.session.run(self.init_op)
 
     def build_networks(self):
         return NotImplementedError("Abstract method")
@@ -125,6 +127,7 @@ class A2C(Agent):
 
     def learn(self):
         """Run learning algorithm"""
+        self._initialize()
         config = self.config
         for _ in range(config["n_iter"]):
             # Collect trajectories until we get timesteps_per_batch total timesteps

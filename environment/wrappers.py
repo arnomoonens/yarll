@@ -38,14 +38,33 @@ class DiscreteObservationWrapper(gym.ObservationWrapper):
 
         if not isinstance(self.env.observation_space, gym.spaces.Discrete):
             raise AssertionError(
-                "The DiscreteObservationWrapper can only be applied to environments with a discrete observation space.")
+                "This wrapper can only be applied to environments with a discrete observation space.")
         self.n: int = self.observation_space.n
         self.observation_space: gym.spaces.Box = gym.spaces.Box(
             low=0.0,
             high=1.0,
             shape=(self.env.observation_space.n,))
 
-    def _observation(self, observation: int) -> np.ndarray:
+    def observation(self, observation: int) -> np.ndarray:
         converted = np.zeros(self.n)
         converted[observation] = 1.0
         return converted
+
+class NormalizedObservationWrapper(gym.ObservationWrapper):
+    """
+    Normalizes observations such that the values are
+    between 0.0 and 1.0
+    """
+
+    def __init__(self, env):
+        super(NormalizedObservationWrapper, self).__init__(env)
+        if not isinstance(self.env.observation_space, gym.spaces.Box):
+            raise AssertionError(
+                "This wrapper can only be applied to environments with a continuous observation space.")
+        if np.inf in self.env.observation_space.low or np.inf in self.env.observation_space.high:
+            raise AssertionError(
+                "This wrapper cannot be used for observation spaces with an infinite lower/upper bound.")
+
+    def observation(self, observation: np.ndarray) -> np.ndarray:
+        return (observation - self.env.observation_space.low) / \
+        (self.env.observation_space.high - self.env.observation_space.low)

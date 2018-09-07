@@ -129,9 +129,9 @@ class A2C(Agent):
         """Run learning algorithm"""
         self._initialize()
         config = self.config
-        for _ in range(config["n_iter"]):
+        for _ in range(int(config["n_iter"])):
             # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectory = self.env_runner.get_steps(self.config["n_local_steps"])
+            trajectory = self.env_runner.get_steps(int(self.config["n_local_steps"]))
             v = 0 if trajectory.terminals[-1] else self.get_critic_value(
                 np.asarray(trajectory.states)[None, -1], trajectory.features[-1])
             rewards_plus_v = np.asarray(trajectory.rewards + [v])
@@ -171,8 +171,8 @@ class A2CDiscrete(A2C):
         self.ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
     def make_loss(self):
         return actor_critic_discrete_loss(
@@ -193,7 +193,7 @@ class A2CDiscreteCNN(A2CDiscrete):
         self.ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"])
+            int(self.config["n_hidden_units"]))
 
 
 class A2CDiscreteCNNRNN(A2CDiscrete):
@@ -201,7 +201,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
         self.ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"])
+            int(self.config["n_hidden_units"]))
         self.initial_features = self.ac_net.state_init
 
     def choose_action(self, state, features) -> dict:
@@ -232,8 +232,8 @@ class A2CContinuous(A2C):
         self.ac_net = ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
     def make_loss(self):
         return actor_critic_continuous_loss(

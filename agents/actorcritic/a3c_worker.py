@@ -180,7 +180,7 @@ class A3CTask(object):
         # Write the summary of each task in a different directory
         self.writer = tf.summary.FileWriter(os.path.join(monitor_path, "task{}".format(task_id)))
 
-        self.runner = RunnerThread(self.env, self, self.config["n_local_steps"], task_id == 0 and video)
+        self.runner = RunnerThread(self.env, self, int(self.config["n_local_steps"]), task_id == 0 and video)
 
         self.server = tf.train.Server(
             cluster,
@@ -309,8 +309,8 @@ class A3CTaskDiscrete(A3CTask):
         ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
         return ac_net
 
     def make_loss(self):
@@ -334,7 +334,7 @@ class A3CTaskDiscreteCNN(A3CTaskDiscrete):
         ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
+            int(self.config["n_hidden_units"]),
             summary=False)
         return ac_net
 
@@ -346,7 +346,7 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
+            int(self.config["n_hidden_units"]),
             summary=False)
         self.initial_features = ac_net.state_init
         return ac_net
@@ -376,8 +376,8 @@ class A3CTaskContinuous(A3CTask):
         ac_net = ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
         return ac_net
 
     def make_loss(self):

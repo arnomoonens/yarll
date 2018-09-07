@@ -181,7 +181,7 @@ class PPO(Agent):
 
     def get_processed_trajectories(self):
         experiences = self.env_runner.get_steps(
-            self.config["n_local_steps"], stop_at_trajectory_end=False)
+            int(self.config["n_local_steps"]), stop_at_trajectory_end=False)
         T = experiences.steps
         v = 0 if experiences.terminals[-1] else self.get_critic_value(
             np.asarray(experiences.states)[None, -1], experiences.features[-1])
@@ -202,7 +202,7 @@ class PPO(Agent):
         self._initialize()
         config = self.config
         n_updates = 0
-        for _ in range(config["n_iter"]):
+        for _ in range(int(config["n_iter"])):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             states, actions, advs, rs, _ = self.get_processed_trajectories()
             advs = np.array(advs)
@@ -210,10 +210,10 @@ class PPO(Agent):
             self.session.run(self.set_old_to_new)
 
             indices = np.arange(len(states))
-            for _ in range(self.config["n_epochs"]):
+            for _ in range(int(self.config["n_epochs"])):
                 np.random.shuffle(indices)
 
-                batch_size = self.config["batch_size"]
+                batch_size = int(self.config["batch_size"])
                 for j in range(0, len(states), batch_size):
                     batch_indices = indices[j:(j + batch_size)]
                     batch_states = np.array(states)[batch_indices]
@@ -244,8 +244,8 @@ class PPODiscrete(PPO):
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
 
 class PPODiscreteCNN(PPODiscrete):
@@ -253,7 +253,7 @@ class PPODiscreteCNN(PPODiscrete):
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"])
+            int(self.config["n_hidden_units"]))
 
 
 class PPOContinuous(PPO):
@@ -261,8 +261,8 @@ class PPOContinuous(PPO):
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
     def get_env_action(self, action):
         return action

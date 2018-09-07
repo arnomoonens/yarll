@@ -79,14 +79,14 @@ class A3C(Agent):
         self.start_signal_handler()
         self.start_parameter_server()
         worker_processes = []
-        for task_id in range(self.config["n_tasks"]):
+        for task_id in range(int(self.config["n_tasks"])):
             cmd = [
                 sys.executable,
                 os.path.join(self.current_folder, "a3c_worker.py"),
                 self.env_name,
                 self.task_type,
                 task_id,
-                self.config["n_tasks"],
+                int(self.config["n_tasks"]),
                 self.config["config_path"],
                 "--monitor_path", self.monitor_path
             ]

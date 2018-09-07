@@ -1,8 +1,10 @@
 # -*- coding: utf8 -*-
 
+import numpy as np
+
 class Sarsa(object):
     """Sarsa learner for function approximation"""
-    def __init__(self, gamma, alpha, policy, traces, function_approximation, actions, start_state, start_action):
+    def __init__(self, gamma: float, alpha: float, policy, traces, function_approximation, actions, start_state, start_action) -> None:
         super(Sarsa, self).__init__()
         self.gamma = gamma
         self.alpha = alpha
@@ -13,7 +15,7 @@ class Sarsa(object):
         self.old_state = start_state
         self.old_action = start_action
 
-    def step(self, state, reward):
+    def step(self, state: np.ndarray, reward: float):
         """Do one step of updating traces, function approximation and selecting an action using a policy"""
         self.traces.replacing_traces(self.function_approximation.present_features(self.old_state, self.old_action))
         delta = reward - self.function_approximation.summed_thetas(self.old_state, self.old_action)

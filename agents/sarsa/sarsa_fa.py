@@ -16,7 +16,7 @@ from functionapproximation.tile_coding import TileCoding
 
 class SarsaFA(object):
     """Learner using Sarsa and function approximation"""
-    def __init__(self, env, monitor_path, video=True, **usercfg):
+    def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(SarsaFA, self).__init__()
         self.env = env
         self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
@@ -30,7 +30,7 @@ class SarsaFA(object):
             alpha=(0.05 * (0.5 / m)),
             gamma=1,
             n_iter=1000,
-            steps_per_episode=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps")  # Maximum number of allowed steps per episode, as determined (for this environment) by the gym library
+            steps_per_episode=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps")
         )
         self.config.update(usercfg)
         O = env.observation_space
@@ -39,18 +39,31 @@ class SarsaFA(object):
 
         self.nA = env.action_space.n
         self.policy = EGreedy(self.config["epsilon"])
-        self.function_approximation = TileCoding(self.x_low, self.x_high, self.y_low, self.y_high, m, self.config["n_x_tiles"], self.config["n_y_tiles"], self.nA)
+        self.function_approximation = TileCoding(self.x_low, self.x_high,
+                                                 self.y_low, self.y_high,
+                                                 m,
+                                                 int(self.config["n_x_tiles"]), int(self.config["n_y_tiles"]),
+                                                 self.nA)
 
     def learn(self):
-        for i in range(self.config["n_iter"]):
-            traces = EligibilityTraces(self.function_approximation.features_shape, self.config["gamma"], self.config["Lambda"])
+        for i in range(int(self.config["n_iter"])):
+            traces = EligibilityTraces(self.function_approximation.features_shape,
+                                       self.config["gamma"],
+                                       self.config["Lambda"])
             state, action = self.env.reset(), 0
-            sarsa = Sarsa(self.config["gamma"], self.config["alpha"], self.policy, traces, self.function_approximation, range(self.nA), state, action)
-            done = False  # Done says if the goal is reached or the maximum number of allowed steps for the episode is reached (determined by the gym library itself)
+            sarsa = Sarsa(self.config["gamma"],
+                          self.config["alpha"],
+                          self.policy,
+                          traces,
+                          self.function_approximation,
+                          range(self.nA), state, action)
+            done = False
             iteration = 0
-            while not(done):
+            while not done:
                 iteration += 1
                 state, reward, done, _ = self.env.step(action)
                 if done and iteration < self.config["steps_per_episode"]:
-                    print("Episode {}: Less than {} steps were needed: {}".format(i, self.config["steps_per_episode"], iteration))
+                    print("Episode {}: Less than {} steps were needed: {}".format(i,
+                                                                                  self.config["steps_per_episode"],
+                                                                                  iteration))
                 action = sarsa.step(state, reward)

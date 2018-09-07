@@ -8,6 +8,7 @@
 
 import numpy as np
 import os
+from typing import Dict
 
 import tensorflow as tf
 from gym import wrappers
@@ -68,7 +69,7 @@ class REINFORCE(Agent):
 
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
 
-    def _initialize(self):
+    def _initialize(self) -> None:
         self.session.run(self.init_op)
 
     def build_network(self):
@@ -77,7 +78,7 @@ class REINFORCE(Agent):
     def make_trainer(self):
         raise NotImplementedError()
 
-    def choose_action(self, state, features):
+    def choose_action(self, state, features) -> Dict[str, np.ndarray]:
         """Choose an action."""
         action = self.session.run([self.action], feed_dict={self.states: [state]})[0]
         return {"action": action}
@@ -120,11 +121,14 @@ class REINFORCE(Agent):
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 class REINFORCEDiscrete(REINFORCE):
-    def __init__(self, env, monitor_path, video=True, **usercfg):
+    def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def make_trainer(self):
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.actions_taken, tf.int32), self.env_runner.nA)), reduction_indices=[1])
+        good_probabilities = tf.reduce_sum(tf.multiply(self.probs,
+                                                       tf.one_hot(tf.cast(self.actions_taken, tf.int32),
+                                                                  self.env_runner.nA)),
+                                           reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.advantage
         loss = -tf.reduce_sum(eligibility)
         self.summary_loss = loss
@@ -135,7 +139,7 @@ class REINFORCEDiscrete(REINFORCE):
 
         L1 = tf.contrib.layers.fully_connected(
             inputs=self.states,
-            num_outputs=self.config["n_hidden_units"],
+            num_outputs=int(self.config["n_hidden_units"]),
             activation_fn=tf.tanh,
             weights_initializer=tf.random_normal_initializer(),
             biases_initializer=tf.zeros_initializer())
@@ -170,7 +174,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         # Fully connected layer 1
         self.L3 = tf.contrib.layers.fully_connected(
             inputs=reshape,
-            num_outputs=self.config["n_hidden_units"],
+            num_outputs=int(self.config["n_hidden_units"]),
             activation_fn=tf.nn.relu,
             weights_initializer=tf.random_normal_initializer(stddev=0.01),
             biases_initializer=tf.zeros_initializer())
@@ -194,7 +198,7 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
         n_states = tf.shape(self.states)[:1]
         states = tf.expand_dims(flatten(self.states), [0])
 
-        enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
+        enc_cell = tf.contrib.rnn.GRUCell(int(self.config["n_hidden_units"]))
         self.rnn_state_in = enc_cell.zero_state(1, tf.float32)
         L1, self.rnn_state_out = tf.nn.dynamic_rnn(cell=enc_cell,
                                                    inputs=states,
@@ -239,7 +243,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
         reshape = tf.expand_dims(flatten(reshape), [0])
-        self.enc_cell = tf.contrib.rnn.BasicLSTMCell(self.config["n_hidden_units"])
+        self.enc_cell = tf.contrib.rnn.BasicLSTMCell(int(self.config["n_hidden_units"]))
         self.rnn_state_in = self.enc_cell.zero_state(1, tf.float32)
         self.L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=self.enc_cell,
                                                         inputs=reshape,
@@ -279,8 +283,8 @@ class REINFORCEContinuous(REINFORCE):
             name="actions_taken")
 
         x = self.states
-        for i in range(self.config["n_hidden_layers"]):
-            x = tf.tanh(linear(x, self.config["n_hidden_units"], "L{}_mean".format(i + 1),
+        for i in range(int(self.config["n_hidden_layers"])):
+            x = tf.tanh(linear(x, int(self.config["n_hidden_units"]), "L{}_mean".format(i + 1),
                                initializer=normalized_columns_initializer(1.0)))
         self.mean = linear(x, self.env.action_space.shape[0], "mean", initializer=normalized_columns_initializer(0.01))
         self.mean = tf.check_numerics(self.mean, "mean")
@@ -306,7 +310,7 @@ class REINFORCEContinuous(REINFORCE):
         n_states = tf.shape(self.states)[:1]
         states = tf.expand_dims(flatten(self.states), [0])
 
-        enc_cell = tf.contrib.rnn.GRUCell(self.config["n_hidden_units"])
+        enc_cell = tf.contrib.rnn.GRUCell(int(self.config["n_hidden_units"]))
         L1, _ = tf.nn.dynamic_rnn(cell=enc_cell, inputs=states,
                                   sequence_length=n_states, dtype=tf.float32)
 

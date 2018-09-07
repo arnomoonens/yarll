@@ -4,6 +4,7 @@
 import sys
 import argparse
 import os
+from typing import Dict, Any
 import numpy as np
 from mpi4py import MPI
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"   # see issue #152
@@ -23,7 +24,7 @@ from agents.env_runner import EnvRunner  # pylint: disable=C0413
 class DPPOWorker(object):
     """Distributed Proximal Policy Optimization Worker."""
 
-    def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
+    def __init__(self, env_id: str, task_id: int, comm: MPI.Intercomm, monitor_path: str, config: Dict[str, Any], seed=None) -> None:
         super(DPPOWorker, self).__init__()
         self.comm = comm
         self.config = config
@@ -65,7 +66,7 @@ class DPPOWorker(object):
                     self.comm.Bcast(var_receiver, root=0)
                     tf_var.load(var_receiver)
                 experiences = self.env_runner.get_steps(
-                    self.config["n_local_steps"], stop_at_trajectory_end=False)
+                    int(self.config["n_local_steps"]), stop_at_trajectory_end=False)
                 T = experiences.steps
                 value = 0 if experiences.terminals[-1] else self.get_critic_value(
                     np.asarray(experiences.states)[None, -1], experiences.features[-1])
@@ -125,8 +126,8 @@ class DPPOWorkerDiscrete(DPPOWorker):
         ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
         return ac_net
 
 
@@ -148,7 +149,7 @@ class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
         ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
+            int(self.config["n_hidden_units"]),
             summary=False)
         return ac_net
 
@@ -171,7 +172,7 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
         ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
+            int(self.config["n_hidden_units"]),
             summary=False)
         self.initial_features = ac_net.state_init
         return ac_net
@@ -213,8 +214,8 @@ class DPPOWorkerContinuous(DPPOWorker):
         ac_net = ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
         return ac_net
 
     def get_env_action(self, action):

@@ -48,9 +48,14 @@ def make(env_id: str, **kwargs):
     if "atari.atari_env" in env.unwrapped.__module__:
         env = AtariRescale42x42(env)
     if "wrapper_entry_points" in spec.tags:
-        for wrapper_entry_point in spec.tags["wrapper_entry_points"]:
-            cls = gym.envs.registration.load(wrapper_entry_point)
-            env = cls(env)
+        for wrapper_info in spec.tags["wrapper_entry_points"]:
+            kwargs = {}
+            if isinstance(wrapper_info, str):
+                cls = gym.envs.registration.load(wrapper_info)
+            else:
+                cls = gym.envs.registration.load(wrapper_info["entry_point"])
+                kwargs = wrapper_info["kwargs"]
+            env = cls(env, **kwargs)
     return env
 
 def make_environments(descriptions: Sequence[dict]) -> list:

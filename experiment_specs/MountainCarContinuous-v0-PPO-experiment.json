@@ -1,13 +1,13 @@
 {
-    "experiment_name": "CartPole-PPO",
+    "experiment_name": "MountainCarContinuous-PPO",
     "environments": {
         "type": "single",
-        "source": "CartPole-v0"
+        "source": "MountainCarContinuous-v0"
     },
     "agent": {
         "name": "PPO",
         "args": {
-            "monitor_path": "/tmp/CartPole-v0-PPO",
+            "monitor_path": "/tmp/MountainCarContinuous-v0-PPO",
             "gradient_clip_value": 50.0,
             "batch_size": 64,
             "learning_rate": 3e-4,

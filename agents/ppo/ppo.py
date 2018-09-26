@@ -6,7 +6,7 @@ import numpy as np
 from gym import wrappers
 
 from agents.agent import Agent
-from agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
+from agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
 ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
 from agents.env_runner import EnvRunner
 from misc.utils import FastSaver
@@ -14,21 +14,22 @@ from misc.utils import FastSaver
 def ppo_loss(old_log, new_log, epsilon, advantage):
     ratio = tf.exp(new_log - old_log)
     ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
-    # ratio_clipped = tf.Print(ratio_clipped, [new_log, old_log, ratio, ratio_clipped], message="Ratio=")
     return tf.minimum(ratio * advantage, ratio_clipped * advantage)
 
 class PPO(Agent):
     """Proximal Policy Optimization agent."""
     RNN = False
 
-    def __init__(self, env, monitor_path: str, video=False, **usercfg) -> None:
+    def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = False, **usercfg) -> None:
         super(PPO, self).__init__(**usercfg)
         self.monitor_path: str = monitor_path
-        self.env = wrappers.Monitor(
-            env,
-            monitor_path,
-            force=True,
-            video_callable=(None if video else False))
+        self.env = env
+        if monitor:
+            self.env = wrappers.Monitor(
+                self.env,
+                monitor_path,
+                force=True,
+                video_callable=(None if video else False))
 
         self.config.update(dict(
             n_hidden_units=20,
@@ -45,7 +46,8 @@ class PPO(Agent):
             adam_epsilon=1e-5,
             vf_coef=0.5,
             entropy_coef=0.01,
-            cso_epsilon=0.2  # Clipped surrogate objective epsilon
+            cso_epsilon=0.2,  # Clipped surrogate objective epsilon
+            save_model=False
         ))
         self.config.update(usercfg)
 
@@ -72,10 +74,7 @@ class PPO(Agent):
         self.set_old_to_new = tf.group(
             *[v1.assign(v2) for v1, v2 in zip(self.old_network_vars, self.new_network_vars)])
 
-        ratio = tf.exp(self.new_network.action_log_prob - self.old_network.action_log_prob)
-        ratio_clipped = tf.clip_by_value(ratio, 1.0 - self.config["cso_epsilon"], 1.0 + self.config["cso_epsilon"])
-        cso_loss = tf.minimum(ratio * self.advantage, ratio_clipped * self.advantage)
-        self.actor_loss = -tf.reduce_mean(cso_loss)
+        self.actor_loss = -tf.reduce_mean(self.make_actor_loss(self.old_network, self.new_network, self.advantage))
         self.critic_loss = tf.reduce_mean(tf.square(self.value - self.ret))
         self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
@@ -105,9 +104,10 @@ class PPO(Agent):
         summary_adv_mean = tf.summary.scalar("model/advantage/mean", adv_mean)
         summary_adv_std = tf.summary.scalar("model/advantage/std", adv_std)
 
-        ratio_mean, ratio_std = tf.nn.moments(ratio, axes=[0])
-        summary_ratio_mean = tf.summary.scalar("model/ratio/mean", ratio_mean)
-        summary_ratio_std = tf.summary.scalar("model/ratio/std", ratio_std)
+        # TODO: get from ppo_loss function
+        # ratio_mean, ratio_std = tf.nn.moments(ratio, axes=[0])
+        # summary_ratio_mean = tf.summary.scalar("model/ratio/mean", ratio_mean)
+        # summary_ratio_std = tf.summary.scalar("model/ratio/std", ratio_std)
 
         summary_new_log_prob_mean = tf.summary.scalar(
             "model/new_log_prob/mean", tf.reduce_mean(self.new_network.action_log_prob))
@@ -126,13 +126,17 @@ class PPO(Agent):
         summaries += [summary_actor_loss, summary_critic_loss,
                       summary_loss,
                       summary_adv_mean, summary_adv_std,
-                      summary_ratio_mean, summary_ratio_std,
+                      # summary_ratio_mean, summary_ratio_std,
                       summary_new_log_prob_mean, summary_old_log_prob_mean,
                       summary_ret, summary_entropy, summary_grad_norm, summary_var_norm]
         self.model_summary_op = tf.summary.merge(summaries)
         self.writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), self.session.graph)
-        self.env_runner = EnvRunner(self.env, self, usercfg, normalize_states=self.config["normalize_states"], summary_writer=self.writer)
+        self.env_runner = EnvRunner(self.env,
+                                    self,
+                                    usercfg,
+                                    normalize_states=self.config["normalize_states"],
+                                    summary_writer=self.writer)
 
         # grads before clipping were passed to the summary, now clip and apply them
         if self.config["gradient_clip_value"] is not None:
@@ -148,9 +152,11 @@ class PPO(Agent):
         inc_step = self._global_step.assign_add(self.n_steps)
         self.train_op = tf.group(apply_grads, inc_step)
 
-        init = tf.global_variables_initializer()
-        self.session.run(init)
+        self.init_op = tf.global_variables_initializer()
         return
+
+    def _initialize(self):
+        self.session.run(self.init_op)
 
     def make_actor_loss(self, old_network, new_network, advantage):
         return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_epsilon"], advantage)
@@ -175,7 +181,7 @@ class PPO(Agent):
 
     def get_processed_trajectories(self):
         experiences = self.env_runner.get_steps(
-            self.config["n_local_steps"], stop_at_trajectory_end=False)
+            int(self.config["n_local_steps"]), stop_at_trajectory_end=False)
         T = experiences.steps
         v = 0 if experiences.terminals[-1] else self.get_critic_value(
             np.asarray(experiences.states)[None, -1], experiences.features[-1])
@@ -193,9 +199,10 @@ class PPO(Agent):
 
     def learn(self):
         """Run learning algorithm"""
+        self._initialize()
         config = self.config
         n_updates = 0
-        for _ in range(config["n_iter"]):
+        for _ in range(int(config["n_iter"])):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             states, actions, advs, rs, _ = self.get_processed_trajectories()
             advs = np.array(advs)
@@ -203,10 +210,10 @@ class PPO(Agent):
             self.session.run(self.set_old_to_new)
 
             indices = np.arange(len(states))
-            for _ in range(self.config["n_epochs"]):
+            for _ in range(int(self.config["n_epochs"])):
                 np.random.shuffle(indices)
 
-                batch_size = self.config["batch_size"]
+                batch_size = int(self.config["batch_size"])
                 for j in range(0, len(states), batch_size):
                     batch_indices = indices[j:(j + batch_size)]
                     batch_states = np.array(states)[batch_indices]
@@ -233,29 +240,29 @@ class PPO(Agent):
 
 
 class PPODiscrete(PPO):
-    def build_networks(self) -> ActorCriticNetworkDiscrete:
+    def build_networks(self) -> ActorCriticNetwork:
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
 
 class PPODiscreteCNN(PPODiscrete):
-    def build_networks(self) -> ActorCriticNetworkDiscreteCNN:
+    def build_networks(self) -> ActorCriticNetwork:
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"])
+            int(self.config["n_hidden_units"]))
 
 
 class PPOContinuous(PPO):
-    def build_networks(self) -> ActorCriticNetworkContinuous:
+    def build_networks(self) -> ActorCriticNetwork:
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
     def get_env_action(self, action):
         return action

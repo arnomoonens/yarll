@@ -10,6 +10,7 @@
             "monitor_path": "/tmp/CartPole-v0-A2C",
             "video": false,
             "save_model": true,
+            "n_iter": 10000,
             "monitor": true
         }
     }

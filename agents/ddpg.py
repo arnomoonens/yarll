@@ -73,7 +73,6 @@ class DDPG(Agent):
 
         self.update_targets_op = tf.group(actor_target_update, critic_target_update, name="update_targets")
 
-        self.init_op = tf.global_variables_initializer()
 
         self.action_noise = OrnsteinUhlenbeckActionNoise(
             self.n_actions,
@@ -83,10 +82,16 @@ class DDPG(Agent):
 
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
 
+        self.session = tf.Session()
+        self.init_op = tf.global_variables_initializer()
+
         self.n_updates = 0
 
         self.summary_writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), tf.get_default_graph())
+
+    def _initalize(self):
+        self.session.run(self.init_op)
 
     def build_actor_network(self):
         layer1_size = 400
@@ -223,17 +228,17 @@ class DDPG(Agent):
         })
 
     def train(self):
-        sample = self.replay_buffer.get_batch(self.config["batch_size"])
+        sample = self.replay_buffer.get_batch(int(self.config["batch_size"]))
 
         # for n_actions = 1
-        action_batch = np.resize(sample["actions"], [self.config["batch_size"], self.n_actions])
+        action_batch = np.resize(sample["actions"], [int(self.config["batch_size"]), self.n_actions])
 
         # Calculate critic targets
         next_action_batch = self.target_actions(sample["states1"])
         q_value_batch = self.target_q(sample["states1"], next_action_batch)
         critic_targets = sample["rewards"] + (1 - sample["terminals1"]) * \
             self.config["gamma"] * q_value_batch.squeeze()
-        critic_targets = np.resize(critic_targets, [self.config["batch_size"], 1]).astype(np.float32)
+        critic_targets = np.resize(critic_targets, [int(self.config["batch_size"]), 1]).astype(np.float32)
         # Update actor weights
         fetches = [self.q_value_output, self.critic_loss, self.critic_train_op]
         predicted_q, critic_loss, _ = tf.get_default_session().run(fetches, feed_dict={
@@ -270,13 +275,13 @@ class DDPG(Agent):
 
     def learn(self):
         max_action = self.env.action_space.high
-        with tf.Session() as sess, sess.as_default():
-            sess.run(self.init_op)
-            for episode in range(self.config["n_episodes"]):
+        self._initalize()
+        with self.session as sess, sess.as_default():
+            for episode in range(int(self.config["n_episodes"])):
                 state = self.env.reset()
                 episode_reward = 0
                 episode_length = 0
-                for _ in range(self.config["n_timesteps"]):
+                for _ in range(int(self.config["n_timesteps"])):
                     action = self.noise_action(state)
                     new_state, reward, done, _ = self.env.step(action * max_action)
                     episode_length += 1

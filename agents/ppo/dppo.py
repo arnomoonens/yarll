@@ -162,8 +162,8 @@ class DPPO(Agent):
         all_advs = np.array(all_advs)
         all_advs = (all_advs - all_advs.mean()) / all_advs.std()
         indices = np.arange(len(all_states))
-        batch_size = self.config["batch_size"]
-        for _ in range(self.config["n_epochs"]):
+        batch_size = int(self.config["batch_size"])
+        for _ in range(int(self.config["n_epochs"])):
             np.random.shuffle(indices)
             for j in range(0, len(all_states), batch_size):
                 batch_indices = indices[j:(j + batch_size)]
@@ -176,7 +176,7 @@ class DPPO(Agent):
 
 
     def learn_by_trajectories(self, trajectories):
-        for _ in range(self.config["n_epochs"]):
+        for _ in range(int(self.config["n_epochs"])):
             for states, actions, advs, returns, features in trajectories:
                 self.update_network(states, actions, advs, returns, features)
             self.writer.flush()
@@ -199,7 +199,7 @@ class DPPO(Agent):
         comm = self.comm.Spawn(
             sys.executable,
             args=args,
-            maxprocs=self.config["n_workers"]
+            maxprocs=int(self.config["n_workers"])
         )
         sess_config = tf.ConfigProto()
         sess_config.gpu_options.allow_growth = True
@@ -228,8 +228,8 @@ class DPPODiscrete(DPPO):
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
 
 class DPPODiscreteCNN(DPPODiscrete):
@@ -242,7 +242,7 @@ class DPPODiscreteCNN(DPPODiscrete):
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"])
+            int(self.config["n_hidden_units"]))
 
 
 class DPPOContinuous(DPPO):
@@ -255,8 +255,8 @@ class DPPOContinuous(DPPO):
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
     def get_env_action(self, action):
         return action

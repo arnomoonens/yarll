@@ -38,10 +38,10 @@ class EnvRunner(object):
         """Choose an action based on the current state in the environment."""
         return self.policy.choose_action(state, self.features)
 
-    def normalize(self, state):
+    def normalize(self, state: np.ndarray) -> np.ndarray:
         return normalize(state, self.rms.mean, self.rms.std)
 
-    def reset_env(self):
+    def reset_env(self) -> None:
         """Reset the current environment and get the initial state"""
         self.state = self.env.reset()
         self.state = self.state if self.state_preprocessor is None else self.state_preprocessor(self.state)
@@ -69,7 +69,7 @@ class EnvRunner(object):
             self.features = new_features
             self.episode_reward += rew
             self.episode_steps += 1
-            if done:
+            if done or self.episode_steps >= self.config["episode_max_length"]:
                 if self.summary_writer is not None:
                     summary = tf.Summary()
                     summary.value.add(tag="global/Episode_length", simple_value=float(self.episode_steps))

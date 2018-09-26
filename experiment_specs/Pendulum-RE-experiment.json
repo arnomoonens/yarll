@@ -1,5 +1,5 @@
 {
-    "experiment_name": "CartPole-RE",
+    "experiment_name": "Pendulum-RE",
     "environments": {
         "type": "single",
         "source": "Pendulum-v0"
@@ -8,10 +8,10 @@
         "name": "REINFORCE",
         "args": {
             "RNN": false,
-            "monitor_path": "/tmp/CartPole-v0-RE",
+            "monitor_path": "/tmp/Pendulum-v0-RE",
             "video": false,
             "save_model": true,
-            "monitor": true,
+            "monitor": false,
             "n_iter": 200,
             "learning_rate": 0.01
         }

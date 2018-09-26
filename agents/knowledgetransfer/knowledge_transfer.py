@@ -111,7 +111,8 @@ class KnowledgeTransfer(Agent):
 
         regularizer = tf.contrib.layers.l1_regularizer(.05)
         for i, probabilities in enumerate(self.probs_tensors):
-            good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)), reduction_indices=[1])
+            good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)),
+                                               reduction_indices=[1])
             eligibility = tf.log(good_probabilities) * self.advantage
             loss = -tf.reduce_sum(eligibility) + regularizer(sparse_representations[i])
             self.losses.append(loss)
@@ -134,13 +135,14 @@ class KnowledgeTransfer(Agent):
             zip(self.accum_grads, net_vars))
         self.reset_accum_grads = reset_accumulative_gradients_op(net_vars, self.accum_grads, 0)
 
-        init = tf.global_variables_initializer()
+        self.init_op = tf.global_variables_initializer()
 
-        # Launch the graph.
-        self.session.run(init)
+    def _initialize(self):
+        self.session.run(self.init_op)
 
     def learn(self):
         """Run learning algorithm"""
+        self._initialize()
         reporter = Reporter()
         config = self.config
         total_n_trajectories = np.zeros(len(self.envs))

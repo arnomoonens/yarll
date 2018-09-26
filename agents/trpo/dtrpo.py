@@ -21,8 +21,8 @@ class DTRPODiscrete(DTRPO):
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
 
 class DTRPODiscreteCNN(DTRPODiscrete):
@@ -30,7 +30,7 @@ class DTRPODiscreteCNN(DTRPODiscrete):
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
-            self.config["n_hidden_units"])
+            int(self.config["n_hidden_units"]))
 
 
 class DTRPOContinuous(DTRPO):
@@ -38,8 +38,8 @@ class DTRPOContinuous(DTRPO):
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
-            self.config["n_hidden_units"],
-            self.config["n_hidden_layers"])
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
     def get_env_action(self, action):
         return action

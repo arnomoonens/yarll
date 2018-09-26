@@ -20,11 +20,12 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     from agents.registration import make_agent
 
     args = spec["agent"]["args"]
-    args["config_path"] = os.path.join(monitor_path, "config.json")
+
     if monitor_path:
         args["monitor_path"] = monitor_path
     else:
         monitor_path = args["monitor_path"]
+    args["config_path"] = os.path.join(monitor_path, "config.json")
     if not os.path.exists(monitor_path):
         os.makedirs(monitor_path)
     envs_type = spec["environments"]["type"]

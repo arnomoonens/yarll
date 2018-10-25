@@ -28,9 +28,12 @@ def linear_fan_in(x, output_size: int):
     x = tf.nn.xw_plus_b(x, w, b)
     return x, [w, b]
 
-def linear(x, size, name, initializer=None, bias_init=0):
+
+def linear(x, size, name, initializer=None, bias_init=None):
+    if bias_init is None:
+        bias_init = tf.constant_initializer(0.0)
     w = tf.get_variable(name + "/w", [x.get_shape()[1], size], initializer=initializer)
-    b = tf.get_variable(name + "/b", [size], initializer=tf.constant_initializer(bias_init))
+    b = tf.get_variable(name + "/b", [size], initializer=bias_init)
     return tf.matmul(x, w) + b
 
 def conv2d(x, num_filters, name, filter_size=(3, 3), stride=(1, 1), pad="SAME", dtype=tf.float32, collections=None):

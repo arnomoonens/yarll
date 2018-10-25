@@ -25,7 +25,7 @@ class SAC(Agent):
             tau=0.01,
             n_actor_layers=2,
             logprob_epsilon=1e-6, # For numerical stability when computing tf.log
-            n_hidden_units=128,
+            n_hidden_units=256,
             n_train_steps=4, # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
             replay_start_size=128  # Required number of replay buffer entries to start training
@@ -34,40 +34,45 @@ class SAC(Agent):
 
         self.state_shape: list = list(env.observation_space.shape)
         self.n_actions: int = env.action_space.shape[0]
+
+        # Placeholders
         self.states = tf.placeholder(tf.float32, [None] + self.state_shape, name="states")
-        self.actions_taken = tf.placeholder(tf.float32, [None, self.n_actions], name="actions_taken")
-        self.softq_target = tf.placeholder(tf.float32, [None, 1], name="softq_target")
-        self.value_target = tf.placeholder(tf.float32, [None, 1], name="value_target")
-        self.advantage = tf.placeholder(tf.float32, [None, 1], name="advantage")
-        self.is_training = tf.placeholder(tf.bool, name="is_training")
+        self.actions_taken = tf.placeholder(tf.float32, [self.config["batch_size"], self.n_actions], name="actions_taken")
+        self.softq_target = tf.placeholder(tf.float32, [self.config["batch_size"], 1], name="softq_target")
 
         # Make networks
         # action_output are the squashed actions and action_original those straight from the normal distribution
         self.action_output, self.action_original, self.action_logprob, self.actor_vars = self.build_actor_network()
-        self.softq_output, self.softq_vars = self.build_softq_network()
+        self.softq_output, self.softq_vars = self.build_softq_network(self.actions_taken)
+        self.new_softq_output, _ = self.build_softq_network(self.action_output, reuse_vars=True)
         self.value_output, self.value_vars = self.build_value_network()
         self.target_value_output, self.value_target_update = self.build_target_value_network(self.value_vars)
 
         # Make losses
-        self.softq_loss = tf.reduce_mean(0.5 * tf.square(self.softq_output - self.softq_target), name="softq_loss")
-        self.value_loss = tf.reduce_mean(0.5 * tf.square(self.value_output - self.value_target), name="value_loss")
-        self.actor_loss = tf.reduce_mean(self.action_logprob * self.advantage, name="actor_loss")
+        self.softq_loss = tf.reduce_mean(tf.square(self.softq_output - self.softq_target), name="softq_loss")
+        value_target = tf.stop_gradient(self.new_softq_output - self.action_logprob)
+        self.value_loss = tf.reduce_mean(tf.square(self.value_output - value_target), name="value_loss")
+        advantage = tf.stop_gradient(self.action_logprob - (self.new_softq_output - self.value_output))
+        self.actor_loss = tf.reduce_mean(self.action_logprob * advantage, name="actor_loss")
+
+        # TODO: add mean_loss, std_loss, z_loss
 
         # Make train ops
-        softq_train_op = tf.train.AdamOptimizer(
-            self.config["softq_learning_rate"],
+        self.softq_train_op = tf.train.AdamOptimizer(
+            learning_rate=self.config["softq_learning_rate"],
             name="softq_optimizer").minimize(self.softq_loss)
-        value_train_op = tf.train.AdamOptimizer(
-            self.config["value_learning_rate"],
+        self.value_train_op = tf.train.AdamOptimizer(
+            learning_rate=self.config["value_learning_rate"],
             name="value_optimizer").minimize(self.value_loss)
-        actor_train_op = tf.train.AdamOptimizer(
-            self.config["actor_learning_rate"],
+
+        self.actor_train_op = tf.train.AdamOptimizer(
+            learning_rate=self.config["actor_learning_rate"],
             name="actor_optimizer").minimize(self.actor_loss)
-        self.train_op = tf.group(softq_train_op, value_train_op, actor_train_op, name="train_op")
 
         summaries = []
         for v in self.actor_vars + self.softq_vars + self.value_vars:
             summaries.append(tf.summary.histogram(v.name, v))
+
         self.model_summary_op = tf.summary.merge(summaries)
 
         self.init_op = tf.global_variables_initializer()
@@ -99,15 +104,48 @@ class SAC(Agent):
             log_std_clipped = tf.clip_by_value(log_std, -20, 2, name="log_std_clipped") # TODO: is this in the paper?
 
             normal_dist = tf.distributions.Normal(mean, tf.exp(log_std_clipped), name="actions_normal_distr")
-            actions = normal_dist.sample(name="actions")
-            squashed_actions = tf.tanh(actions, name="squashed_actions") # Squash output between [-1, 1]
+            actions = tf.stop_gradient(normal_dist.sample(name="actions"))
+            squashed_actions = tf.tanh(actions, name="squashed_actions")  # Squash output between [-1, 1]
 
             logprob = normal_dist.log_prob(actions) - \
-            tf.log(1.0 - tf.pow(self.actions_taken, 2) + self.config["logprob_epsilon"])
+            tf.log(1.0 - tf.pow(squashed_actions, 2) + self.config["logprob_epsilon"])
+            logprob = tf.reduce_sum(logprob, axis=-1, keepdims=True)
 
             actor_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
 
         return squashed_actions, actions, logprob, actor_vars
+
+    def build_softq_network(self, actions, reuse_vars=False):
+        x = tf.concat([self.states, actions], 1)
+        with tf.variable_scope("softq") as scope:
+            if reuse_vars:
+                scope.reuse_variables()
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
+            x = linear(x,
+                       1,
+                       "output",
+                       tf.random_uniform_initializer(-3e-3, 3e-3),
+                       tf.random_uniform_initializer(-3e-3, 3e-3))
+
+            softq_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
+        return x, softq_vars
+
+    def build_value_network(self):
+        x = self.states
+        with tf.variable_scope("value"):
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
+            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
+            x = linear(x,
+                       1,
+                       "output",
+                       tf.random_uniform_initializer(-3e-3, 3e-3),
+                       tf.random_uniform_initializer(-3e-3, 3e-3))
+
+            value_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+
+        return x, value_vars
 
     def build_target_value_network(self, value_vars: list):
         ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
@@ -121,65 +159,36 @@ class SAC(Agent):
 
         return value, target_update
 
-    def build_softq_network(self):
-        x = tf.concat([self.states, self.actions_taken], 1)
-        with tf.variable_scope("softq"):
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
-            x = linear(x, 1, "softq", tf.random_uniform_initializer(-3e-3, 3e-3), tf.random_uniform_initializer(-3e-3, 3e-3))
-
-            softq_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-        return x, softq_vars
-
-    def build_value_network(self):
-        x = self.states
-        with tf.variable_scope("value"):
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
-            x = linear(x, 1, "value", tf.random_uniform_initializer(-3e-3, 3e-3), tf.random_uniform_initializer(-3e-3, 3e-3))
-
-            value_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
-
-        return x, value_vars
-
     def value(self, states: np.ndarray):
         return tf.get_default_session().run(self.value_output, feed_dict={
-            self.states: states,
-            self.is_training: False
+            self.states: states
         })
 
     def target_value(self, states: np.ndarray):
         return tf.get_default_session().run(self.target_value_output, feed_dict={
-            self.states: states,
-            self.is_training: False
+            self.states: states
         })
 
     def softq_value(self, states: np.ndarray, actions: np.ndarray):
         return tf.get_default_session().run(self.softq_output, feed_dict={
             self.states: states,
-            self.actions_taken: actions,
-            self.is_training: False
+            self.actions_taken: actions
             })
 
     def actions(self, states: np.ndarray) -> np.ndarray:
         """Get the actions for a batch of states."""
         return tf.get_default_session().run(self.action_output, feed_dict={
-            self.states: states,
-            self.is_training: False
+            self.states: states
         })
 
     def action(self, state: np.ndarray) -> np.ndarray:
         """Get the action for a single state."""
-        return tf.get_default_session().run(self.action_output, feed_dict={
-            self.states: [state],
-            self.is_training: False
-        })[0]
+        return self.actions([state])[0]
 
     def train(self, model_summary=True):
         sample = self.replay_buffer.get_batch(self.config["batch_size"])
 
-        # for n_actions = 1
+        # for n_actions == 1
         action_batch = np.resize(sample["actions"], [self.config["batch_size"], self.n_actions])
 
         # Calculate critic targets
@@ -188,31 +197,27 @@ class SAC(Agent):
             self.config["gamma"] * next_value_batch.squeeze()
         softq_targets = np.resize(softq_targets, [self.config["batch_size"], 1]).astype(np.float32)
 
-        next_actions = self.actions(sample["states0"])
-        next_q_value_batch = self.softq_value(sample["states0"], next_actions)
-        value_batch = self.value(sample["states0"])
-
-        log_prob, next_q_value_batch, value_batch = tf.get_default_session().run(
-            [self.action_logprob, self.softq_output, self.value_output],
-            feed_dict={
-                self.states: sample["states0"],
-                self.actions_taken: next_actions
-            }
-        )
-        advantage_batch = log_prob - (next_q_value_batch - value_batch)
-
-        value_targets = next_q_value_batch - log_prob
-        # Update actor weights
-        fetches = [self.train_op]
+        fetches = [self.action_logprob, self.actor_train_op, self.value_train_op]
         if model_summary:
-            fetches = [self.softq_output, self.softq_loss, self.actor_loss, self.value_loss] + fetches
+            fetches += [self.actor_loss, self.value_loss]
+        results = tf.get_default_session().run(
+            fetches,
+            feed_dict={self.states: sample["states0"]}
+        )
+
+        logprob = results[0]
+
+        if model_summary:
+            actor_loss = results[-2]
+            value_loss = results[-1]
+
+        fetches = [self.softq_train_op]
+        if model_summary:
+            fetches = [self.softq_output, self.softq_loss] + fetches
         results = tf.get_default_session().run(fetches, feed_dict={
             self.softq_target: softq_targets,
             self.states: sample["states0"],
-            self.actions_taken: action_batch,
-            self.advantage: advantage_batch,
-            self.value_target: value_targets,
-            self.is_training: True
+            self.actions_taken: action_batch
         })
 
         if model_summary:
@@ -220,19 +225,21 @@ class SAC(Agent):
             summary.value.add(tag="model/predicted_softq_mean", simple_value=np.mean(results[0]))
             summary.value.add(tag="model/predicted_softq_std", simple_value=np.std(results[0]))
             summary.value.add(tag="model/softq_loss", simple_value=float(results[1]))
-            summary.value.add(tag="model/actor_loss", simple_value=float(results[2]))
-            summary.value.add(tag="model/value_loss", simple_value=float(results[3]))
+            summary.value.add(tag="model/actor_loss", simple_value=float(actor_loss))
+            summary.value.add(tag="model/value_loss", simple_value=float(value_loss))
+            summary.value.add(tag="model/action_logprob_mean", simple_value=np.mean(logprob))
             self.summary_writer.add_summary(summary, self.n_updates)
 
         # Update the target networks
         fetches = [self.value_target_update]
         if model_summary:
-            fetches = fetches + [self.model_summary_op]
-        tf.get_default_session().run(fetches)
+            fetches = [self.model_summary_op] + fetches
+        res = tf.get_default_session().run(fetches)
+        if model_summary:
+            self.summary_writer.add_summary(res[0], self.n_updates)
         self.n_updates += 1
 
     def learn(self):
-        timestep_limit = self.env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps')
         action_low = self.env.action_space.low
         action_high = self.env.action_space.high
         with tf.Session() as sess, sess.as_default():
@@ -243,17 +250,16 @@ class SAC(Agent):
                 episode_length = 0
                 for _ in range(self.config["n_timesteps"]):
                     action = self.action(state)
-                    to_execute = 2 * (action - action_low) / (action_high - action_low) - 1
-                    to_execute = np.clip(to_execute, action_low, action_high)
+                    to_execute = action_low + (action + 1.0) * 0.5 * (action_high - action_low)
                     new_state, reward, done, _ = self.env.step(to_execute)
                     episode_length += 1
                     episode_reward += reward
                     self.replay_buffer.add(state, action, reward, new_state, done)
                     if self.replay_buffer.n_entries > self.config["replay_start_size"]:
                         for _ in range(self.config["n_train_steps"]):
-                            self.train(model_summary=(self.n_updates % 50) == 0)
+                            self.train(model_summary=True)
                     state = new_state
-                    if done or episode_length >= timestep_limit:
+                    if done:
                         summary = tf.Summary()
                         summary.value.add(tag="global/Episode_length",
                                           simple_value=float(episode_length))

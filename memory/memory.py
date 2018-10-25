@@ -6,7 +6,7 @@ import numpy as np
 
 class Memory(object):
 
-    def __init__(self, buffer_size: int):
+    def __init__(self, buffer_size: int) -> None:
         self.buffer_size: int = buffer_size
         self.num_experiences: int = 0
         self.buffer: deque = deque()

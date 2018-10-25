@@ -11,7 +11,8 @@
             "video": false,
             "save_model": true,
             "monitor": true,
-            "n_episodes": 400000
+            "n_episodes": 200,
+            "n_train_steps": 1
         }
     }
 }

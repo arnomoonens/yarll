@@ -44,6 +44,11 @@ def make(env_id: str, **kwargs):
     env = spec.make(**kwargs)
 
     if not isinstance(env, Environment):
+        if (env.spec.timestep_limit is not None) and not spec.tags.get('vnc'):
+            from gym.wrappers.time_limit import TimeLimit
+            env = TimeLimit(env,
+                            max_episode_steps=env.spec.max_episode_steps,
+                            max_episode_seconds=env.spec.max_episode_seconds)
         env = Environment(env)
     if "atari.atari_env" in env.unwrapped.__module__:
         env = AtariRescale42x42(env)

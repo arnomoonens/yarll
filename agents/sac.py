@@ -25,7 +25,7 @@ class SAC(Agent):
             tau=0.01,
             n_actor_layers=2,
             logprob_epsilon=1e-6, # For numerical stability when computing tf.log
-            n_hidden_units=256,
+            n_hidden_units=128,
             n_train_steps=4, # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
             replay_start_size=128  # Required number of replay buffer entries to start training
@@ -52,10 +52,8 @@ class SAC(Agent):
         self.softq_loss = tf.reduce_mean(tf.square(self.softq_output - self.softq_target), name="softq_loss")
         value_target = tf.stop_gradient(self.new_softq_output - self.action_logprob)
         self.value_loss = tf.reduce_mean(tf.square(self.value_output - value_target), name="value_loss")
-        advantage = tf.stop_gradient(self.action_logprob - (self.new_softq_output - self.value_output))
+        advantage = tf.stop_gradient(self.action_logprob - self.new_softq_output + self.value_output)
         self.actor_loss = tf.reduce_mean(self.action_logprob * advantage, name="actor_loss")
-
-        # TODO: add mean_loss, std_loss, z_loss
 
         # Make train ops
         self.softq_train_op = tf.train.AdamOptimizer(
@@ -101,7 +99,7 @@ class SAC(Agent):
                              "log_std",
                              tf.random_uniform_initializer(-w_bound, w_bound),
                              tf.random_uniform_initializer(-w_bound, w_bound))
-            log_std_clipped = tf.clip_by_value(log_std, -20, 2, name="log_std_clipped") # TODO: is this in the paper?
+            log_std_clipped = tf.clip_by_value(log_std, -20, 2, name="log_std_clipped") # In autor's code but not in paper
 
             normal_dist = tf.distributions.Normal(mean, tf.exp(log_std_clipped), name="actions_normal_distr")
             actions = tf.stop_gradient(normal_dist.sample(name="actions"))

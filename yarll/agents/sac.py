@@ -37,7 +37,8 @@ class SAC(Agent):
 
         # Placeholders
         self.states = tf.placeholder(tf.float32, [None] + self.state_shape, name="states")
-        self.actions_taken = tf.placeholder(tf.float32, [self.config["batch_size"], self.n_actions], name="actions_taken")
+        self.actions_taken = tf.placeholder(tf.float32, [self.config["batch_size"], self.n_actions],
+                                            name="actions_taken")
         self.softq_target = tf.placeholder(tf.float32, [self.config["batch_size"], 1], name="softq_target")
 
         # Make networks
@@ -99,7 +100,9 @@ class SAC(Agent):
                              "log_std",
                              tf.random_uniform_initializer(-w_bound, w_bound),
                              tf.random_uniform_initializer(-w_bound, w_bound))
-            log_std_clipped = tf.clip_by_value(log_std, -20, 2, name="log_std_clipped") # In autor's code but not in paper
+            log_std_clipped = tf.clip_by_value(log_std,
+                                               -20, 2,
+                                               name="log_std_clipped") # In autor's code but not in paper
 
             normal_dist = tf.distributions.Normal(mean, tf.exp(log_std_clipped), name="actions_normal_distr")
             actions = tf.stop_gradient(normal_dist.sample(name="actions"))

@@ -49,7 +49,7 @@ class DDPG(Agent):
 
         self.q_gradient_input = tf.placeholder("float", [None, self.n_actions], name="q_grad_input")
         self.actor_policy_gradients = tf.gradients(
-		          self.action_output, self.actor_vars, -self.q_gradient_input, name="actor_gradients")
+            self.action_output, self.actor_vars, -self.q_gradient_input, name="actor_gradients")
         self.actor_train_op = tf.train.AdamOptimizer(
             self.config["actor_learning_rate"],
             name="actor_optimizer").apply_gradients(list(zip(self.actor_policy_gradients, self.actor_vars)))

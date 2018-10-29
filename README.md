@@ -59,7 +59,7 @@ Statistics can be plot using:
 
 ```Shell
 
-python misc/plot_statistics.py <path_to_stats>
+python -m yarll.misc.plot_statistics <path_to_stats>
 
 ```
 
@@ -68,6 +68,6 @@ python misc/plot_statistics.py <path_to_stats>
 - A _json_ file generated using `gym.wrappers.Monitor`, in case it plots the episode lengths and total reward per episode.
 - A directory containing _TensorFlow_ scalar summaries for different tasks, in which case all of the found scalars are plot.
 
-Help about other arguments (e.g. for using smoothing) can be found by executing `python misc/plot_statistics.py -h`.
+Help about other arguments (e.g. for using smoothing) can be found by executing `python -m yarll.misc.plot_statistics -h`.
 
 Alternatively, it is also possible to use [_Tensorboard_](https://www.tensorflow.org/get_started/summaries_and_tensorboard) to show statistics in the browser by passing the directory with the scalar summaries as `--logdir` argument.

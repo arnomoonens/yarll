@@ -105,8 +105,8 @@ class REINFORCE(Agent):
             all_action = np.concatenate([trajectory.actions for trajectory in trajectories])
             all_adv = np.concatenate(advs)
             # Do policy gradient update step
-            episode_rewards = np.array([sum(trajectory.rewards) for trajectory in trajectories])  # episode total rewards
-            episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
+            episode_rewards = np.array([sum(trajectory.rewards) for trajectory in trajectories]) # episode total rewards
+            episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories]) # episode lengths
             # TODO: deal with RNN state
             summary, _ = self.session.run([self.summary_op, self.train], feed_dict={
                 self.states: all_state,

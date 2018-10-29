@@ -2,7 +2,6 @@
 # -*- coding: utf8 -*-
 
 import os
-import sys
 import re
 import json
 import argparse
@@ -185,13 +184,17 @@ def exp_smoothing_weight_test(value):
     return fvalue
 
 parser = argparse.ArgumentParser()
-parser.add_argument("stats_path", metavar="stats", type=str, help="Path to the Tensorflow monitor stats.json file or summaries directory.")
-parser.add_argument("--x_label", type=str, default="episode", choices=["episode", "epoch"], help="Whether to use episode or epoch as x label.")
-parser.add_argument("--no_legend", action="store_false", default=True, dest="legend", help="Don't show a legend in the plots.")
+parser.add_argument("stats_path", metavar="stats", type=str,
+                    help="Path to the Tensorflow monitor stats.json file or summaries directory.")
+parser.add_argument("--x_label", type=str, default="episode", choices=["episode", "epoch"],
+                    help="Whether to use episode or epoch as x label.")
+parser.add_argument("--no_legend", action="store_false", default=True, dest="legend",
+                    help="Don't show a legend in the plots.")
 parser.add_argument("--xmin", type=ge(0), default=None, help="minimum episode for which to show results.")
 parser.add_argument("--xmax", type=ge(1), default=None, help="Maximum episode for which to show results.")
 parser.add_argument("--max_reward", type=float, default=None, help="Maximum obtainable reward in the environment.")
-parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=None, help="Use exponential smoothing with a weight 0<=w<=1.")
+parser.add_argument("--exp_smoothing", type=exp_smoothing_weight_test, default=None,
+                    help="Use exponential smoothing with a weight 0<=w<=1.")
 parser.add_argument("--moving_average", type=ge(1), default=None, help="Use a moving average with a window w>0")
 parser.add_argument("--save", type=str, dest="save_dir", default=None, help="Save plots to the given directory.")
 parser.add_argument("--show", action="store_true", default=False, help="Show plots.")
@@ -209,11 +212,17 @@ if __name__ == "__main__":
         raise WrongArgumentsError("Maximally 1 smoothing technique can be used.")
     smoothing_technique = None
     if args.exp_smoothing is not None:
-        smoothing_technique = create_smoother(exponential_smoothing, args.exp_smoothing)  # args.exp_smoothing holds the weight
+        smoothing_technique = create_smoother(exponential_smoothing,
+                                              args.exp_smoothing)  # args.exp_smoothing holds the weight
     elif args.moving_average is not None:
-        smoothing_technique = create_smoother(moving_average, args.moving_average)  # args.moving_average holds the window
+        smoothing_technique = create_smoother(moving_average,
+                                              args.moving_average)  # args.moving_average holds the window
     if os.path.isfile(args.stats_path) and args.stats_path.endswith(".json"):
-        plot_gym_monitor_stats(args.stats_path, args.xmax, smoothing_technique, save_directory=args.save_dir, show_plots=args.show)
+        plot_gym_monitor_stats(args.stats_path,
+                               args.xmax,
+                               smoothing_technique,
+                               save_directory=args.save_dir,
+                               show_plots=args.show)
     elif os.path.isdir(args.stats_path):
         shared_args = {
             "summaries_dir": args.stats_path,

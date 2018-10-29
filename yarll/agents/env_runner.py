@@ -92,7 +92,12 @@ class EnvRunner(object):
         if self.normalize_states:
             self.rms.add_values([exp.state for exp in memory.experiences])
             for i, exp in enumerate(memory.experiences):
-                memory.experiences[i] = Experience(self.normalize(exp.state), exp.action, exp.reward, exp.value, exp.features, exp.terminal)
+                memory.experiences[i] = Experience(self.normalize(exp.state),
+                                                   exp.action,
+                                                   exp.reward,
+                                                   exp.value,
+                                                   exp.features,
+                                                   exp.terminal)
         return memory
 
     def get_trajectory(self, stop_at_trajectory_end: bool = True, render: bool = False) -> ExperiencesMemory:

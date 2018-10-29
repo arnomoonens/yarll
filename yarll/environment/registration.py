@@ -21,7 +21,8 @@ class EnvSpec(gym.envs.registration.EnvSpec):
     def make(self, **kwargs):
         """Instantiates an instance of the environment with appropriate kwargs"""
         if self._entry_point is None:
-            raise gym.error.Error("Attempting to make deprecated env {}. (HINT: is there a newer registered version of this env?)".format(self.id))
+            raise gym.error.Error(
+                "Attempting to make deprecated env {}. (HINT: is there a newer registered version of this env?)".format(self.id))
 
         elif callable(self._entry_point):
             env = self._entry_point()

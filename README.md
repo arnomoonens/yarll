@@ -1,42 +1,43 @@
-# Deep Reinforcement Learning
+# Yet Another Reinforcement Learning Library (YARLL)
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/c329c8cdd744463dbda6a726e20f2383)](https://www.codacy.com/app/arnomoonens/DeepRL?utm_source=github.com&utm_medium=referral&utm_content=arnomoonens/DeepRL&utm_campaign=badger)
 
-**Update 25/10/2018**: Added [SAC implementation](./agents/sac.py).
+**Update 29/10/2018**: New library name.
+**Update 25/10/2018**: Added [SAC implementation](./yarll/agents/sac.py).
 
 ## Status
 
 Different algorithms have currently been implemented (in no particular order):
 
-- [Advantage Actor Critic](./agents/actorcritic/a2c.py)
-- [Asynchronous Advantage Actor Critic (A3C)](./agents/actorcritic/a3c.py)
-- [Deep Deterministic Policy Gradient (DDPG)](./agents/ddpg.py)
-- [Proximal Policy Optimization (PPO)](./agents/ppo/ppo.py)
-  - [Distributed version (DPPO)](./agents/ppo/dppo.py)
-- [Soft Actor-Critic (SAC)](./agents/sac.py)
-- [Trust Region Policy Optimization (TRPO)](./agents/trpo/trpo.py)
-  - [Distributed version (DTRPO)](./agents/trpo/dtrpo.py)
-- [REINFORCE](./agents/reinforce.py) (convolutional neural network part has not been tested yet)
-- [Cross-Entropy Method](./agents/cem.py)
-- [Sarsa with with function approximation and eligibility traces](./agents/sarsa/sarsa_fa.py)
-- [Karpathy's policy gradient algorithm](./agents/karpathy.py) ([version using convolutional neural networks](./agents/karpathy_cnn.py) has not been tested yet)
-- [(Sequential) knowledge transfer](./agents/knowledgetransfer/knowledge_transfer.py)
-- [Asynchronous knowledge transfer](./agents/knowledgetransfer/async_knowledge_transfer.py)
+- [Advantage Actor Critic](./yarll/agents/actorcritic/a2c.py)
+- [Asynchronous Advantage Actor Critic (A3C)](./yarll/agents/actorcritic/a3c.py)
+- [Deep Deterministic Policy Gradient (DDPG)](./yarll/agents/ddpg.py)
+- [Proximal Policy Optimization (PPO)](./yarll/agents/ppo/ppo.py)
+  - [Distributed version (DPPO)](./yarll/agents/ppo/dppo.py)
+- [Soft Actor-Critic (SAC)](./yarll/agents/sac.py)
+- [Trust Region Policy Optimization (TRPO)](./yarll/agents/trpo/trpo.py)
+  - [Distributed version (DTRPO)](./yarll/agents/trpo/dtrpo.py)
+- [REINFORCE](./yarll/agents/reinforce.py) (convolutional neural network part has not been tested yet)
+- [Cross-Entropy Method](./yarll/agents/cem.py)
+- [Sarsa with with function approximation and eligibility traces](./yarll/agents/sarsa/sarsa_fa.py)
+- [Karpathy's policy gradient algorithm](./yarll/agents/karpathy.py) ([version using convolutional neural networks](./yarll/agents/karpathy_cnn.py) has not been tested yet)
+- [(Sequential) knowledge transfer](./yarll/agents/knowledgetransfer/knowledge_transfer.py)
+- [Asynchronous knowledge transfer](./yarll/agents/knowledgetransfer/async_knowledge_transfer.py)
 
 ## Asynchronous Advantage Actor Critic (A3C)
 
-The code for this algorithm can be found [here](./agents/actorcritic/a3c.py).
+The code for this algorithm can be found [here](./yarll/agents/actorcritic/a3c.py).
 Example run after training using 16 threads for a total of 5 million timesteps on the _PongDeterministic-v4_ environment:
 
 ![Pong example run](./results/pong.gif)
 
 ## How to run
 
-First, install the requirements using [pip](https://pypi.python.org/pypi/pip) (you can first remove _OpenCV_ from the `requirements.txt` file if it is already installed):
+First, install the library using [pip](https://pypi.python.org/pypi/pip) (you can first remove _OpenCV_ from the `setup.py` file if it is already installed):
 
 ```Shell
 
-pip install -r requirements.txt
+pip install yarll
 
 ```
 
@@ -46,7 +47,7 @@ You can run algorithms by passing the path to an experiment specification (which
 
 ```Shell
 
-python main.py <path_to_experiment_specification>
+python -m yarll.main <path_to_experiment_specification>
 
 ```
 

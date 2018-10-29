@@ -91,11 +91,11 @@ ENV/
 .DS_Store
 /DeepRL.sublime-project
 /DeepRL.sublime-workspace
-Environment/*.json
+yarll/environment/*.json
 *.orig
 /*-experiment.json
 *~
 .*.swp
 .vscode/
-scripts/generate_exp_description.py
+yarll/scripts/generate_exp_description.py
 .mypy_cache/

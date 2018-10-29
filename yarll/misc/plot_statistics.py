@@ -8,20 +8,11 @@ import argparse
 import operator
 import logging
 import numpy as np
-from tensorboard.backend.event_processing.plugin_event_multiplexer import EventMultiplexer, GetLogdirSubdirectories
-import matplotlib
+from tensorboard.backend.event_processing.plugin_event_multiplexer import EventMultiplexer
+import matplotlib.pyplot as plt
 
 from yarll.misc.utils import ge
 from yarll.misc.exceptions import WrongArgumentsError
-
-gui_env = ['Qt5Agg', 'Qt4Agg', 'TKAgg', 'GTKAgg', 'WXAgg', 'agg']
-for gui in gui_env:
-    try:
-        matplotlib.use(gui, warn=False, force=True)
-        from matplotlib import pyplot as plt  # pylint: disable=C0412
-        break
-    except ImportError:
-        continue
 
 IMAGES_EXT = ".png"
 

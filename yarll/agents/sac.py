@@ -71,7 +71,6 @@ class SAC(Agent):
         summaries = []
         for v in self.actor_vars + self.softq_vars + self.value_vars:
             summaries.append(tf.summary.histogram(v.name, v))
-
         self.model_summary_op = tf.summary.merge(summaries)
 
         self.init_op = tf.global_variables_initializer()
@@ -82,6 +81,8 @@ class SAC(Agent):
 
         self.summary_writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), tf.get_default_graph())
+
+        self.session = tf.Session()
 
     def build_actor_network(self):
         w_bound = 3e-3
@@ -243,7 +244,7 @@ class SAC(Agent):
     def learn(self):
         action_low = self.env.action_space.low
         action_high = self.env.action_space.high
-        with tf.Session() as sess, sess.as_default():
+        with self.session as sess, sess.as_default():
             sess.run(self.init_op)
             for episode in range(self.config["n_episodes"]):
                 state = self.env.reset()

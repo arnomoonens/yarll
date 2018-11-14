@@ -161,7 +161,10 @@ class SAC(Agent):
         x = self.states
         for i in range(self.config["n_hidden_layers"]):
             x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[i * 2], target_net[i * 2 + 1]))
-        value = tf.nn.xw_plus_b(x, target_net[i + 1], target_net[i + 2], name="target_value")
+        value = tf.nn.xw_plus_b(x,
+                                target_net[2 * self.config["n_hidden_layers"]],
+                                target_net[2 * self.config["n_hidden_layers"] + 1],
+                                name="target_value")
 
         return value, target_update
 

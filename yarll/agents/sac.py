@@ -20,6 +20,7 @@ class SAC(Agent):
             actor_learning_rate=3e-4,
             softq_learning_rate=3e-4,
             value_learning_rate=3e-4,
+            n_hidden_layers=2,
             gamma=0.99,
             batch_size=128,
             tau=0.01,
@@ -88,8 +89,8 @@ class SAC(Agent):
         w_bound = 3e-3
         x = self.states
         with tf.variable_scope("actor"):
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
+            for i in range(self.config["n_hidden_layers"]):
+                x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L{}".format(i + 1), normalized_columns_initializer()))
 
             mean = linear(x,
                           self.n_actions,
@@ -122,8 +123,8 @@ class SAC(Agent):
         with tf.variable_scope("softq") as scope:
             if reuse_vars:
                 scope.reuse_variables()
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
+            for i in range(self.config["n_hidden_layers"]):
+                x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L{}".format(i + 1), normalized_columns_initializer()))
             x = linear(x,
                        1,
                        "output",
@@ -137,8 +138,11 @@ class SAC(Agent):
     def build_value_network(self):
         x = self.states
         with tf.variable_scope("value"):
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L1", normalized_columns_initializer()))
-            x = tf.nn.relu(linear(x, self.config["n_hidden_units"], "L2", normalized_columns_initializer()))
+            for i in range(self.config["n_hidden_layers"]):
+                x = tf.nn.relu(linear(x,
+                                      self.config["n_hidden_units"],
+                                      "L{}".format(i + 1),
+                                      normalized_columns_initializer()))
             x = linear(x,
                        1,
                        "output",
@@ -155,9 +159,9 @@ class SAC(Agent):
         target_net = [ema.average(v) for v in value_vars]
 
         x = self.states
-        x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[0], target_net[1]))
-        x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[2], target_net[3]))
-        value = tf.nn.xw_plus_b(x, target_net[4], target_net[5], name="target_value")
+        for i in range(self.config["n_hidden_layers"]):
+            x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[i * 2], target_net[i * 2 + 1]))
+        value = tf.nn.xw_plus_b(x, target_net[i + 1], target_net[i + 2], name="target_value")
 
         return value, target_update
 

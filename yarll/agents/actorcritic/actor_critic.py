@@ -197,10 +197,10 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
             shape=list(action_space.shape),
             initializer=tf.zeros_initializer()
         )
-        std = tf.exp(self.log_std, name="std")
-        std = tf.check_numerics(std, "std")
+        self.std = tf.exp(self.log_std, name="std")
+        self.std = tf.check_numerics(self.std, "std")
 
-        self.action = self.mean + std * tf.random_normal(tf.shape(self.mean))
+        self.action = self.mean + self.std * tf.random_normal(tf.shape(self.mean))
         self.action = tf.reshape(self.action, list(action_space.shape))
 
         x = self.states
@@ -210,7 +210,7 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
 
         self.value = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
 
-        neglogprob = 0.5 * tf.reduce_sum(tf.square((self.actions_taken - self.mean) / std), axis=-1) \
+        neglogprob = 0.5 * tf.reduce_sum(tf.square((self.actions_taken - self.mean) / self.std), axis=-1) \
             + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(self.actions_taken)[-1]) \
             + tf.reduce_sum(self.log_std, axis=-1)
         self.action_log_prob = -neglogprob

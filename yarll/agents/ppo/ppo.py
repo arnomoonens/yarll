@@ -114,6 +114,9 @@ class PPO(Agent):
         summary_old_log_prob_mean = tf.summary.scalar(
             "model/old_log_prob/mean", tf.reduce_mean(self.old_network.action_log_prob))
 
+        summary_mean_mean = tf.summary.scalar("model/model/mean/mean", tf.reduce_mean(self.old_network.mean))
+        summary_std_mean = tf.summary.scalar("model/model/std/mean", tf.reduce_mean(self.old_network.std))
+
         summary_ret = tf.summary.scalar("model/return/mean", tf.reduce_mean(self.ret))
         summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
         summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
@@ -125,6 +128,7 @@ class PPO(Agent):
                 summaries.append(tf.summary.histogram(v.name, v))
         summaries += [summary_actor_loss, summary_critic_loss,
                       summary_loss,
+                      summary_mean_mean, summary_std_mean,
                       summary_adv_mean, summary_adv_std,
                       # summary_ratio_mean, summary_ratio_std,
                       summary_new_log_prob_mean, summary_old_log_prob_mean,

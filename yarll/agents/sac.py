@@ -29,7 +29,8 @@ class SAC(Agent):
             n_hidden_units=128,
             n_train_steps=4, # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
-            replay_start_size=128  # Required number of replay buffer entries to start training
+            replay_start_size=128,  # Required number of replay buffer entries to start training
+            weights_summary=False # Add weight distributions graphs to Tensorboard (can take up a lot of space)
         )
         self.config.update(usercfg)
 
@@ -69,10 +70,11 @@ class SAC(Agent):
             learning_rate=self.config["actor_learning_rate"],
             name="actor_optimizer").minimize(self.actor_loss)
 
-        summaries = []
-        for v in self.actor_vars + self.softq_vars + self.value_vars:
-            summaries.append(tf.summary.histogram(v.name, v))
-        self.model_summary_op = tf.summary.merge(summaries)
+        if self.config["weights_summary"]:
+            summaries = []
+            for v in self.actor_vars + self.softq_vars + self.value_vars:
+                summaries.append(tf.summary.histogram(v.name, v))
+            self.model_summary_op = tf.summary.merge(summaries)
 
         self.init_op = tf.global_variables_initializer()
 
@@ -241,10 +243,10 @@ class SAC(Agent):
 
         # Update the target networks
         fetches = [self.value_target_update]
-        if model_summary:
+        if model_summary and self.config["weights_summary"]:
             fetches = [self.model_summary_op] + fetches
         res = tf.get_default_session().run(fetches)
-        if model_summary:
+        if model_summary and self.config["weights_summary"]:
             self.summary_writer.add_summary(res[0], self.n_updates)
         self.n_updates += 1
 

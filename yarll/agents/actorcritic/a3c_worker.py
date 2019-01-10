@@ -406,7 +406,7 @@ def main():
     args = parser.parse_args()
     spec = cluster_spec(args.n_tasks, 1)
     cluster = tf.train.ClusterSpec(spec).as_cluster_def()
-    cls = load("agents.actorcritic.a3c_worker:" + args.cls)
+    cls = load("yarll.agents.actorcritic.a3c_worker:" + args.cls)
     config = json_to_dict(args.config)
     task = cls(args.env_id, args.task_id, cluster, args.monitor_path, config, video=args.video)
     task.learn()

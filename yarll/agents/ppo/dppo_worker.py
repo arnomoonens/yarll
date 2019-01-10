@@ -234,7 +234,7 @@ def main():
     comm = MPI.Comm.Get_parent()
     task_id = comm.Get_rank()
     args = parser.parse_args()
-    cls = load("agents.ppo.dppo_worker:" + args.cls)
+    cls = load("yarll.agents.ppo.dppo_worker:" + args.cls)
     config = json_to_dict(args.config)
 
     task = cls(args.env_id, task_id, comm, args.monitor_path, config, args.seed)

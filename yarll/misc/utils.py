@@ -71,12 +71,13 @@ def save_config(directory: str, config: dict, envs: list, repo_path: str = path.
     """Save the configuration of an agent to a file."""
     config["envs"] = envs
     # Save git information if possible
+    git_dir = os.path.join(repo_path, ".git")
     try:
         git = {
-            "head": execute_command(r"git branch | grep \* | cut -d ' ' -f2"),
-            "commit": execute_command(r"git rev-parse HEAD"),
-            "message": execute_command(r"git log -1 --pretty=%B")[:-1],
-            "diff": execute_command(r"git diff --no-prefix")
+            "head": execute_command(r"git --git-dir='{}' branch | grep \* | cut -d ' ' -f2".format(git_dir)),
+            "commit": execute_command(r"git --git-dir='{}' rev-parse HEAD".format(git_dir)),
+            "message": execute_command(r"git --git-dir='{}' log -1 --pretty=%B".format(git_dir))[:-1],
+            "diff": execute_command(r"git --git-dir='{}' diff --no-prefix".format(git_dir))
         }
         config["git"] = git
     except ImportError:

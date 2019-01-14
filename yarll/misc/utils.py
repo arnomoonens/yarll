@@ -5,6 +5,7 @@ import json
 import os
 from os import path
 import random
+import subprocess
 from typing import Any, Callable, Sequence, Union
 import pkg_resources
 import tensorflow as tf
@@ -60,17 +61,22 @@ def preprocess_image(img: np.ndarray) -> np.ndarray:
     img = img[::2, ::2]  # downsample by factor of 2
     return (rgb2gray(img) / 256.0)[:, :, None]
 
-def save_config(directory: str, config: dict, envs: list):
+def execute_command(cmd: str) -> str:
+    """Execute a terminal command and return the stdout."""
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+    stdout, _ = p.communicate()
+    return stdout.decode()[:-1] # decode to go from bytes to str, [:-1] to remove newline at end
+
+def save_config(directory: str, config: dict, envs: list, repo_path: str = path.join(path.dirname(path.realpath(__file__)), "..")) -> None:
     """Save the configuration of an agent to a file."""
     config["envs"] = envs
     # Save git information if possible
     try:
-        import pygit2
-        repo = pygit2.Repository(path.abspath(path.join(path.dirname(path.realpath(__file__)), "..")))
         git = {
-            "head": repo.head.shorthand,
-            "commit": str(repo.head.target),
-            "message": repo.head.get_object().message
+            "head": execute_command(r"git branch | grep \* | cut -d ' ' -f2"),
+            "commit": execute_command(r"git rev-parse HEAD"),
+            "message": execute_command(r"git log -1 --pretty=%B")[:-1],
+            "diff": execute_command(r"git diff --no-prefix")
         }
         config["git"] = git
     except ImportError:

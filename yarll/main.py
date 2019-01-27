@@ -48,7 +48,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         config["description"] = description
     config["seed"] = str(seed)
     config["start_time"] = datetime.datetime.now().astimezone().isoformat()
-    save_config(monitor_path, config, [env.metadata["parameters"] for env in envs])
+    save_config(monitor_path, config, [env.metadata["parameters"] for env in envs], repo_path=os.path.abspath(os.path.join(os.path.realpath(__file__), "../../")))
     agent.learn()
 
 

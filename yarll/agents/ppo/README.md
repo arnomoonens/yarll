@@ -28,12 +28,12 @@ The other summaries are provided by the master. On the x-axis is each time the a
 ### Experiment on _CartPole-v0_
 
 The graphs for this environment can be seen below:
-![DPPO graphs for CartPole-v0 environment](../../results/DPPO-CartPole-v0.png)
+![DPPO graphs for CartPole-v0 environment](../../../results/DPPO-CartPole-v0.png)
 
 ### Experiment on _PongDeterministic-v4_
 
 The graphs for this environment can be seen below:
-![DPPO graphs for PongDeterministic-v4 environment](../../results/DPPO-PongDeterministic-v4.png)
+![DPPO graphs for PongDeterministic-v4 environment](../../../results/DPPO-PongDeterministic-v4.png)
 
 ## TODO
 

@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import sys
 import argparse
 import json
 import os
@@ -82,6 +83,9 @@ def save_config(directory: str, config: dict, envs: list, repo_path: str = path.
         config["git"] = git
     except ImportError:
         pass
+    # save pip freeze output
+    pipfreeze = execute_command("{} -m pip freeze".format(sys.executable))
+    filtered_config["packages"] = pipfreeze.split("\n")
     with open(path.join(directory, "config.json"), "w") as outfile:
         json.dump(config, outfile, indent=4)
 

@@ -70,7 +70,8 @@ def execute_command(cmd: str) -> str:
 
 def save_config(directory: str, config: dict, envs: list, repo_path: str = path.join(path.dirname(path.realpath(__file__)), "..")) -> None:
     """Save the configuration of an agent to a file."""
-    config["envs"] = envs
+    filtered_config = {k: v for k, v in config.items() if not k.startswith("env")}
+    filtered_config["envs"] = envs
     # Save git information if possible
     git_dir = os.path.join(repo_path, ".git")
     try:
@@ -80,14 +81,14 @@ def save_config(directory: str, config: dict, envs: list, repo_path: str = path.
             "message": execute_command(r"git --git-dir='{}' log -1 --pretty=%B".format(git_dir))[:-1],
             "diff": execute_command(r"git --git-dir='{}' diff --no-prefix".format(git_dir))
         }
-        config["git"] = git
+        filtered_config["git"] = git
     except ImportError:
         pass
     # save pip freeze output
     pipfreeze = execute_command("{} -m pip freeze".format(sys.executable))
     filtered_config["packages"] = pipfreeze.split("\n")
     with open(path.join(directory, "config.json"), "w") as outfile:
-        json.dump(config, outfile, indent=4)
+        json.dump(filtered_config, outfile, indent=4)
 
 def json_to_dict(filename: str) -> dict:
     """Load a json file as a dictionary."""

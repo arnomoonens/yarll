@@ -1,13 +1,14 @@
 # -*- coding: utf8 -*-
 
 import os
+from typing import List
 import tensorflow as tf
 import numpy as np
 from gym import wrappers
 
 from yarll.agents.agent import Agent
 from yarll.agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
-ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
+    ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import FastSaver
 
@@ -114,21 +115,20 @@ class PPO(Agent):
         summary_old_log_prob_mean = tf.summary.scalar(
             "model/old_log_prob/mean", tf.reduce_mean(self.old_network.action_log_prob))
 
-        summary_mean_mean = tf.summary.scalar("model/model/mean/mean", tf.reduce_mean(self.old_network.mean))
-        summary_std_mean = tf.summary.scalar("model/model/std/mean", tf.reduce_mean(self.old_network.std))
-
         summary_ret = tf.summary.scalar("model/return/mean", tf.reduce_mean(self.ret))
         summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
         summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar(
             "model/var_global_norm", tf.global_norm(self.new_network_vars))
-        summaries = []
-        for v in tf.trainable_variables():
-            if "new_network" in v.name:
-                summaries.append(tf.summary.histogram(v.name, v))
+        summaries: List[tf.Tensor] = []
+        # Weight summaries: not turned on right now because they take too much space
+        # TODO: use config to make this optional
+        #for v in tf.trainable_variables():
+        #    if "new_network" in v.name:
+        #        summaries.append(tf.summary.histogram(v.name, v))
+        summaries += self._specific_summaries()
         summaries += [summary_actor_loss, summary_critic_loss,
                       summary_loss,
-                      summary_mean_mean, summary_std_mean,
                       summary_adv_mean, summary_adv_std,
                       # summary_ratio_mean, summary_ratio_std,
                       summary_new_log_prob_mean, summary_old_log_prob_mean,
@@ -161,6 +161,10 @@ class PPO(Agent):
 
     def _initialize(self):
         self.session.run(self.init_op)
+
+    def _specific_summaries(self) -> List[tf.Tensor]:
+        """Summaries that are specific to the variant of the algorithm. None (empty list) for the base algorithm"""
+        return []
 
     def make_actor_loss(self, old_network, new_network, advantage):
         return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_epsilon"], advantage)
@@ -224,8 +228,9 @@ class PPO(Agent):
                     batch_actions = np.array(actions)[batch_indices]
                     batch_advs = np.array(advs)[batch_indices]
                     batch_rs = np.array(rs)[batch_indices]
-                    losses = [self.actor_loss, self.critic_loss, self.loss]
-                    fetches = losses + [self.model_summary_op, self.train_op]
+                    fetches = [self.train_op]
+                    if (n_updates % 1000) == 0:
+                        fetches.append(self.model_summary_op)
                     feed_dict = {
                         self.states: batch_states,
                         self.old_network.states: batch_states,
@@ -235,7 +240,8 @@ class PPO(Agent):
                         self.ret: batch_rs
                     }
                     results = self.session.run(fetches, feed_dict)
-                    self.writer.add_summary(results[len(losses)], n_updates)
+                    if (n_updates % 1000) == 0:
+                        self.writer.add_summary(results[-1], n_updates)
                     n_updates += 1
                 self.writer.flush()
 
@@ -267,6 +273,11 @@ class PPOContinuous(PPO):
             self.env.action_space,
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
+
+    def _specific_summaries(self) -> List[tf.Tensor]:
+        summary_mean_mean = tf.summary.scalar("model/model/mean/mean", tf.reduce_mean(self.old_network.mean))
+        summary_std_mean = tf.summary.scalar("model/model/std/mean", tf.reduce_mean(self.old_network.std))
+        return [summary_mean_mean, summary_std_mean]
 
     def get_env_action(self, action):
         return action

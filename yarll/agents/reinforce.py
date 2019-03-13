@@ -59,8 +59,11 @@ class REINFORCE(Agent):
             tf.add_to_collection("states", self.states)
             self.saver = FastSaver()
         summary_loss = tf.summary.scalar("model/loss", self.summary_loss)
-        summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
-        self.summary_op = tf.summary.merge([summary_loss, summary_entropy])
+        summaries = [summary_loss]
+        if hasattr(self, "entropy"):
+            summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
+            summaries += [summary_entropy]
+        self.summary_op = tf.summary.merge(summaries)
 
         self.init_op = tf.global_variables_initializer()
         # Launch the graph.
@@ -127,7 +130,7 @@ class REINFORCEDiscrete(REINFORCE):
     def make_trainer(self):
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs,
                                                        tf.one_hot(tf.cast(self.actions_taken, tf.int32),
-                                                                  self.env_runner.nA)),
+                                                                  self.env.action_space.n)),
                                            reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.advantage
         loss = -tf.reduce_sum(eligibility)
@@ -146,7 +149,7 @@ class REINFORCEDiscrete(REINFORCE):
 
         self.probs = tf.contrib.layers.fully_connected(
             inputs=L1,
-            num_outputs=self.env_runner.nA,
+            num_outputs=self.env.action_space.n,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.random_normal_initializer(),
             biases_initializer=tf.zeros_initializer())
@@ -182,7 +185,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         # Fully connected layer 2
         self.probs = tf.contrib.layers.fully_connected(
             inputs=self.L3,
-            num_outputs=self.env_runner.nA,
+            num_outputs=self.env.action_space.n,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
@@ -207,7 +210,7 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
                                                    dtype=tf.float32)
         self.probs = tf.contrib.layers.fully_connected(
             inputs=L1[0],
-            num_outputs=self.env_runner.nA,
+            num_outputs=self.env.action_space.n,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
@@ -252,7 +255,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
 
         self.probs = tf.contrib.layers.fully_connected(
             inputs=self.L3[0],
-            num_outputs=self.env_runner.nA,
+            num_outputs=self.env.action_space.n,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())

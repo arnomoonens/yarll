@@ -11,18 +11,21 @@ from typing import Dict
 import numpy as np
 
 import tensorflow as tf
+from tensorflow.keras.layers import Dense
 from gym import wrappers
 
 from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
-from yarll.misc.utils import discount_rewards, flatten, FastSaver
+from yarll.misc.utils import discount_rewards, flatten
 from yarll.misc.network_ops import conv2d, linear, normalized_columns_initializer
 from yarll.misc.reporter import Reporter
+
 
 class REINFORCE(Agent):
     """
     REINFORCE with baselines
     """
+
     def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = True, **usercfg) -> None:
         super(REINFORCE, self).__init__(**usercfg)
         self.env = env
@@ -47,30 +50,30 @@ class REINFORCE(Agent):
         ))
         self.config.update(usercfg)
 
-        self.states = tf.placeholder(
-            tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
-        self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")  # Discrete action
-        self.advantage = tf.placeholder(tf.float32, name="advantage")  # Advantage
+        # self.states = tf.placeholder(
+        #     tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
+        self.states = tf.keras.Input(self.env.observation_space.shape, name="states")
+        # self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")  # Discrete action
+        # self.advantage = tf.placeholder(tf.float32, name="advantage")  # Advantage
         self.build_network()
-        self.make_trainer()
 
-        if self.config["save_model"]:
-            tf.add_to_collection("action", self.action)
-            tf.add_to_collection("states", self.states)
-            self.saver = FastSaver()
-        summary_loss = tf.summary.scalar("model/loss", self.summary_loss)
-        summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
-        self.summary_op = tf.summary.merge([summary_loss, summary_entropy])
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"])
+        # self.make_trainer()
 
-        self.init_op = tf.global_variables_initializer()
-        # Launch the graph.
-        self.session = tf.Session()
-        self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
+        # if self.config["save_model"]:
+        #     tf.add_to_collection("action", self.action)
+        #     tf.add_to_collection("states", self.states)
+        #     self.saver = FastSaver()
+        # summary_loss = tf.summary.scalar("model/loss", self.summary_loss)
+        # summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
+        # self.summary_op = tf.summary.merge([summary_loss, summary_entropy])
 
-        self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)
+        # self.init_op = tf.global_variables_initializer()
+        # # Launch the graph.
+        # self.session = tf.Session()
+        # self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
 
-    def _initialize(self) -> None:
-        self.session.run(self.init_op)
+        self.env_runner = EnvRunner(self.env, self, usercfg)
 
     def build_network(self):
         raise NotImplementedError()
@@ -80,12 +83,28 @@ class REINFORCE(Agent):
 
     def choose_action(self, state, features) -> Dict[str, np.ndarray]:
         """Choose an action."""
-        action = self.session.run([self.action], feed_dict={self.states: [state]})[0]
+        inp = tf.convert_to_tensor([state])
+        logits = self.model(inp)
+        action = tf.random.categorical(logits, 1).numpy()[0, 0]
         return {"action": action}
+
+    @tf.function
+    def train(self, states, actions_taken, advantages):
+        states = tf.cast(states, dtype=tf.float32)
+        actions_taken = tf.cast(actions_taken, dtype=tf.int32)
+        advantages = tf.cast(advantages, dtype=tf.float32)
+        with tf.GradientTape() as tape:
+            logits = self.model(states)
+            good_logits = tf.reduce_sum(tf.multiply(logits,
+                                                    tf.one_hot(actions_taken, self.env.action_space.n)),
+                                        axis=1)
+            eligibility = good_logits * advantages
+            loss = -tf.reduce_sum(eligibility)
+            gradients = tape.gradient(loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_weights))
 
     def learn(self):
         """Run learning algorithm"""
-        self._initialize()
         reporter = Reporter()
         config = self.config
         total_n_trajectories = 0
@@ -105,20 +124,15 @@ class REINFORCE(Agent):
             all_action = np.concatenate([trajectory.actions for trajectory in trajectories])
             all_adv = np.concatenate(advs)
             # Do policy gradient update step
-            episode_rewards = np.array([sum(trajectory.rewards) for trajectory in trajectories]) # episode total rewards
-            episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories]) # episode lengths
+            episode_rewards = np.array([sum(trajectory.rewards)
+                                        for trajectory in trajectories])  # episode total rewards
+            episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
             # TODO: deal with RNN state
-            summary, _ = self.session.run([self.summary_op, self.train], feed_dict={
-                self.states: all_state,
-                self.actions_taken: all_action,
-                self.advantage: all_adv
-            })
-            self.writer.add_summary(summary, iteration)
-            self.writer.flush()
+            self.train(all_state, all_action, all_adv)
 
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
-        if self.config["save_model"]:
-            self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
+        # if self.config["save_model"]:
+        #     self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
 class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
@@ -137,21 +151,18 @@ class REINFORCEDiscrete(REINFORCE):
 
     def build_network(self):
 
-        L1 = tf.contrib.layers.fully_connected(
-            inputs=self.states,
-            num_outputs=int(self.config["n_hidden_units"]),
-            activation_fn=tf.tanh,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
+        # L1 = tf.contrib.layers.fully_connected(
+        #     inputs=self.states,
+        #     num_outputs=int(self.config["n_hidden_units"]),
+        #     activation_fn=tf.tanh,
+        #     weights_initializer=tf.random_normal_initializer(),
+        #     biases_initializer=tf.zeros_initializer())
 
-        self.probs = tf.contrib.layers.fully_connected(
-            inputs=L1,
-            num_outputs=self.env_runner.nA,
-            activation_fn=tf.nn.softmax,
-            weights_initializer=tf.random_normal_initializer(),
-            biases_initializer=tf.zeros_initializer())
+        L1 = Dense(self.config["n_hidden_units"], activation="tanh")(self.states)
+        output = Dense(self.env.action_space.n)(L1)
 
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+        self.model = tf.keras.Model(self.states, output, name="model")
+
 
 class REINFORCEDiscreteCNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
@@ -189,6 +200,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
 
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
 
+
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
@@ -221,6 +233,7 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
         }
         action, new_features = self.session.run([self.action, self.rnn_state_out], feed_dict=feed_dict)
         return {"action": action, "features": new_features}
+
 
 class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
     def __init__(self, env, monitor_path, video=True, **usercfg):
@@ -257,6 +270,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
         self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+
 
 class REINFORCEContinuous(REINFORCE):
     def __init__(self, env, monitor_path, RNN=False, video=True, **usercfg):

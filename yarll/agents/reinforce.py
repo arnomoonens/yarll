@@ -141,7 +141,7 @@ class REINFORCEDiscrete(REINFORCE):
     def make_trainer(self):
         good_probabilities = tf.reduce_sum(tf.multiply(self.probs,
                                                        tf.one_hot(tf.cast(self.actions_taken, tf.int32),
-                                                                  self.env_runner.nA)),
+                                                                  self.env.action_space.n)),
                                            reduction_indices=[1])
         eligibility = tf.log(good_probabilities) * self.advantage
         loss = -tf.reduce_sum(eligibility)
@@ -193,7 +193,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         # Fully connected layer 2
         self.probs = tf.contrib.layers.fully_connected(
             inputs=self.L3,
-            num_outputs=self.env_runner.nA,
+            num_outputs=self.env.action_space.n,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
@@ -219,7 +219,7 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
                                                    dtype=tf.float32)
         self.probs = tf.contrib.layers.fully_connected(
             inputs=L1[0],
-            num_outputs=self.env_runner.nA,
+            num_outputs=self.env.action_space.n,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
@@ -265,7 +265,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
 
         self.probs = tf.contrib.layers.fully_connected(
             inputs=self.L3[0],
-            num_outputs=self.env_runner.nA,
+            num_outputs=self.env.action_space.n,
             activation_fn=tf.nn.softmax,
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())

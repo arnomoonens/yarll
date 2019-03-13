@@ -101,7 +101,9 @@ class EnvRunner(object):
         return memory
 
     def get_trajectory(self, stop_at_trajectory_end: bool = True, render: bool = False) -> ExperiencesMemory:
-        return self.get_steps(self.config["episode_max_length"], stop_at_trajectory_end, render)
+        return self.get_steps(self.config["episode_max_length"],
+                              stop_at_trajectory_end=stop_at_trajectory_end,
+                              render=render)
 
     def get_trajectories(self, stop_at_trajectory_end: bool = True, render: bool = False) -> List[ExperiencesMemory]:
         """Generate trajectories until a certain number of timesteps or trajectories."""

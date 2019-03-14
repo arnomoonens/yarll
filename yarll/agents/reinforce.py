@@ -6,7 +6,6 @@
 #  - Always choose the action with the highest probability
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html
 
-import os
 from typing import Dict
 import numpy as np
 
@@ -68,10 +67,7 @@ class REINFORCE(Agent):
         # summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
         # self.summary_op = tf.summary.merge([summary_loss, summary_entropy])
 
-        # self.init_op = tf.global_variables_initializer()
-        # # Launch the graph.
-        # self.session = tf.Session()
-        # self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
+        self.writer = tf.summary.create_file_writer(self.monitor_path)
 
         self.env_runner = EnvRunner(self.env, self, usercfg)
 
@@ -88,7 +84,7 @@ class REINFORCE(Agent):
         action = tf.random.categorical(logits, 1).numpy()[0, 0]
         return {"action": action}
 
-    @tf.function
+    # @tf.function
     def train(self, states, actions_taken, advantages):
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
@@ -102,35 +98,39 @@ class REINFORCE(Agent):
             loss = -tf.reduce_sum(eligibility)
             gradients = tape.gradient(loss, self.model.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_weights))
+        return float(loss)
 
     def learn(self):
         """Run learning algorithm"""
         reporter = Reporter()
         config = self.config
         total_n_trajectories = 0
-        for iteration in range(config["n_iter"]):
-            # Collect trajectories until we get timesteps_per_batch total timesteps
-            trajectories = self.env_runner.get_trajectories()
-            total_n_trajectories += len(trajectories)
-            all_state = np.concatenate([trajectory.states for trajectory in trajectories])
-            # Compute discounted sums of rewards
-            rets = [discount_rewards(trajectory.rewards, config["gamma"]) for trajectory in trajectories]
-            max_len = max(len(ret) for ret in rets)
-            padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
-            # Compute time-dependent baseline
-            baseline = np.mean(padded_rets, axis=0)
-            # Compute advantage function
-            advs = [ret - baseline[:len(ret)] for ret in rets]
-            all_action = np.concatenate([trajectory.actions for trajectory in trajectories])
-            all_adv = np.concatenate(advs)
-            # Do policy gradient update step
-            episode_rewards = np.array([sum(trajectory.rewards)
-                                        for trajectory in trajectories])  # episode total rewards
-            episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
-            # TODO: deal with RNN state
-            self.train(all_state, all_action, all_adv)
+        with self.writer.as_default():
+            for iteration in range(config["n_iter"]):
+                # Collect trajectories until we get timesteps_per_batch total timesteps
+                trajectories = self.env_runner.get_trajectories()
+                total_n_trajectories += len(trajectories)
+                all_state = np.concatenate([trajectory.states for trajectory in trajectories])
+                # Compute discounted sums of rewards
+                rets = [discount_rewards(trajectory.rewards, config["gamma"]) for trajectory in trajectories]
+                max_len = max(len(ret) for ret in rets)
+                padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
+                # Compute time-dependent baseline
+                baseline = np.mean(padded_rets, axis=0)
+                # Compute advantage function
+                advs = [ret - baseline[:len(ret)] for ret in rets]
+                all_action = np.concatenate([trajectory.actions for trajectory in trajectories])
+                all_adv = np.concatenate(advs)
+                # Do policy gradient update step
+                episode_rewards = np.array([sum(trajectory.rewards)
+                                            for trajectory in trajectories])  # episode total rewards
+                episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
+                # TODO: deal with RNN state
+                loss = self.train(all_state, all_action, all_adv)
+                tf.summary.scalar("model/loss", loss, step=iteration)
+                tf.summary.scalar("env/reward", np.mean(episode_rewards), step=iteration, description="Mean total reward of episodes in this iteration")
 
-            reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
+                reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         # if self.config["save_model"]:
         #     self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 

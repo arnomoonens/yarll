@@ -1,0 +1,20 @@
+{
+    "experiment_name": "CartPole-RE",
+    "environments": {
+        "type": "single",
+        "source": "CartPole-v0"
+    },
+    "agent": {
+        "name": "REINFORCE",
+        "args": {
+            "RNN": false,
+            "monitor_path": "/tmp/CartPole-v0-RE",
+            "video": false,
+            "save_model": true,
+            "monitor": true,
+            "n_iter": 50,
+            "n_hidden_layers": 1,
+            "timesteps_per_batch": 1000
+        }
+    }
+}

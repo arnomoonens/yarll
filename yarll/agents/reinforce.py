@@ -6,11 +6,12 @@
 #  - Always choose the action with the highest probability
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html
 
+import os
 from typing import Dict
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Conv2D
 from gym import wrappers
 
 from yarll.agents.agent import Agent
@@ -39,7 +40,7 @@ class REINFORCE(Agent):
             batch_update="timesteps",
             timesteps_per_batch=1000,
             n_iter=100,
-            gamma=0.99,  # Discount past rewards by a percentage
+            gamma=0.99,
             learning_rate=0.05,
             entropy_coef=1e-3,
             n_hidden_layers=2,
@@ -49,55 +50,37 @@ class REINFORCE(Agent):
         ))
         self.config.update(usercfg)
 
-        # self.states = tf.placeholder(
-        #     tf.float32, [None] + list(self.env.observation_space.shape), name="states")  # Observation
         self.states = tf.keras.Input(self.env.observation_space.shape, name="states")
-        # self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")  # Discrete action
-        # self.advantage = tf.placeholder(tf.float32, name="advantage")  # Advantage
-        self.build_network()
-
+        self.network = self.build_network()
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"])
-        # self.make_trainer()
-
-        # if self.config["save_model"]:
-        #     tf.add_to_collection("action", self.action)
-        #     tf.add_to_collection("states", self.states)
-        #     self.saver = FastSaver()
-        # summary_loss = tf.summary.scalar("model/loss", self.summary_loss)
-        # summary_entropy = tf.summary.scalar("model/entropy", self.entropy)
-        # self.summary_op = tf.summary.merge([summary_loss, summary_entropy])
-
         self.writer = tf.summary.create_file_writer(self.monitor_path)
 
         self.env_runner = EnvRunner(self.env, self, usercfg)
 
-    def build_network(self):
-        raise NotImplementedError()
-
-    def make_trainer(self):
+    def build_network(self) -> tf.keras.Model:
         raise NotImplementedError()
 
     def choose_action(self, state, features) -> Dict[str, np.ndarray]:
         """Choose an action."""
         inp = tf.convert_to_tensor([state])
-        logits = self.model(inp)
-        action = tf.random.categorical(logits, 1).numpy()[0, 0]
+        probs = self.network(inp)
+        action = tf.random.categorical(tf.math.log(probs), 1).numpy()[0, 0]
         return {"action": action}
 
-    # @tf.function
+    @tf.function
     def train(self, states, actions_taken, advantages):
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
         advantages = tf.cast(advantages, dtype=tf.float32)
         with tf.GradientTape() as tape:
-            logits = self.model(states)
-            good_logits = tf.reduce_sum(tf.multiply(logits,
-                                                    tf.one_hot(actions_taken, self.env.action_space.n)),
-                                        axis=1)
-            eligibility = good_logits * advantages
+            probs = self.network(states)
+            good_probs = tf.reduce_sum(tf.multiply(probs,
+                                                   tf.one_hot(actions_taken, self.env.action_space.n)),
+                                       axis=1)
+            eligibility = tf.math.log(good_probs) * advantages
             loss = -tf.reduce_sum(eligibility)
-            gradients = tape.gradient(loss, self.model.trainable_weights)
-        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_weights))
+            gradients = tape.gradient(loss, self.network.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
         return float(loss)
 
     def learn(self):
@@ -128,40 +111,26 @@ class REINFORCE(Agent):
                 # TODO: deal with RNN state
                 loss = self.train(all_state, all_action, all_adv)
                 tf.summary.scalar("model/loss", loss, step=iteration)
-                tf.summary.scalar("env/reward", np.mean(episode_rewards), step=iteration, description="Mean total reward of episodes in this iteration")
+                tf.summary.scalar("env/reward",
+                                  np.mean(episode_rewards),
+                                  step=iteration,
+                                  description="Mean total reward of episodes in this iteration")
 
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
-        # if self.config["save_model"]:
-        #     self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
+        if self.config["save_model"]:
+            tf.saved_model.save(self.network, os.path.join(self.monitor_path, "model"))
 
 class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
-    def make_trainer(self):
-        good_probabilities = tf.reduce_sum(tf.multiply(self.probs,
-                                                       tf.one_hot(tf.cast(self.actions_taken, tf.int32),
-                                                                  self.env.action_space.n)),
-                                           reduction_indices=[1])
-        eligibility = tf.log(good_probabilities) * self.advantage
-        loss = -tf.reduce_sum(eligibility)
-        self.summary_loss = loss
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.config["learning_rate"])
-        self.train = optimizer.minimize(loss)
-
     def build_network(self):
+        x = self.states
+        for _ in range(self.config["n_hidden_layers"]):
+            x = Dense(self.config["n_hidden_units"], activation="tanh")(x)
+        output = Dense(self.env.action_space.n, activation="softmax")(x)
 
-        # L1 = tf.contrib.layers.fully_connected(
-        #     inputs=self.states,
-        #     num_outputs=int(self.config["n_hidden_units"]),
-        #     activation_fn=tf.tanh,
-        #     weights_initializer=tf.random_normal_initializer(),
-        #     biases_initializer=tf.zeros_initializer())
-
-        L1 = Dense(self.config["n_hidden_units"], activation="tanh")(self.states)
-        output = Dense(self.env.action_space.n)(L1)
-
-        self.model = tf.keras.Model(self.states, output, name="model")
+        return tf.keras.Model(self.states, output, name="model")
 
 
 class REINFORCEDiscreteCNN(REINFORCEDiscrete):

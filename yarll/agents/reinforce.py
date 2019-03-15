@@ -11,7 +11,8 @@ from typing import Dict
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Conv2D
+from tensorflow.keras.layers import Dense, Conv2D, GRU
+from tensorflow.keras import Model
 from gym import wrappers
 
 from yarll.agents.agent import Agent
@@ -55,8 +56,6 @@ class REINFORCE(Agent):
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"])
         self.writer = tf.summary.create_file_writer(self.monitor_path)
 
-        self.env_runner = EnvRunner(self.env, self, usercfg)
-
     def build_network(self) -> tf.keras.Model:
         raise NotImplementedError()
 
@@ -68,12 +67,14 @@ class REINFORCE(Agent):
         return {"action": action}
 
     @tf.function
-    def train(self, states, actions_taken, advantages):
+    def train(self, states, actions_taken, advantages, features=None):
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
         advantages = tf.cast(advantages, dtype=tf.float32)
+        inp = states if features is None else [states, tf.reshape(features, [features.shape[0], 32])]
         with tf.GradientTape() as tape:
-            probs = self.network(states)
+            res = self.network(inp)
+            probs = res if features is None else res[0]
             good_probs = tf.reduce_sum(tf.multiply(probs,
                                                    tf.one_hot(actions_taken, self.env.action_space.n)),
                                        axis=1)
@@ -85,13 +86,14 @@ class REINFORCE(Agent):
 
     def learn(self):
         """Run learning algorithm"""
+        env_runner = EnvRunner(self.env, self, self.config)
         reporter = Reporter()
         config = self.config
         total_n_trajectories = 0
         with self.writer.as_default():
             for iteration in range(config["n_iter"]):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
-                trajectories = self.env_runner.get_trajectories()
+                trajectories = env_runner.get_trajectories()
                 total_n_trajectories += len(trajectories)
                 all_state = np.concatenate([trajectory.states for trajectory in trajectories])
                 # Compute discounted sums of rewards
@@ -109,12 +111,9 @@ class REINFORCE(Agent):
                                             for trajectory in trajectories])  # episode total rewards
                 episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
                 # TODO: deal with RNN state
-                loss = self.train(all_state, all_action, all_adv)
+                features = np.concatenate([trajectory.features for trajectory in trajectories])
+                loss = self.train(all_state, all_action, all_adv, features=features if self.initial_features is not None else None)
                 tf.summary.scalar("model/loss", loss, step=iteration)
-                tf.summary.scalar("env/reward",
-                                  np.mean(episode_rewards),
-                                  step=iteration,
-                                  description="Mean total reward of episodes in this iteration")
 
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         if self.config["save_model"]:
@@ -130,7 +129,7 @@ class REINFORCEDiscrete(REINFORCE):
             x = Dense(self.config["n_hidden_units"], activation="tanh")(x)
         output = Dense(self.env.action_space.n, activation="softmax")(x)
 
-        return tf.keras.Model(self.states, output, name="model")
+        return Model(self.states, output, name="network")
 
 
 class REINFORCEDiscreteCNN(REINFORCEDiscrete):
@@ -143,65 +142,43 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         shape = list(self.env.observation_space.shape)
 
         x = self.states
+
         # Convolution layers
-        for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+        for _ in range(4):
+            x = Conv2D(filters=32, kernel_size=3, strides=2, padding="same", activation="elu")(x)
 
         # Flatten
         shape = x.get_shape().as_list()
-        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+        x = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
-        # Fully connected layer 1
-        self.L3 = tf.contrib.layers.fully_connected(
-            inputs=reshape,
-            num_outputs=int(self.config["n_hidden_units"]),
-            activation_fn=tf.nn.relu,
-            weights_initializer=tf.random_normal_initializer(stddev=0.01),
-            biases_initializer=tf.zeros_initializer())
+        # Fully connected layers
+        x = Dense(self.config["n_hidden_units"], activation="relu")(x)
+        outputs = Dense(self.env.action_space.n, activation="softmax")(x)
 
-        # Fully connected layer 2
-        self.probs = tf.contrib.layers.fully_connected(
-            inputs=self.L3,
-            num_outputs=self.env.action_space.n,
-            activation_fn=tf.nn.softmax,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+        return Model(self.states, outputs, name="network")
 
 
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
+        self.rnn_state_in = tf.keras.Input((32,))
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
+        self.initial_features = tf.zeros((1, 32))
 
     def build_network(self):
+        states = tf.expand_dims(self.states, [1])
 
-        n_states = tf.shape(self.states)[:1]
-        states = tf.expand_dims(flatten(self.states), [0])
-
-        enc_cell = tf.contrib.rnn.GRUCell(int(self.config["n_hidden_units"]))
-        self.rnn_state_in = enc_cell.zero_state(1, tf.float32)
-        L1, self.rnn_state_out = tf.nn.dynamic_rnn(cell=enc_cell,
-                                                   inputs=states,
-                                                   sequence_length=n_states,
-                                                   initial_state=self.rnn_state_in,
-                                                   dtype=tf.float32)
-        self.probs = tf.contrib.layers.fully_connected(
-            inputs=L1[0],
-            num_outputs=self.env.action_space.n,
-            activation_fn=tf.nn.softmax,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+        rnn = GRU(32, return_state=True)
+        x, new_state = rnn(states, self.rnn_state_in)
+        probs = Dense(self.env.action_space.n, activation="softmax")(x)
+        return Model([self.states, self.rnn_state_in], [probs, new_state])
 
     def choose_action(self, state, features):
         """Choose an action."""
-        feed_dict = {
-            self.states: [state],
-            self.rnn_state_in: features
-        }
-        action, new_features = self.session.run([self.action, self.rnn_state_out], feed_dict=feed_dict)
-        return {"action": action, "features": new_features}
+        inp = tf.cast([state], tf.float32)
+        features = tf.reshape(features, (1, 32))
+        probs, new_state = self.network([inp, features])
+        action = tf.random.categorical(tf.math.log(probs), 1).numpy()[0, 0]
+        return {"action": action, "features": new_state}
 
 
 class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
@@ -211,34 +188,23 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
     def build_network(self):
 
         shape = list(self.env.observation_space.shape)
-
-        self.states = tf.placeholder(tf.float32, [None] + shape, name="states")
-        self.N = tf.placeholder(tf.int32, name="N")
-
         x = self.states
+
         # Convolution layers
-        for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+        for _ in range(4):
+            x = Conv2D(filters=32, kernel_size=3, strides=2, padding="same", activation="elu")(x)
 
         # Flatten
         shape = x.get_shape().as_list()
-        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+        x = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
 
-        reshape = tf.expand_dims(flatten(reshape), [0])
-        self.enc_cell = tf.contrib.rnn.BasicLSTMCell(int(self.config["n_hidden_units"]))
-        self.rnn_state_in = self.enc_cell.zero_state(1, tf.float32)
-        self.L3, self.rnn_state_out = tf.nn.dynamic_rnn(cell=self.enc_cell,
-                                                        inputs=reshape,
-                                                        initial_state=self.rnn_state_in,
-                                                        dtype=tf.float32)
+        # Change shape for RNN
+        states = tf.expand_dims(x, [1])
 
-        self.probs = tf.contrib.layers.fully_connected(
-            inputs=self.L3[0],
-            num_outputs=self.env.action_space.n,
-            activation_fn=tf.nn.softmax,
-            weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
-            biases_initializer=tf.zeros_initializer())
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+        rnn = GRU(32, return_state=True)
+        x, new_state = rnn(states, self.rnn_state_in)
+        probs = Dense(self.env.action_space.n, activation="softmax")(x)
+        return Model([self.states, self.rnn_state_in], [probs, new_state])
 
 
 class REINFORCEContinuous(REINFORCE):
@@ -247,10 +213,7 @@ class REINFORCEContinuous(REINFORCE):
         super(REINFORCEContinuous, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
-        if self.rnn:
-            self.build_network_rnn()
-        else:
-            self.build_network_normal()
+        return self.build_network_rnn() if self.rnn else self.build_network_normal()
 
     def make_trainer(self):
         loss = tf.reduce_mean(-self.action_log_prob * self.advantage) - self.config["entropy_coef"] * self.entropy

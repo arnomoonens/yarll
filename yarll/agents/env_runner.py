@@ -70,12 +70,9 @@ class EnvRunner(object):
             self.episode_reward += rew
             self.episode_steps += 1
             if done or self.episode_steps >= self.config["episode_max_length"]:
-                if self.summary_writer is not None:
-                    summary = tf.Summary()
-                    summary.value.add(tag="global/Episode_length", simple_value=float(self.episode_steps))
-                    summary.value.add(tag="global/Reward", simple_value=float(self.episode_reward))
-                    self.summary_writer.add_summary(summary, self.n_episodes)
-                    self.summary_writer.flush()
+                # summaries won't be written if there is no writer.as_default around it somewhere (e.g. in algorithm itself)
+                tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.n_episodes)
+                tf.summary.scalar("env/Reward", self.episode_reward, step=self.n_episodes)
                 self.episode_reward = 0
                 self.episode_steps = 0
                 self.n_episodes += 1

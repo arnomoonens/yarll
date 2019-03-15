@@ -159,6 +159,12 @@ register_agent(name="REINFORCE",
                state_dimensions="single",
                action_space="continuous"
               )
+register_agent(name="REINFORCE",
+               entry_point="yarll.agents.reinforce:REINFORCEContinuous",
+               state_dimensions="single",
+               action_space="continuous",
+               RNN=True
+               )
 register_agent(name="SarsaFA",
                entry_point="yarll.agents.sarsa.sarsa_fa:SarsaFA",
                state_dimensions="single",

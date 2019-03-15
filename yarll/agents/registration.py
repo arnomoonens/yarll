@@ -46,4 +46,4 @@ def make_agent(name: str, state_dimensions: str, action_space: str, RNN: bool = 
                 state_dimensions,
                 action_space,
                 RNN))
-    return Agent(**args)
+    return Agent(RNN=RNN, **args)

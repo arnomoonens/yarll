@@ -15,7 +15,7 @@ from gym import wrappers
 
 from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
-from yarll.misc.utils import discount_rewards, flatten
+from yarll.misc.utils import discount_rewards
 from yarll.misc.network_ops import NormalDistrLayer
 from yarll.misc.reporter import Reporter
 
@@ -69,7 +69,7 @@ class REINFORCE(Agent):
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
         advantages = tf.cast(advantages, dtype=tf.float32)
-        inp = states if features is None else [states, tf.reshape(features, [features.shape[0], 32])]
+        inp = states if features is None else [states, features]
         with tf.GradientTape() as tape:
             res = self.network(inp)
             probs = res if features is None else res[0]
@@ -112,7 +112,7 @@ class REINFORCE(Agent):
                 loss = self.train(all_state,
                                   all_action,
                                   all_adv,
-                                  features=features if self.initial_features is not None else None)
+                                  features=tf.squeeze(features) if self.initial_features is not None else None)
                 tf.summary.scalar("model/loss", loss, step=iteration)
 
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
@@ -160,14 +160,14 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
 
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        self.rnn_state_in = tf.keras.Input((32,))
+        self.rnn_state_in = tf.keras.Input((usercfg.get("n_hidden_units", 20),))
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
-        self.initial_features = tf.zeros((1, 32))
+        self.initial_features = tf.zeros((1, self.config["n_hidden_units"]))
 
     def build_network(self):
         states = tf.expand_dims(self.states, [1])
 
-        rnn = GRU(32, return_state=True)
+        rnn = GRU(self.config["n_hidden_units"], return_state=True)
         x, new_state = rnn(states, self.rnn_state_in)
         probs = Dense(self.env.action_space.n, activation="softmax")(x)
         return Model([self.states, self.rnn_state_in], [probs, new_state])
@@ -175,7 +175,7 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def choose_action(self, state, features):
         """Choose an action."""
         inp = tf.cast([state], tf.float32)
-        features = tf.reshape(features, (1, 32))
+        features = tf.reshape(features, (1, self.config["n_hidden_units"]))
         probs, new_state = self.network([inp, features])
         action = tf.random.categorical(tf.math.log(probs), 1).numpy()[0, 0]
         return {"action": action, "features": new_state}
@@ -201,7 +201,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         # Change shape for RNN
         states = tf.expand_dims(x, [1])
 
-        rnn = GRU(32, return_state=True)
+        rnn = GRU(self.config["n_hidden_units"], return_state=True)
         x, new_state = rnn(states, self.rnn_state_in)
         probs = Dense(self.env.action_space.n, activation="softmax")(x)
         return Model([self.states, self.rnn_state_in], [probs, new_state])
@@ -219,7 +219,7 @@ class REINFORCEContinuous(REINFORCEDiscreteRNN):
         """Choose an action."""
         state = tf.cast([state], tf.float32)
         if self.rnn:
-            features = tf.reshape(features, (1, 32))
+            features = tf.reshape(features, (1, self.config["n_hidden_units"]))
             inp = [state, features]
         else:
             inp = state
@@ -240,7 +240,7 @@ class REINFORCEContinuous(REINFORCEDiscreteRNN):
         # Change shape for RNN
         states = tf.expand_dims(self.states, [1])
 
-        rnn = GRU(32, return_state=True)
+        rnn = GRU(self.config["n_hidden_units"], return_state=True)
         x, new_state = rnn(states, self.rnn_state_in)
         action, mean = NormalDistrLayer(self.env.action_space.shape[0])(x)
         return Model([self.states, self.rnn_state_in], [action, mean, new_state])
@@ -249,7 +249,8 @@ class REINFORCEContinuous(REINFORCEDiscreteRNN):
     def train(self, states, actions_taken, advantages, features=None):
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)
-        inp = states if features is None else [states, tf.reshape(features, [features.shape[0], 32])]
+        inp = states if features is None else [states, tf.reshape(
+            features, [features.shape[0], self.config["n_hidden_units"]])]
         with tf.GradientTape() as tape:
             res = self.network(inp)
             mean = res[1]

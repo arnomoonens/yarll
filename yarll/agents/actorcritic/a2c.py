@@ -2,7 +2,7 @@
 
 import os
 import logging
-from typing import Callable, Optional, Tuple
+from typing import Optional, Tuple
 import tensorflow as tf
 import numpy as np
 
@@ -52,19 +52,21 @@ class A2C(Agent):
         self.initial_features = None
         self.ac_net: tf.keras.Model = self.build_networks()
 
-        loss_functions = self._loss_functions()
-
         self.ac_net.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"],
                                                                clipnorm=self.config["gradient_clip_value"]),
-                            loss=loss_functions)
+                            loss=[self._actor_loss, self._critic_loss])
         self.writer = tf.summary.create_file_writer(self.monitor_path)
         return
 
     def build_networks(self):
         return NotImplementedError("Abstract method")
 
-    def _loss_functions(self):
+    def _actor_loss(self, acts_and_advs, logits):
         return NotImplementedError("Abstract method")
+
+    def _critic_loss(self, returns, value):
+        return NotImplementedError("Abstract method")
+
 
     def train(self, states: np.ndarray, actions_taken: np.ndarray, advantages: np.ndarray, features: Optional[np.ndarray] = None) -> Tuple[float, float]:
         return NotImplementedError("Abstract method")
@@ -95,7 +97,8 @@ class A2C(Agent):
                 # performs a full training step on the collected batch
                 # note: no need to mess around with gradients, Keras API handles it
                 # First output seems to be the sum of the losses
-                _, train_actor_loss, train_critic_loss = self.ac_net.train_on_batch(states, [acts_and_advs, batch_r])
+                loss, train_actor_loss, train_critic_loss = self.ac_net.train_on_batch(states, [acts_and_advs, batch_r])
+                tf.summary.scalar("model/loss", loss, step=iteration)
                 tf.summary.scalar("model/actor_loss", train_actor_loss, step=iteration)
                 tf.summary.scalar("model/critic_loss", train_critic_loss, step=iteration)
             if self.config["save_model"]:
@@ -112,14 +115,16 @@ class A2CDiscrete(A2C):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
-    def _loss_functions(self):
-        return [actor_discrete_loss, critic_loss]
+    def _actor_loss(self, acts_and_advs, logits):
+        return actor_discrete_loss(acts_and_advs, logits)
+
+    def _critic_loss(self, returns, value):
+        return self.config["vf_coef"] * critic_loss(returns, value)
 
 
 class A2CDiscreteCNN(A2CDiscrete):
     def build_networks(self):
         return ActorCriticNetworkDiscreteCNN(
-            list(self.env.observation_space.shape),
             self.env.action_space.n,
             int(self.config["n_hidden_units"]))
 

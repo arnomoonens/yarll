@@ -7,7 +7,7 @@ Functions and networks for actor-critic agents.
 from typing import Sequence, Tuple
 import tensorflow as tf
 from tensorflow.keras import Model, Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Conv2D, Dense, Flatten
 import numpy as np
 
 from yarll.misc.network_ops import ProbabilityDistribution
@@ -54,40 +54,36 @@ class ActorCriticNetworkDiscrete(ActorCriticNetwork):
 class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
-    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden: int, summary: bool = True) -> None:
+    def __init__(self, n_actions: int, n_hidden: int) -> None:
         super(ActorCriticNetworkDiscreteCNN, self).__init__()
-        self.state_shape = state_shape
-        self.n_actions = n_actions
-        self.n_hidden = n_hidden
-        self.summary = summary
 
-        x = self.states
+        self.shared_layers = Sequential()
+
         # Convolution layers
-        for i in range(4):
-            x = tf.nn.elu(conv2d(x, 32, "l{}".format(i + 1), [3, 3], [2, 2]))
+        for _ in range(4):
+            self.shared_layers.add(Conv2D(filters=32, kernel_size=3, strides=2, padding="same", activation="elu"))
+        self.shared_layers.add(Flatten())
 
-        # Flatten
-        shape = x.get_shape().as_list()
-        # -1 for the (unknown) batch size
-        reshape = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])
+        self.shared_layers.add(Dense(n_hidden, activation="relu"))
 
-        # Fully connected for actor & critic
-        self.logits = linear(reshape, n_actions, "actionlogits", normalized_columns_initializer(0.01))
-        self.value = tf.reshape(
-            linear(reshape, 1, "value", normalized_columns_initializer(1.0)), [-1])
+        self.logits = Dense(n_actions)
+        self.dist = ProbabilityDistribution()
 
-        self.probs = tf.nn.softmax(self.logits)
+        self.value = Dense(1)
 
-        self.action = tf.squeeze(tf.multinomial(
-            self.logits - tf.reduce_max(self.logits, [1], keepdims=True), 1), [1], name="action")
-        self.action = tf.one_hot(self.action, n_actions)[0, :]
+    def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
+        x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
+        x = self.shared_layers(x)
+        return self.logits(x), self.value(x)
 
-        # Log probabilities of all actions
-        self.log_probs = tf.nn.log_softmax(self.logits)
-        # Prob of the action that was actually taken
-        self.action_log_prob = tf.reduce_sum(self.log_probs * self.actions_taken, [1])
+    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
+        """
+        logits, value = self.predict(states)
+        action = self.dist(logits)
 
-        self.entropy = self.probs * self.log_probs
+        return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
 
 
 class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):

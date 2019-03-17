@@ -4,6 +4,11 @@ import tensorflow as tf
 from tensorflow.keras.layers import Dense
 import numpy as np
 
+class ProbabilityDistribution(tf.keras.Model):
+    def call(self, logits):
+        # sample a random categorical action from given logits
+        return tf.squeeze(tf.random.categorical(logits, 1), axis=-1)
+
 class NormalDistrLayer(tf.keras.layers.Layer):
     def __init__(self, n_outputs):
         super(NormalDistrLayer, self).__init__()

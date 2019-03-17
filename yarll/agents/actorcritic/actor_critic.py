@@ -4,13 +4,15 @@
 Functions and networks for actor-critic agents.
 """
 
-from typing import Sequence
+from typing import Sequence, Tuple
 import tensorflow as tf
+from tensorflow.keras import Model, Sequential
+from tensorflow.keras.layers import Dense
 import numpy as np
 
-from yarll.misc.network_ops import normalized_columns_initializer, linear, conv2d, flatten
+from yarll.misc.network_ops import ProbabilityDistribution
 
-class ActorCriticNetwork(object):
+class ActorCriticNetwork(Model):
     pass
 
 class ActorCriticNetworkDiscrete(ActorCriticNetwork):
@@ -18,38 +20,35 @@ class ActorCriticNetworkDiscrete(ActorCriticNetwork):
     Neural network for the Actor of an Actor-Critic algorithm using a discrete action space.
     """
 
-    def __init__(self, state_shape: Sequence[int], n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
+    def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
         super(ActorCriticNetworkDiscrete, self).__init__()
-        self.state_shape = state_shape
-        self.n_actions = n_actions
 
-        self.states = tf.placeholder(tf.float32, [None] + list(state_shape), name="states")
-        self.actions_taken = tf.placeholder(tf.float32, [None, n_actions], name="actions_taken")
+        self.logits = Sequential()
+        for _ in range(n_hidden_layers):
+            self.logits.add(Dense(n_hidden_units, activation="tanh"))
+        self.logits.add(Dense(n_actions))
 
-        x = self.states
-        for i in range(n_hidden_layers):
-            x = tf.tanh(linear(x, n_hidden_units, "L{}_action".format(i + 1),
-                               initializer=normalized_columns_initializer(1.0)))
-        self.logits = linear(x, n_actions, "actionlogits", normalized_columns_initializer(0.01))
+        self.dist = ProbabilityDistribution()
 
-        x = self.states
-        for i in range(n_hidden_layers):
-            x = tf.tanh(linear(x, n_hidden_units, "L{}_value".format(i + 1),
-                               initializer=normalized_columns_initializer(1.0)))
-        self.value = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
+        self.value = Sequential()
+        for _ in range(n_hidden_layers):
+            self.value.add(Dense(n_hidden_units, activation="tanh"))
+        self.value.add(Dense(1))
 
-        self.probs = tf.nn.softmax(self.logits)
+        # self.entropy = self.probs * self.log_probs
 
-        self.action = tf.squeeze(tf.multinomial(
-            self.logits - tf.reduce_max(self.logits, [1], keepdims=True), 1), [1], name="action")
-        self.action = tf.one_hot(self.action, n_actions)[0, :]
+    def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
+        x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
+        return self.logits(x), self.value(x)
 
-        # Log probabilities of all actions
-        self.log_probs = tf.nn.log_softmax(self.logits)
-        # Prob of the action that was actually taken
-        self.action_log_prob = tf.reduce_sum(self.log_probs * self.actions_taken, [1])
+    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
+        """
+        logits, value = self.predict(states)
+        action = self.dist(logits)
 
-        self.entropy = self.probs * self.log_probs
+        return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
 
 
 class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
@@ -61,9 +60,6 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
         self.n_actions = n_actions
         self.n_hidden = n_hidden
         self.summary = summary
-
-        self.states = tf.placeholder(tf.float32, [None] + state_shape, name="states")
-        self.actions_taken = tf.placeholder(tf.float32, [None, n_actions], name="actions_taken")
 
         x = self.states
         # Convolution layers
@@ -109,8 +105,6 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
         self.n_hidden: int = n_hidden
         self.summary: bool = summary
 
-        self.states = tf.placeholder(tf.float32, [None] + state_shape, name="states")
-        self.actions_taken = tf.placeholder(tf.float32, name="actions_taken")
 
         x = self.states
         # Convolution layers
@@ -171,6 +165,28 @@ def actor_critic_discrete_loss(logits,
     loss = actor_loss + vf_coef * critic_loss - entropy_coef * entropy
     return actor_loss, critic_loss, loss
 
+def actor_discrete_loss(acts_and_advs, logits):
+    """
+    Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
+    """
+    # a trick to input actions and advantages through same API
+    actions, advantages = tf.split(acts_and_advs, 2, axis=-1)
+    # sparse categorical CE loss obj that supports sample_weight arg on call()
+    # from_logits argument ensures transformation into normalized probabilities
+    weighted_sparse_ce = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+    # policy loss is defined by policy gradients, weighted by advantages
+    # note: we only calculate the loss on the actions we've actually taken
+    actions = tf.cast(actions, tf.int32)
+    policy_loss = weighted_sparse_ce(actions, logits, sample_weight=advantages)
+    # entropy loss can be calculated via CE over itself
+    entropy_loss = tf.keras.losses.categorical_crossentropy(logits, logits, from_logits=True)
+    # here signs are flipped because optimizer minimizes
+    # return policy_loss - self.params['entropy']*entropy_loss
+    return policy_loss
+
+def critic_loss(returns, value):
+    return tf.keras.losses.mean_squared_error(returns, value)
+
 
 class ActorCriticNetworkContinuous(ActorCriticNetwork):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
@@ -178,12 +194,6 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
     def __init__(self, state_shape: Sequence[int], action_space, n_hidden_units: int, n_hidden_layers: int = 1) -> None:
         super(ActorCriticNetworkContinuous, self).__init__()
         self.state_shape = state_shape
-
-        self.states = tf.placeholder("float", [None] + list(state_shape), name="states")
-        self.actions_taken = tf.placeholder(
-            tf.float32,
-            [None] + list(action_space.shape),
-            name="actions_taken")
 
         x = self.states
         for i in range(n_hidden_layers):

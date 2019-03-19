@@ -9,14 +9,14 @@ from typing import Dict
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Conv2D, GRU
-from tensorflow.keras import Model
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, GRU, Lambda
+from tensorflow.keras import Model, Sequential
 from gym import wrappers
 
 from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards
-from yarll.misc.network_ops import NormalDistrLayer
+from yarll.misc.network_ops import NormalDistrLayer, flatten_to_rnn
 from yarll.misc.reporter import Reporter
 
 
@@ -44,7 +44,6 @@ class REINFORCE(Agent):
             entropy_coef=1e-3,
             n_hidden_layers=2,
             n_hidden_units=20,
-            repeat_n_actions=1,
             save_model=False
         ))
         self.config.update(usercfg)
@@ -78,6 +77,7 @@ class REINFORCE(Agent):
                                        axis=1)
             eligibility = tf.math.log(good_probs) * advantages
             loss = -tf.reduce_sum(eligibility)
+            # print(tf.math.log(probs), advantages, loss)
             gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
         return float(loss)
@@ -139,17 +139,12 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         self.config.update(usercfg)
 
     def build_network(self):
-        shape = list(self.env.observation_space.shape)
-
         x = self.states
 
         # Convolution layers
         for _ in range(4):
             x = Conv2D(filters=32, kernel_size=3, strides=2, padding="same", activation="elu")(x)
-
-        # Flatten
-        shape = x.get_shape().as_list()
-        x = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+        x = Flatten()(x)
 
         # Fully connected layers
         x = Dense(self.config["n_hidden_units"], activation="relu")(x)
@@ -157,20 +152,27 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
 
         return Model(self.states, outputs, name="network")
 
+class ActorDiscreteRNN(Model):
+    def __init__(self, rnn_size, n_actions):
+        super(ActorDiscreteRNN, self).__init__()
+        self.expand = flatten_to_rnn
+        self.rnn = GRU(rnn_size, return_state=True)
+        self.probs = Dense(n_actions, activation="softmax")
+
+    def call(self, inp):
+        state, hidden = inp
+        x = self.expand(state)
+        x, new_hidden = self.rnn(x, hidden)
+        return self.probs(x), new_hidden
+
 
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        self.rnn_state_in = tf.keras.Input((usercfg.get("n_hidden_units", 20),))
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
         self.initial_features = tf.zeros((1, self.config["n_hidden_units"]))
 
     def build_network(self):
-        states = tf.expand_dims(self.states, [1])
-
-        rnn = GRU(self.config["n_hidden_units"], return_state=True)
-        x, new_state = rnn(states, self.rnn_state_in)
-        probs = Dense(self.env.action_space.n, activation="softmax")(x)
-        return Model([self.states, self.rnn_state_in], [probs, new_state])
+        return ActorDiscreteRNN(self.config["n_hidden_units"], self.env.action_space.n)
 
     def choose_action(self, state, features):
         """Choose an action."""
@@ -181,30 +183,29 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
         return {"action": action, "features": new_state}
 
 
-class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
-    def __init__(self, env, monitor_path, video=True, **usercfg):
-        super(REINFORCEDiscreteCNNRNN, self).__init__(env, monitor_path, video=video, **usercfg)
+class ActorDiscreteCNNRNN(Model):
+    def __init__(self, rnn_size, n_actions):
+        super(ActorDiscreteCNNRNN, self).__init__()
+        self.conv_layers = Sequential()
 
-    def build_network(self):
-
-        shape = list(self.env.observation_space.shape)
-        x = self.states
-
-        # Convolution layers
         for _ in range(4):
-            x = Conv2D(filters=32, kernel_size=3, strides=2, padding="same", activation="elu")(x)
+            self.conv_layers.add(Conv2D(filters=32, kernel_size=3, strides=2, padding="same", activation="elu"))
+        self.conv_layers.add(Flatten())
+        self.conv_layers.add(flatten_to_rnn)
 
-        # Flatten
-        shape = x.get_shape().as_list()
-        x = tf.reshape(x, [-1, shape[1] * shape[2] * shape[3]])  # -1 for the (unknown) batch size
+        self.rnn = GRU(rnn_size, return_state=True)
+        self.probs = Dense(n_actions, activation="softmax")
 
-        # Change shape for RNN
-        states = tf.expand_dims(x, [1])
+    def call(self, inp):
+        state, hidden = inp
+        x = self.conv_layers(state)
+        x, new_hidden = self.rnn(x, hidden)
+        return self.probs(x), new_hidden
 
-        rnn = GRU(self.config["n_hidden_units"], return_state=True)
-        x, new_state = rnn(states, self.rnn_state_in)
-        probs = Dense(self.env.action_space.n, activation="softmax")(x)
-        return Model([self.states, self.rnn_state_in], [probs, new_state])
+
+class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
+    def build_network(self):
+        return ActorDiscreteCNNRNN(self.config["n_hidden_units"], self.env.action_space.n)
 
 
 class REINFORCEContinuous(REINFORCEDiscreteRNN):

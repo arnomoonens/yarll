@@ -52,23 +52,21 @@ class A2C(Agent):
         self.initial_features = None
         self.ac_net: tf.keras.Model = self.build_networks()
 
-        self.ac_net.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"],
-                                                               clipnorm=self.config["gradient_clip_value"]),
-                            loss=[self._actor_loss, self._critic_loss])
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"],
+                                                  clipnorm=self.config["gradient_clip_value"])
         self.writer = tf.summary.create_file_writer(self.monitor_path)
         return
 
     def build_networks(self):
         return NotImplementedError("Abstract method")
 
-    def _actor_loss(self, acts_and_advs, logits):
+    def _actor_loss(self, actions, advantages, logits):
         return NotImplementedError("Abstract method")
 
     def _critic_loss(self, returns, value):
         return NotImplementedError("Abstract method")
 
-
-    def train(self, states: np.ndarray, actions_taken: np.ndarray, advantages: np.ndarray, features: Optional[np.ndarray] = None) -> Tuple[float, float]:
+    def train(self, states, actions_taken, advantages, returns, features=None):
         return NotImplementedError("Abstract method")
 
     def choose_action(self, state, features) -> dict:
@@ -83,8 +81,15 @@ class A2C(Agent):
             for iteration in range(int(config["n_iter"])):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectory = env_runner.get_steps(int(self.config["n_local_steps"]))
-                v = 0 if trajectory.terminals[-1] else self.ac_net.action_value(
-                    np.asarray(trajectory.states)[None, -1])[1]
+                features = trajectory.features
+                features = np.concatenate(trajectory.features) if features[-1] is not None else np.array([None])
+                if trajectory.experiences[-1].terminal:
+                    v = 0
+                else:
+                    inp = [np.asarray(trajectory.states)[None, -1]]
+                    if features[-1] is not None:
+                        inp.append(features[None, -1])
+                    v = self.ac_net.action_value(*inp)[1][0]
                 rewards_plus_v = np.asarray(trajectory.rewards + [v])
                 vpred_t = np.asarray(trajectory.values + [v])
                 delta_t = trajectory.rewards + \
@@ -93,21 +98,19 @@ class A2C(Agent):
                     rewards_plus_v, self.config["gamma"])[:-1]
                 batch_adv = discount_rewards(delta_t, self.config["gamma"])
                 states = np.asarray(trajectory.states)
-                acts_and_advs = np.concatenate([np.asarray(trajectory.actions)[:, None], batch_adv[:, None]], axis=-1)
-                # performs a full training step on the collected batch
-                # note: no need to mess around with gradients, Keras API handles it
-                # First output seems to be the sum of the losses
-                loss, train_actor_loss, train_critic_loss = self.ac_net.train_on_batch(states, [acts_and_advs, batch_r])
-                tf.summary.scalar("model/loss", loss, step=iteration)
-                tf.summary.scalar("model/actor_loss", train_actor_loss, step=iteration)
-                tf.summary.scalar("model/critic_loss", train_critic_loss, step=iteration)
+                iter_actor_loss, iter_critic_loss, iter_loss = self.train(states,
+                                                                          np.asarray(trajectory.actions),
+                                                                          batch_adv,
+                                                                          batch_r,
+                                                                          features=features if features[-1] is not None else None)
+                tf.summary.scalar("model/loss", iter_loss, step=iteration)
+                tf.summary.scalar("model/actor_loss", iter_actor_loss, step=iteration)
+                tf.summary.scalar("model/critic_loss", iter_critic_loss, step=iteration)
             if self.config["save_model"]:
                 tf.saved_model.save(self.ac_net, os.path.join(self.monitor_path, "model"))
 
 
 class A2CDiscrete(A2C):
-    def __init__(self, *args, **kwargs):
-        super(A2CDiscrete, self).__init__(*args, **kwargs)
 
     def build_networks(self):
         return ActorCriticNetworkDiscrete(
@@ -115,8 +118,26 @@ class A2CDiscrete(A2C):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
-    def _actor_loss(self, acts_and_advs, logits):
-        return actor_discrete_loss(acts_and_advs, logits)
+    @tf.function
+    def train(self, states, actions_taken, advantages, returns, features=None):
+        states = tf.cast(states, dtype=tf.float32)
+        actions_taken = tf.cast(actions_taken, dtype=tf.int32)
+        advantages = tf.cast(advantages, dtype=tf.float32)
+        returns = tf.cast(returns, dtype=tf.float32)
+        inp = states if features is None else [states, tf.cast(features, tf.float32)]
+        with tf.GradientTape() as tape:
+            res = self.ac_net(inp)
+            logits = res[0]
+            values = res[1]
+            mean_actor_loss = tf.reduce_mean(self._actor_loss(actions_taken, advantages, logits))
+            mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
+            loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
+            gradients = tape.gradient(loss, self.ac_net.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.ac_net.trainable_weights))
+        return mean_actor_loss, mean_critic_loss, loss
+
+    def _actor_loss(self, actions, advantages, logits):
+        return actor_discrete_loss(actions, advantages, logits)
 
     def _critic_loss(self, returns, value):
         return self.config["vf_coef"] * critic_loss(returns, value)
@@ -130,32 +151,17 @@ class A2CDiscreteCNN(A2CDiscrete):
 
 
 class A2CDiscreteCNNRNN(A2CDiscrete):
+    def __init__(self, *args, **kwargs):
+        super(A2CDiscreteCNNRNN, self).__init__(*args, **kwargs)
+        self.initial_features = self.ac_net.initial_features
+
     def build_networks(self):
-        return ActorCriticNetworkDiscreteCNNRNN(
-            list(self.env.observation_space.shape),
-            self.env.action_space.n,
-            int(self.config["n_hidden_units"]))
-        self.initial_features = self.ac_net.state_init
+        return ActorCriticNetworkDiscreteCNNRNN(self.env.action_space.n)
 
     def choose_action(self, state, features) -> dict:
         """Choose an action."""
-        feed_dict = {
-            self.ac_net.states: [state],
-            self.ac_net.rnn_state_in: features
-        }
-
-        action, rnn_state, value = self.session.run(
-            [self.ac_net.action, self.ac_net.rnn_state_out, self.ac_net.value],
-            feed_dict=feed_dict)
+        action, value, rnn_state = self.ac_net.action_value(state[None, :], features)
         return {"action": action, "value": value[0], "features": rnn_state}
-
-    def get_critic_value(self, states, features):
-        feed_dict = {
-            self.ac_net.states: states,
-            self.ac_net.rnn_state_in: features
-        }
-        return self.session.run(self.ac_net.value, feed_dict=feed_dict)[0]
-
 
 class A2CContinuous(A2C):
     def __init__(self, *args, **kwargs):

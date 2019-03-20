@@ -9,7 +9,7 @@ from typing import Dict
 import numpy as np
 
 import tensorflow as tf
-from tensorflow.keras.layers import Dense, Conv2D, Flatten, GRU, Lambda
+from tensorflow.keras.layers import Dense, Conv2D, Flatten, GRU
 from tensorflow.keras import Model, Sequential
 from gym import wrappers
 

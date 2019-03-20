@@ -48,7 +48,6 @@ class REINFORCE(Agent):
         ))
         self.config.update(usercfg)
 
-        self.states = tf.keras.Input(self.env.observation_space.shape, name="states")
         self.network = self.build_network()
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"])
         self.writer = tf.summary.create_file_writer(self.monitor_path)
@@ -58,7 +57,7 @@ class REINFORCE(Agent):
 
     def choose_action(self, state, features) -> Dict[str, np.ndarray]:
         """Choose an action."""
-        inp = tf.convert_to_tensor([state])
+        inp = tf.convert_to_tensor([state], dtype=tf.float32)
         probs = self.network(inp)
         action = tf.random.categorical(tf.math.log(probs), 1).numpy()[0, 0]
         return {"action": action}
@@ -77,7 +76,6 @@ class REINFORCE(Agent):
                                        axis=1)
             eligibility = tf.math.log(good_probs) * advantages
             loss = -tf.reduce_sum(eligibility)
-            # print(tf.math.log(probs), advantages, loss)
             gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
         return float(loss)
@@ -108,7 +106,8 @@ class REINFORCE(Agent):
                 episode_rewards = np.array([sum(trajectory.rewards)
                                             for trajectory in trajectories])  # episode total rewards
                 episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
-                features = np.concatenate([trajectory.features for trajectory in trajectories])
+                if self.initial_features is not None:
+                    features = np.concatenate([trajectory.features for trajectory in trajectories])
                 loss = self.train(all_state,
                                   all_action,
                                   all_adv,
@@ -119,18 +118,49 @@ class REINFORCE(Agent):
         if self.config["save_model"]:
             tf.saved_model.save(self.network, os.path.join(self.monitor_path, "model"))
 
+
+class ActorDiscrete(Model):
+    def __init__(self, n_hidden_layers, n_hidden_units, n_actions, activation="tanh"):
+        super(ActorDiscrete, self).__init__()
+        self.hidden = Sequential()
+
+        for _ in range(n_hidden_layers):
+            self.hidden.add(Dense(n_hidden_units, activation=activation))
+        self.probs = Dense(n_actions, activation="softmax")
+
+    def call(self, state):
+        x = self.hidden(state)
+        return self.probs(x)
+
 class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
-        x = self.states
-        for _ in range(self.config["n_hidden_layers"]):
-            x = Dense(self.config["n_hidden_units"], activation="tanh")(x)
-        output = Dense(self.env.action_space.n, activation="softmax")(x)
+        return ActorDiscrete(self.config["n_hidden_layers"],
+                             self.config["n_hidden_units"],
+                             self.env.action_space.n)
 
-        return Model(self.states, output, name="network")
 
+class ActorDiscreteCNN(Model):
+    def __init__(self, n_actions, n_hidden_units, n_conv_layers=4, n_filters=32, kernel_size=3, strides=2, padding="same", activation="elu"):
+        super(ActorDiscreteCNN, self).__init__()
+        self.conv_layers = Sequential()
+
+        for _ in range(n_conv_layers):
+            self.conv_layers.add(Conv2D(filters=n_filters,
+                                        kernel_size=kernel_size,
+                                        strides=strides,
+                                        padding=padding,
+                                        activation=activation))
+        self.conv_layers.add(Flatten())
+        self.hidden = Dense(n_hidden_units)
+        self.probs = Dense(n_actions, activation="softmax")
+
+    def call(self, state):
+        x = self.conv_layers(state)
+        x = self.hidden(x)
+        return self.probs(x)
 
 class REINFORCEDiscreteCNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
@@ -139,18 +169,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
         self.config.update(usercfg)
 
     def build_network(self):
-        x = self.states
-
-        # Convolution layers
-        for _ in range(4):
-            x = Conv2D(filters=32, kernel_size=3, strides=2, padding="same", activation="elu")(x)
-        x = Flatten()(x)
-
-        # Fully connected layers
-        x = Dense(self.config["n_hidden_units"], activation="relu")(x)
-        outputs = Dense(self.env.action_space.n, activation="softmax")(x)
-
-        return Model(self.states, outputs, name="network")
+        return ActorDiscreteCNN(self.env.action_space.n, self.config["n_hidden_units"])
 
 class ActorDiscreteRNN(Model):
     def __init__(self, rnn_size, n_actions):
@@ -208,9 +227,41 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
         return ActorDiscreteCNNRNN(self.config["n_hidden_units"], self.env.action_space.n)
 
 
-class REINFORCEContinuous(REINFORCEDiscreteRNN):
-    def __init__(self, env, monitor_path, RNN=False, video=True, **usercfg):
-        self.rnn = RNN
+class ActorContinuous(Model):
+    def __init__(self, n_hidden_layers, n_hidden_units, action_space_shape, activation="tanh"):
+        super(ActorContinuous, self).__init__()
+        self.hidden = Sequential()
+
+        for _ in range(int(n_hidden_layers)):
+            self.hidden.add(Dense(n_hidden_units, activation=activation))
+        self.action = NormalDistrLayer(action_space_shape[0])
+
+    def call(self, inp):
+        x = self.hidden(inp)
+        return self.action(x)
+
+
+class ActorContinuousRNN(Model):
+    def __init__(self, rnn_size, action_space_shape):
+        super(ActorContinuousRNN, self).__init__()
+        # Change shape for RNN
+        self.expand = flatten_to_rnn
+
+        self.rnn = GRU(rnn_size, return_state=True)
+        self.action = NormalDistrLayer(action_space_shape[0])
+
+    def call(self, inp):
+        state, hidden = inp
+        x = self.expand(state)
+        x, new_hidden = self.rnn(x, hidden)
+        action, mean = self.action(x)
+        return action, mean, new_hidden
+
+
+class REINFORCEContinuous(REINFORCE):
+    def __init__(self, env, monitor_path, rnn=False, video=True, **usercfg):
+        self.rnn = rnn
+        self.initial_features = tf.zeros((1, self.config["n_hidden_units"])) if rnn else None
         super(REINFORCEContinuous, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
@@ -228,23 +279,12 @@ class REINFORCEContinuous(REINFORCEDiscreteRNN):
         return {"action": res[0][0], "features": res[2] if self.rnn else None}
 
     def build_network_normal(self):
-
-        x = self.states
-        for _ in range(int(self.config["n_hidden_layers"])):
-            x = Dense(self.config["n_hidden_units"], activation="tanh")(x)
-        action, mean = NormalDistrLayer(self.env.action_space.shape[0])(x)
-
-        return Model(self.states, [action, mean])
+        return ActorContinuous(self.config["n_hidden_layers"],
+                               self.config["n_hidden_units"],
+                               self.env.action_space.shape)
 
     def build_network_rnn(self):
-
-        # Change shape for RNN
-        states = tf.expand_dims(self.states, [1])
-
-        rnn = GRU(self.config["n_hidden_units"], return_state=True)
-        x, new_state = rnn(states, self.rnn_state_in)
-        action, mean = NormalDistrLayer(self.env.action_space.shape[0])(x)
-        return Model([self.states, self.rnn_state_in], [action, mean, new_state])
+        return ActorContinuousRNN(self.config["n_hidden_units"], self.env.action_space.shape)
 
     @tf.function
     def train(self, states, actions_taken, advantages, features=None):
@@ -258,7 +298,7 @@ class REINFORCEContinuous(REINFORCEDiscreteRNN):
             log_std = self.network.layers[-1].log_std
             std = tf.exp(log_std)
             neglogprob = 0.5 * tf.reduce_sum(tf.square((actions_taken - mean) / std), axis=-1) \
-                + 0.5 * np.log(2.0 * np.pi) * tf.cast(tf.shape(actions_taken)[-1], tf.float32) \
+                + 0.5 * tf.math.log(2.0 * np.pi) * std \
                 + tf.reduce_sum(log_std, axis=-1)
             action_log_prob = -neglogprob
             eligibility = action_log_prob * advantages

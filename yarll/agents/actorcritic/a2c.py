@@ -168,7 +168,7 @@ class A2CContinuous(A2C):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
-    # @tf.function
+    @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)

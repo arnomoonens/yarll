@@ -89,7 +89,7 @@ class A2C(Agent):
                     inp = [np.asarray(trajectory.states)[None, -1]]
                     if features[-1] is not None:
                         inp.append(features[None, -1])
-                    v = self.ac_net.action_value(*inp)[-1][0]
+                    v = self.ac_net.action_value(*inp)[-2][0]
                 rewards_plus_v = np.asarray(trajectory.rewards + [v])
                 vpred_t = np.asarray(trajectory.values + [v])
                 delta_t = trajectory.rewards + \

@@ -1,8 +1,12 @@
 # -*- coding: utf8 -*-
 
 import tensorflow as tf
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Lambda
 import numpy as np
+
+# Keras layer that converts a (None, n_units) Tensor to a (None, 1, n_units) Tensor
+# Where the 1 is the sequence length: 1 because only 1 step at a time
+flatten_to_rnn = Lambda(lambda x: tf.expand_dims(x, [1]))
 
 class ProbabilityDistribution(tf.keras.Model):
     def call(self, logits):
@@ -20,8 +24,8 @@ class NormalDistrLayer(tf.keras.layers.Layer):
                                          shape=(self.n_outputs,),
                                          initializer=tf.initializers.zeros)
 
-    def call(self, input):
-        mean = self.mean(input)
+    def call(self, inp):
+        mean = self.mean(inp)
         return mean + tf.exp(self.log_std) * tf.random.normal((self.n_outputs,)), mean
 
 def normalized_columns_initializer(std: float = 1.0):

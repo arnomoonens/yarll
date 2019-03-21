@@ -305,4 +305,4 @@ class REINFORCEContinuous(REINFORCE):
             loss = -tf.reduce_sum(eligibility)
             gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
-        return float(loss)
+        return loss

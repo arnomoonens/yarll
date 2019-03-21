@@ -10,7 +10,7 @@ from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, GRU, Reshape
 import numpy as np
 
-from yarll.misc.network_ops import ProbabilityDistribution
+from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer
 
 class ActorCriticNetwork(Model):
     pass
@@ -168,52 +168,53 @@ def critic_loss(returns, value):
 class ActorCriticNetworkContinuous(ActorCriticNetwork):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
 
-    def __init__(self, state_shape: Sequence[int], action_space, n_hidden_units: int, n_hidden_layers: int = 1) -> None:
+    def __init__(self, action_space_shape, n_hidden_units: int, n_hidden_layers: int = 1) -> None:
         super(ActorCriticNetworkContinuous, self).__init__()
-        self.state_shape = state_shape
 
-        x = self.states
-        for i in range(n_hidden_layers):
-            x = tf.tanh(linear(x, n_hidden_units, "L{}_mean".format(i + 1),
-                               initializer=normalized_columns_initializer(1.0)))
-        self.mean = linear(x, action_space.shape[0], "mean", initializer=normalized_columns_initializer(0.01))
-        self.mean = tf.check_numerics(self.mean, "mean")
+        self.policy_hidden = Sequential()
 
-        self.log_std = tf.get_variable(
-            name="logstd",
-            shape=list(action_space.shape),
-            initializer=tf.zeros_initializer()
-        )
-        self.std = tf.exp(self.log_std, name="std")
-        self.std = tf.check_numerics(self.std, "std")
+        for _ in range(n_hidden_layers):
+            self.policy_hidden.add(Dense(n_hidden_units))
+        self.action_mean = NormalDistrLayer(action_space_shape[0])
 
-        self.action = self.mean + self.std * tf.random_normal(tf.shape(self.mean))
-        self.action = tf.reshape(self.action, list(action_space.shape))
+        self.critic = Sequential()
+        for _ in range(n_hidden_layers):
+            self.critic.add(Dense(n_hidden_units))
+        self.critic.add(Dense(1))
 
-        x = self.states
-        for i in range(n_hidden_layers):
-            x = tf.tanh(linear(x, n_hidden_units, "L{}_value".format(i + 1),
-                               initializer=normalized_columns_initializer(1.0)))
+    def call(self, inp):
+        x = self.policy_hidden(inp)
+        action, mean = self.action_mean(x)
+        return action, mean, self.critic(inp)
 
-        self.value = tf.reshape(linear(x, 1, "value", normalized_columns_initializer(1.0)), [-1])
+    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
+        """
+        action, mean, value = self.predict(states)
 
-        neglogprob = 0.5 * tf.reduce_sum(tf.square((self.actions_taken - self.mean) / self.std), axis=-1) \
-            + 0.5 * np.log(2.0 * np.pi) * tf.to_float(tf.shape(self.actions_taken)[-1]) \
-            + tf.reduce_sum(self.log_std, axis=-1)
-        self.action_log_prob = -neglogprob
-        self.entropy = -tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
+        return np.squeeze(action, axis=-1), np.squeeze(mean, axis=-1), np.squeeze(value, axis=-1)
 
 
-def actor_critic_continuous_loss(action_log_prob,
-                                 entropy,
-                                 value,
-                                 advantage,
-                                 ret,
-                                 vf_coef: float = 0.5,
-                                 entropy_coef: float = 0.01,
-                                 reducer: str = "sum"):
-    tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
-    actor_loss = - tf_reducer(action_log_prob * advantage)
-    critic_loss = tf_reducer(tf.square(value - ret))
-    loss = actor_loss + vf_coef * critic_loss - entropy_coef * entropy
-    return actor_loss, critic_loss, loss
+# def actor_continuous_loss(action_log_prob,
+#                           entropy,
+#                           value,
+#                           advantage,
+#                           ret,
+#                           vf_coef: float = 0.5,
+#                           entropy_coef: float = 0.01,
+#                           reducer: str = "sum"):
+#     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
+#     actor_loss = - tf_reducer(action_log_prob * advantage)
+#     critic_loss = tf_reducer(tf.square(value - ret))
+#     loss = actor_loss + vf_coef * critic_loss - entropy_coef * entropy
+#     return actor_loss, critic_loss, loss
+
+def actor_continuous_loss(actions_taken, mean, log_std, advantage):
+    std = tf.exp(log_std)
+    neglogprob = 0.5 * tf.reduce_sum(tf.square((actions_taken - mean) / std), axis=-1) \
+        + 0.5 * tf.math.log(2.0 * np.pi) * std \
+        + tf.reduce_sum(log_std, axis=-1)
+    action_log_prob = -neglogprob
+    loss = action_log_prob * advantage
+    return loss

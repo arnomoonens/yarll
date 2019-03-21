@@ -9,6 +9,7 @@
         "args": {
             "monitor_path": "/tmp/Pong-v0-A2C",
             "RNN": true,
+            "learning_rate":3e-4,
             "video": false,
             "save_model": true,
             "monitor": true,

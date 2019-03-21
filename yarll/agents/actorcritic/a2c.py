@@ -11,7 +11,7 @@ from gym import wrappers
 from yarll.agents.agent import Agent
 from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, actor_discrete_loss,\
-    critic_loss, ActorCriticNetworkContinuous, actor_critic_continuous_loss
+    critic_loss, ActorCriticNetworkContinuous, actor_continuous_loss
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards
 
@@ -64,7 +64,7 @@ class A2C(Agent):
         return NotImplementedError("Abstract method")
 
     def _critic_loss(self, returns, value):
-        return NotImplementedError("Abstract method")
+        return self.config["vf_coef"] * critic_loss(returns, value)
 
     def train(self, states, actions_taken, advantages, returns, features=None):
         return NotImplementedError("Abstract method")
@@ -89,7 +89,7 @@ class A2C(Agent):
                     inp = [np.asarray(trajectory.states)[None, -1]]
                     if features[-1] is not None:
                         inp.append(features[None, -1])
-                    v = self.ac_net.action_value(*inp)[1][0]
+                    v = self.ac_net.action_value(*inp)[-1][0]
                 rewards_plus_v = np.asarray(trajectory.rewards + [v])
                 vpred_t = np.asarray(trajectory.values + [v])
                 delta_t = trajectory.rewards + \
@@ -111,7 +111,6 @@ class A2C(Agent):
 
 
 class A2CDiscrete(A2C):
-
     def build_networks(self):
         return ActorCriticNetworkDiscrete(
             self.env.action_space.n,
@@ -139,10 +138,6 @@ class A2CDiscrete(A2C):
     def _actor_loss(self, actions, advantages, logits):
         return actor_discrete_loss(actions, advantages, logits)
 
-    def _critic_loss(self, returns, value):
-        return self.config["vf_coef"] * critic_loss(returns, value)
-
-
 class A2CDiscreteCNN(A2CDiscrete):
     def build_networks(self):
         return ActorCriticNetworkDiscreteCNN(
@@ -169,22 +164,34 @@ class A2CContinuous(A2C):
 
     def build_networks(self):
         return ActorCriticNetworkContinuous(
-            list(self.env.observation_space.shape),
-            self.env.action_space,
+            self.env.action_space.shape,
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
-    def make_loss(self):
-        return actor_critic_continuous_loss(
-            self.ac_net.action_log_prob,
-            self.ac_net.entropy,
-            self.ac_net.value,
-            self.advantage,
-            self.ret,
-            self.config["vf_coef"],
-            self.config["entropy_coef"],
-            self.config["loss_reducer"]
-        )
+    # @tf.function
+    def train(self, states, actions_taken, advantages, returns, features=None):
+        states = tf.cast(states, dtype=tf.float32)
+        advantages = tf.cast(advantages, dtype=tf.float32)
+        inp = states if features is None else [states, tf.reshape(
+            features, [features.shape[0], self.config["n_hidden_units"]])]
+        with tf.GradientTape() as tape:
+            res = self.ac_net(inp)
+            mean = res[1]
+            values = res[2]
+            log_std = self.ac_net.action_mean.log_std
+            mean_actor_loss = -tf.reduce_mean(self._actor_loss(actions_taken, mean, log_std, advantages))
+            mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
+            loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
+            gradients = tape.gradient(loss, self.ac_net.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.ac_net.trainable_weights))
+        return mean_actor_loss, mean_critic_loss, loss
+
+    def choose_action(self, state, features) -> dict:
+        action, _, value = self.ac_net.action_value(state[None, :])
+        return {"action": action, "value": value[0]}
+
+    def _actor_loss(self, actions_taken, mean, log_std, advantages):
+        return actor_continuous_loss(actions_taken, mean, log_std, advantages)
 
     def get_env_action(self, action):
         return action

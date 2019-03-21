@@ -1,0 +1,17 @@
+{
+    "experiment_name": "Pendulum-A2C",
+    "environments": {
+        "type": "single",
+        "source": "Pendulum-v0"
+    },
+    "agent": {
+        "name": "A2C",
+        "args": {
+            "monitor_path": "/tmp/Pendulum-v0-A2C",
+            "video": false,
+            "save_model": true,
+            "n_iter": 10000,
+            "monitor": true
+        }
+    }
+}

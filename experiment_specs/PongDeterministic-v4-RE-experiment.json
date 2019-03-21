@@ -7,6 +7,7 @@
     "agent": {
         "name": "REINFORCE",
         "args": {
+            "learning_rate": 3e-4,
             "RNN": false,
             "monitor_path": "/tmp/PongDeterministic-v4-RE",
             "video": false,

@@ -9,6 +9,7 @@ from gym import wrappers
 from yarll.agents.agent import Agent
 from yarll.agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous, critic_loss
+from yarll.misc.network_ops import normal_dist_log_prob
 from yarll.agents.env_runner import EnvRunner
 
 
@@ -112,10 +113,11 @@ class PPO(Agent):
                                     normalize_states=self.config["normalize_states"],
                                     summary_writer=self.writer)
 
+        optim_kwargs = {k: self.config[l] for k, l in [("clipnorm", "gradient_clip_value")] if self.config[l] is not None}
         self.optimizer = tf.keras.optimizers.Adam(
             learning_rate=self.config["learning_rate"],
             epsilon=self.config["adam_epsilon"],
-            clipnorm=self.config["gradient_clip_value"])
+            **optim_kwargs)
 
     def _specific_summaries(self) -> List[tf.Tensor]:
         """Summaries that are specific to the variant of the algorithm. None (empty list) for the base algorithm"""
@@ -170,7 +172,6 @@ class PPO(Agent):
         advantages = tf.cast(advantages, dtype=tf.float32)
         returns = tf.cast(returns, dtype=tf.float32)
         inp = states if features is None else [states, tf.cast(features, tf.float32)]
-        actions_one_hot = tf.one_hot(actions_taken, self.env.action_space.n)
         with tf.GradientTape() as tape:
             new_res = self.new_network(inp)
             new_logits = new_res[0]
@@ -243,10 +244,40 @@ class PPOContinuous(PPO):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
+    @tf.function
+    def train(self, states, actions_taken, advantages, returns, features=None):
+        states = tf.cast(states, dtype=tf.float32)
+        actions_taken = tf.cast(actions_taken, dtype=tf.int32)
+        advantages = tf.cast(advantages, dtype=tf.float32)
+        returns = tf.cast(returns, dtype=tf.float32)
+        inp = states if features is None else [states, tf.cast(features, tf.float32)]
+        with tf.GradientTape() as tape:
+            new_res = self.new_network(inp)
+            new_action = new_res[0]
+            new_mean = new_res[1]
+            values = new_res[2]
+            new_log_std = self.new_network.action_mean.log_std
+            old_res = self.old_network(inp)
+            old_action = old_res[0]
+            old_mean = old_res[1]
+            old_log_std = self.old_network.action_mean.log_std
+            new_log_prob = normal_dist_log_prob(new_action, new_mean, new_log_std)
+            old_log_prob = normal_dist_log_prob(old_action, old_mean, old_log_std)
+            mean_actor_loss = -tf.reduce_mean(self._actor_loss(old_log_prob, new_log_prob, advantages))
+            mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
+            loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
+            gradients = tape.gradient(loss, self.new_network.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
+        return mean_actor_loss, mean_critic_loss, loss
+
     # def _specific_summaries(self) -> List[tf.Tensor]:
     #     summary_mean_mean = tf.summary.scalar("model/model/mean/mean", tf.reduce_mean(self.old_network.mean))
     #     summary_std_mean = tf.summary.scalar("model/model/std/mean", tf.reduce_mean(self.old_network.std))
     #     return [summary_mean_mean, summary_std_mean]
+
+    def choose_action(self, state, features) -> dict:
+        action, _, value = self.new_network.action_value(state[None, :])
+        return {"action": action, "value": value[0]}
 
     def get_env_action(self, action):
         return action

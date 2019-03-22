@@ -28,6 +28,13 @@ class NormalDistrLayer(tf.keras.layers.Layer):
         mean = self.mean(inp)
         return mean + tf.exp(self.log_std) * tf.random.normal((self.n_outputs,)), mean
 
+def normal_dist_log_prob(actions_taken, mean, log_std):
+    std = tf.exp(log_std)
+    neglogprob = 0.5 * tf.reduce_sum(tf.square((actions_taken - mean) / std), axis=-1) \
+        + 0.5 * tf.math.log(2.0 * np.pi) * std \
+        + tf.reduce_sum(log_std, axis=-1)
+    return -neglogprob
+
 def normalized_columns_initializer(std: float = 1.0):
     def _initializer(shape, dtype=None, partition_info=None):
         out = np.random.randn(*shape).astype(np.float32)

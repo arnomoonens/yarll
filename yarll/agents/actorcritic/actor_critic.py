@@ -10,7 +10,7 @@ from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, GRU, Reshape
 import numpy as np
 
-from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer
+from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer, normal_dist_log_prob
 
 class ActorCriticNetwork(Model):
     pass
@@ -211,10 +211,6 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
 #     return actor_loss, critic_loss, loss
 
 def actor_continuous_loss(actions_taken, mean, log_std, advantage):
-    std = tf.exp(log_std)
-    neglogprob = 0.5 * tf.reduce_sum(tf.square((actions_taken - mean) / std), axis=-1) \
-        + 0.5 * tf.math.log(2.0 * np.pi) * std \
-        + tf.reduce_sum(log_std, axis=-1)
-    action_log_prob = -neglogprob
+    action_log_prob = normal_dist_log_prob(actions_taken, mean, log_std)
     loss = action_log_prob * advantage
     return loss

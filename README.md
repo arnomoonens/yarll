@@ -2,8 +2,9 @@
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/c329c8cdd744463dbda6a726e20f2383)](https://www.codacy.com/app/arnomoonens/DeepRL?utm_source=github.com&utm_medium=referral&utm_content=arnomoonens/DeepRL&utm_campaign=badger)
 
-**Update 29/10/2018**: New library name.
-**Update 25/10/2018**: Added [SAC implementation](./yarll/agents/sac.py).
+**Update 25/03/2019**: For now, the master branch won't get big changes. Instead, algorithms are adapted for TensorFlow 2 (and new ones may be added) on the [TF2 branch](https://github.com/arnomoonens/yarll/tree/tf2).<br />
+**Update 29/10/2018**: New library name.<br />
+**Update 25/10/2018**: Added [SAC implementation](./yarll/agents/sac.py).<br />
 
 ## Status
 

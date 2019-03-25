@@ -26,7 +26,7 @@ class NormalDistrLayer(tf.keras.layers.Layer):
 
     def call(self, inp):
         mean = self.mean(inp)
-        return mean + tf.exp(self.log_std) * tf.random.normal((self.n_outputs,)), mean
+        return mean + tf.exp(self.log_std) * tf.random.normal(tf.shape(mean)), mean
 
 def normal_dist_log_prob(actions_taken, mean, log_std):
     std = tf.exp(log_std)

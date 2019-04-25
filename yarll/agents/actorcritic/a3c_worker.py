@@ -258,8 +258,6 @@ class A3CTask(object):
     def learn(self):
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
         # Assume thread-specific parameter vectors θ' and θ'v
-        if self.task_id != 0:
-            time.sleep(5)
         with tf.train.MonitoredTrainingSession(
             master=self.server.target,
             is_chief=(self.task_id == 0),

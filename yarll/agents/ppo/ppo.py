@@ -103,7 +103,7 @@ class PPO(Agent):
 
         adv_mean, adv_std = tf.nn.moments(self.advantage, axes=[0])
         summary_adv_mean = tf.summary.scalar("model/advantage/mean", adv_mean)
-        summary_adv_std = tf.summary.scalar("model/advantage/std", adv_std)
+        summary_adv_std = tf.summary.scalar("model/advantage/std", tf.sqrt(adv_std))
 
         # TODO: get from ppo_loss function
         # ratio_mean, ratio_std = tf.nn.moments(ratio, axes=[0])
@@ -117,7 +117,7 @@ class PPO(Agent):
 
         ret_mean, ret_std = tf.nn.moments(self.ret, axes=[0])
         summary_ret_mean = tf.summary.scalar("model/return/mean", ret_mean)
-        summary_ret_std = tf.summary.scalar("model/return/std", ret_std)
+        summary_ret_std = tf.summary.scalar("model/return/std", tf.sqrt(ret_std))
         summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
         summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar(

@@ -115,7 +115,9 @@ class PPO(Agent):
         summary_old_log_prob_mean = tf.summary.scalar(
             "model/old_log_prob/mean", tf.reduce_mean(self.old_network.action_log_prob))
 
-        summary_ret = tf.summary.scalar("model/return/mean", tf.reduce_mean(self.ret))
+        ret_mean, ret_std = tf.nn.moments(self.ret, axes=[0])
+        summary_ret_mean = tf.summary.scalar("model/return/mean", ret_mean)
+        summary_ret_std = tf.summary.scalar("model/return/std", ret_std)
         summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
         summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         summary_var_norm = tf.summary.scalar(
@@ -132,7 +134,8 @@ class PPO(Agent):
                       summary_adv_mean, summary_adv_std,
                       # summary_ratio_mean, summary_ratio_std,
                       summary_new_log_prob_mean, summary_old_log_prob_mean,
-                      summary_ret, summary_entropy, summary_grad_norm, summary_var_norm]
+                      summary_ret_mean, summary_ret_std,
+                      summary_entropy, summary_grad_norm, summary_var_norm]
         self.model_summary_op = tf.summary.merge(summaries)
         self.writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), self.session.graph)
@@ -214,7 +217,7 @@ class PPO(Agent):
             # Collect trajectories until we get timesteps_per_batch total timesteps
             states, actions, advs, rs, _ = self.get_processed_trajectories()
             advs = np.array(advs)
-            advs = (advs - advs.mean()) / advs.std()
+            normalized_advs = (advs - advs.mean()) / advs.std()
             self.session.run(self.set_old_to_new)
 
             indices = np.arange(len(states))
@@ -226,7 +229,7 @@ class PPO(Agent):
                     batch_indices = indices[j:(j + batch_size)]
                     batch_states = np.array(states)[batch_indices]
                     batch_actions = np.array(actions)[batch_indices]
-                    batch_advs = np.array(advs)[batch_indices]
+                    batch_advs = np.array(normalized_advs)[batch_indices]
                     batch_rs = np.array(rs)[batch_indices]
                     fetches = [self.train_op]
                     if (n_updates % 1000) == 0:

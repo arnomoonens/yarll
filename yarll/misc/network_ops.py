@@ -26,14 +26,26 @@ class NormalDistrLayer(tf.keras.layers.Layer):
 
     def call(self, inp):
         mean = self.mean(inp)
-        return mean + tf.exp(self.log_std) * tf.random.normal(tf.shape(mean)), mean
+        return mean + tf.exp(self.log_std) * tf.random.normal(tf.shape(mean), dtype=mean.dtype), mean
+
+    def entropy(self):
+        return tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
 
 def normal_dist_log_prob(actions_taken, mean, log_std):
     std = tf.exp(log_std)
     neglogprob = 0.5 * tf.reduce_sum(tf.square((actions_taken - mean) / std), axis=-1) \
-        + 0.5 * tf.math.log(2.0 * np.pi) * std \
+        + 0.5 * tf.math.log(2.0 * np.pi) * tf.cast(tf.shape(actions_taken)[-1], tf.float32) \
         + tf.reduce_sum(log_std, axis=-1)
     return -neglogprob
+
+def categorical_dist_entropy(logits):
+    # Source: https://github.com/hill-a/stable-baselines/blob/master/stable_baselines/common/distributions.py#L313
+    a_0 = logits - tf.reduce_max(logits, axis=-1, keepdims=True)
+    exp_a_0 = tf.exp(a_0)
+    z_0 = tf.reduce_sum(exp_a_0, axis=-1, keepdims=True)
+    p_0 = exp_a_0 / z_0
+    return tf.reduce_sum(p_0 * (tf.math.log(z_0) - a_0), axis=-1)
+
 
 def normalized_columns_initializer(std: float = 1.0):
     def _initializer(shape, dtype=None, partition_info=None):

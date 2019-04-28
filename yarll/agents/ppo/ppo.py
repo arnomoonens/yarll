@@ -50,6 +50,7 @@ class PPO(Agent):
             vf_coef=0.5,
             entropy_coef=0.01,
             cso_epsilon=0.2,  # Clipped surrogate objective epsilon
+            summary_every_updates=1000,
             save_model=False
         ))
         self.config.update(usercfg)
@@ -62,33 +63,18 @@ class PPO(Agent):
         else:
             self.initial_features = None
 
-        # self.actor_loss = -tf.reduce_mean(self.make_actor_loss(self.old_network, self.new_network, self.advantage))
-        # self.critic_loss = tf.reduce_mean(tf.square(self.value - self.ret))
+
         # self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         # self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
         #     self.config["entropy_coef"] * self.mean_entropy
 
-        # summary_actor_loss = tf.summary.scalar("model/Actor_loss", self.actor_loss)
-        # summary_critic_loss = tf.summary.scalar("model/Critic_loss", self.critic_loss)
-        # summary_loss = tf.summary.scalar("model/Loss", self.loss)
-
-        # adv_mean, adv_std = tf.nn.moments(self.advantage, axes=[0])
-        # summary_adv_mean = tf.summary.scalar("model/advantage/mean", adv_mean)
-        # summary_adv_std = tf.summary.scalar("model/advantage/std", adv_std)
 
         # TODO: get from ppo_loss function
         # ratio_mean, ratio_std = tf.nn.moments(ratio, axes=[0])
         # summary_ratio_mean = tf.summary.scalar("model/ratio/mean", ratio_mean)
         # summary_ratio_std = tf.summary.scalar("model/ratio/std", ratio_std)
 
-        # summary_new_log_prob_mean = tf.summary.scalar(
-        #     "model/new_log_prob/mean", tf.reduce_mean(self.new_network.action_log_prob))
-        # summary_old_log_prob_mean = tf.summary.scalar(
-        #     "model/old_log_prob/mean", tf.reduce_mean(self.old_network.action_log_prob))
-
-        # summary_ret = tf.summary.scalar("model/return/mean", tf.reduce_mean(self.ret))
         # summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
-        # summary_grad_norm = tf.summary.scalar("model/grad_global_norm", tf.global_norm(grads))
         # summary_var_norm = tf.summary.scalar(
         #     "model/var_global_norm", tf.global_norm(self.new_network_vars))
         # summaries: List[tf.Tensor] = []
@@ -163,9 +149,9 @@ class PPO(Agent):
             old_var.assign(new_var)
 
     def _critic_loss(self, returns, value):
-        return self.config["vf_coef"] * critic_loss(returns, value)
+        return critic_loss(returns, value)
 
-    @tf.function
+    # @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
@@ -175,7 +161,7 @@ class PPO(Agent):
         with tf.GradientTape() as tape:
             new_res = self.new_network(inp)
             new_logits = new_res[0]
-            values = new_res[1]
+            values = tf.squeeze(new_res[1])
             old_res = self.old_network(inp)
             old_logits = old_res[0]
             new_log_prob = -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions_taken, logits=new_logits)
@@ -185,18 +171,21 @@ class PPO(Agent):
             loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
             gradients = tape.gradient(loss, self.new_network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
-        return mean_actor_loss, mean_critic_loss, loss
+        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob
 
     def learn(self):
         """Run learning algorithm"""
         config = self.config
+        input_shape = (None, *self.env.observation_space.shape)
+        self.old_network.build(input_shape)
+        self.new_network.build(input_shape)
         n_updates = 0
         with self.writer.as_default():
             for _ in range(int(config["n_iter"])):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 states, actions, advs, rs, _ = self.get_processed_trajectories()
                 advs = np.array(advs)
-                advs = (advs - advs.mean()) / advs.std()
+                normalized_advs = (advs - advs.mean()) / advs.std()
                 self.set_old_to_new()
 
                 indices = np.arange(len(states))
@@ -207,15 +196,30 @@ class PPO(Agent):
                         batch_indices = indices[j:(j + batch_size)]
                         batch_states = np.array(states)[batch_indices]
                         batch_actions = np.array(actions)[batch_indices]
-                        batch_advs = np.array(advs)[batch_indices]
+                        batch_advs = np.array(normalized_advs)[batch_indices]
                         batch_rs = np.array(rs)[batch_indices]
-                        train_actor_loss, train_critic_loss, train_loss = self.train(batch_states,
-                                                                                     batch_actions,
-                                                                                     batch_advs,
-                                                                                     batch_rs)
-                        tf.summary.scalar("model/loss", train_loss, step=n_updates)
-                        tf.summary.scalar("model/actor_loss", train_actor_loss, step=n_updates)
-                        tf.summary.scalar("model/critic_loss", train_critic_loss, step=n_updates)
+                        train_actor_loss, train_critic_loss, train_loss, \
+                        grad_global_norm, new_log_prob, old_log_prob = self.train(batch_states,
+                                                                                  batch_actions,
+                                                                                  batch_advs,
+                                                                                  batch_rs)
+                        if (n_updates % self.config["summary_every_updates"]) == 0:
+                            tf.summary.scalar("model/Loss", train_loss, step=n_updates)
+                            tf.summary.scalar("model/Actor_loss", train_actor_loss, step=n_updates)
+                            tf.summary.scalar("model/Critic_loss", train_critic_loss, step=n_updates)
+                            tf.summary.scalar("model/advantage/mean", np.mean(batch_advs), step=n_updates)
+                            tf.summary.scalar("model/advantage/std", np.std(batch_advs), step=n_updates)
+                            tf.summary.scalar("model/new_log_prob/mean", tf.reduce_mean(new_log_prob), n_updates)
+                            tf.summary.scalar("model/old_log_prob/mean", tf.reduce_mean(old_log_prob), n_updates)
+                            tf.summary.scalar("model/advantage/mean", np.mean(batch_advs), n_updates)
+                            tf.summary.scalar("model/advantage/std", np.std(batch_advs), n_updates)
+                            tf.summary.scalar("model/return/mean", np.mean(batch_rs), n_updates)
+                            tf.summary.scalar("model/return/std", np.std(batch_rs), n_updates)
+                            tf.summary.scalar("model/std",
+                                              tf.reduce_mean(tf.exp(self.new_network.action_mean.log_std)),
+                                              n_updates)
+                            tf.summary.scalar("model/entropy", self.new_network.entropy(), n_updates)
+                            tf.summary.scalar("model/grad_global_norm", grad_global_norm, n_updates)
                         n_updates += 1
 
             if self.config["save_model"]:
@@ -244,31 +248,29 @@ class PPOContinuous(PPO):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
-    @tf.function
+    # @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
-        actions_taken = tf.cast(actions_taken, dtype=tf.int32)
         advantages = tf.cast(advantages, dtype=tf.float32)
         returns = tf.cast(returns, dtype=tf.float32)
         inp = states if features is None else [states, tf.cast(features, tf.float32)]
         with tf.GradientTape() as tape:
             new_res = self.new_network(inp)
-            new_action = new_res[0]
             new_mean = new_res[1]
-            values = new_res[2]
+            values = tf.squeeze(new_res[2])
             new_log_std = self.new_network.action_mean.log_std
             old_res = self.old_network(inp)
-            old_action = old_res[0]
             old_mean = old_res[1]
             old_log_std = self.old_network.action_mean.log_std
-            new_log_prob = normal_dist_log_prob(new_action, new_mean, new_log_std)
-            old_log_prob = normal_dist_log_prob(old_action, old_mean, old_log_std)
+            new_log_prob = normal_dist_log_prob(actions_taken, new_mean, new_log_std)
+            old_log_prob = normal_dist_log_prob(actions_taken, old_mean, old_log_std)
             mean_actor_loss = -tf.reduce_mean(self._actor_loss(old_log_prob, new_log_prob, advantages))
             mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
             loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
             gradients = tape.gradient(loss, self.new_network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
-        return mean_actor_loss, mean_critic_loss, loss
+
+        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob
 
     # def _specific_summaries(self) -> List[tf.Tensor]:
     #     summary_mean_mean = tf.summary.scalar("model/model/mean/mean", tf.reduce_mean(self.old_network.mean))

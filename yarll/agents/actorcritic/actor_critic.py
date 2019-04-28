@@ -4,16 +4,18 @@
 Functions and networks for actor-critic agents.
 """
 
-from typing import Sequence, Tuple
+from typing import Tuple
 import tensorflow as tf
 from tensorflow.keras import Model, Sequential
-from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, GRU, Reshape
+from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, GRU
 import numpy as np
 
-from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer, normal_dist_log_prob
+from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer, normal_dist_log_prob, categorical_dist_entropy
 
 class ActorCriticNetwork(Model):
-    pass
+
+    def entropy(self, *args):
+        raise NotImplementedError()
 
 class ActorCriticNetworkDiscrete(ActorCriticNetwork):
     """
@@ -50,6 +52,10 @@ class ActorCriticNetworkDiscrete(ActorCriticNetwork):
 
         return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
 
+    def entropy(self, *args):
+        logits, *_ = args
+        return categorical_dist_entropy(logits)
+
 
 class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
@@ -84,6 +90,10 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
         action = self.dist(logits)
 
         return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
+
+    def entropy(self, *args):
+        logits, *_ = args
+        return categorical_dist_entropy(logits)
 
 class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
@@ -124,7 +134,9 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
 
         return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1), None if not features else features[0]
 
-
+    def entropy(self, *args):
+        logits, *_ = args
+        return categorical_dist_entropy(logits)
 
 # def actor_critic_discrete_loss(logits,
 #                                probs,
@@ -162,7 +174,7 @@ def actor_discrete_loss(actions, advantages, logits):
     return policy_loss
 
 def critic_loss(returns, value):
-    return tf.keras.losses.mean_squared_error(returns, value)
+    return tf.square(value - returns)
 
 
 class ActorCriticNetworkContinuous(ActorCriticNetwork):
@@ -174,12 +186,12 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
         self.policy_hidden = Sequential()
 
         for _ in range(n_hidden_layers):
-            self.policy_hidden.add(Dense(n_hidden_units))
+            self.policy_hidden.add(Dense(n_hidden_units, activation="tanh"))
         self.action_mean = NormalDistrLayer(action_space_shape[0])
 
         self.critic = Sequential()
         for _ in range(n_hidden_layers):
-            self.critic.add(Dense(n_hidden_units))
+            self.critic.add(Dense(n_hidden_units, activation="tanh"))
         self.critic.add(Dense(1))
 
     def call(self, inp):
@@ -188,13 +200,11 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
         return action, mean, self.critic(inp)
 
     def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
-        """
         action, mean, value = self.predict(states)
-
         return np.squeeze(action, axis=-1), np.squeeze(mean, axis=-1), np.squeeze(value, axis=-1)
 
+    def entropy(self, *args):
+        return self.action_mean.entropy()
 
 # def actor_continuous_loss(action_log_prob,
 #                           entropy,

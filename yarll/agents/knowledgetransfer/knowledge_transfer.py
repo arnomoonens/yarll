@@ -88,7 +88,7 @@ class KnowledgeTransfer(Agent):
         ]
 
         self.probs_tensors = [tf.nn.softmax(tf.matmul(L1, tf.matmul(knowledge_base, s))) for s in sparse_representations]
-        self.action_tensors = [tf.squeeze(tf.multinomial(tf.log(probs), 1)) for probs in self.probs_tensors]
+        self.action_tensors = [tf.squeeze(tf.multinomial(tf.math.log(probs), 1)) for probs in self.probs_tensors]
 
         self.optimizer = tf.train.RMSPropOptimizer(
             learning_rate=self.config["learning_rate"],
@@ -113,7 +113,7 @@ class KnowledgeTransfer(Agent):
         for i, probabilities in enumerate(self.probs_tensors):
             good_probabilities = tf.reduce_sum(tf.multiply(probabilities, tf.one_hot(tf.cast(self.action_taken, tf.int32), self.nA)),
                                                reduction_indices=[1])
-            eligibility = tf.log(good_probabilities) * self.advantage
+            eligibility = tf.math.log(good_probabilities) * self.advantage
             loss = -tf.reduce_sum(eligibility) + regularizer(sparse_representations[i])
             self.losses.append(loss)
             writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task" + str(i)), self.session.graph)

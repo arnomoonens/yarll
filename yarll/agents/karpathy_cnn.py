@@ -84,7 +84,7 @@ class KarpathyCNN(Agent):
             weights_initializer=tf.truncated_normal_initializer(mean=0.0, stddev=0.02),
             biases_initializer=tf.zeros_initializer())
 
-        self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+        self.action = tf.squeeze(tf.multinomial(tf.math.log(self.probs), 1), name="action")
 
         self.vars = [
             self.w1, self.b1,

@@ -113,7 +113,7 @@ class SAC(Agent):
             squashed_actions = tf.tanh(actions, name="squashed_actions")  # Squash output between [-1, 1]
 
             logprob = normal_dist.log_prob(actions) - \
-            tf.log(1.0 - tf.pow(squashed_actions, 2) + self.config["logprob_epsilon"])
+            tf.math.log(1.0 - tf.pow(squashed_actions, 2) + self.config["logprob_epsilon"])
             logprob = tf.reduce_sum(logprob, axis=-1, keepdims=True)
 
             actor_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)

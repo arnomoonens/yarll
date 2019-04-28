@@ -40,10 +40,10 @@ class AKTThread(Thread):
             self.sparse_representation = tf.Variable(tf.truncated_normal([self.master.config["n_sparse_units"], self.nA], mean=0.0, stddev=0.02))
             self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
 
-            self.action = tf.squeeze(tf.multinomial(tf.log(self.probs), 1), name="action")
+            self.action = tf.squeeze(tf.multinomial(tf.math.log(self.probs), 1), name="action")
 
             good_probabilities = tf.reduce_sum(tf.multiply(self.probs, tf.one_hot(tf.cast(self.master.action_taken, tf.int32), self.nA)), reduction_indices=[1])
-            eligibility = tf.log(good_probabilities + 1e-10) * self.master.advantage
+            eligibility = tf.math.log(good_probabilities + 1e-10) * self.master.advantage
             self.loss = -tf.reduce_sum(eligibility)
 
     def run(self):

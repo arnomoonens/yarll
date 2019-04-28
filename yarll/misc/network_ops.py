@@ -143,4 +143,4 @@ def kl_divergence(logits1, logits2):
     z0 = tf.reduce_sum(ea0, axis=-1, keepdims=True)
     z1 = tf.reduce_sum(ea1, axis=-1, keepdims=True)
     p0 = ea0 / z0
-    return tf.reduce_sum(p0 * (a0 - tf.log(z0) - a1 + tf.log(z1)), axis=-1)
+    return tf.reduce_sum(p0 * (a0 - tf.math.log(z0) - a1 + tf.math.log(z1)), axis=-1)

@@ -63,34 +63,22 @@ class PPO(Agent):
         else:
             self.initial_features = None
 
-
         # self.mean_entropy = tf.reduce_mean(self.new_network.entropy)
         # self.loss = self.actor_loss + self.config["vf_coef"] * self.critic_loss + \
         #     self.config["entropy_coef"] * self.mean_entropy
-
 
         # TODO: get from ppo_loss function
         # ratio_mean, ratio_std = tf.nn.moments(ratio, axes=[0])
         # summary_ratio_mean = tf.summary.scalar("model/ratio/mean", ratio_mean)
         # summary_ratio_std = tf.summary.scalar("model/ratio/std", ratio_std)
 
-        # summary_entropy = tf.summary.scalar("model/entropy", -self.mean_entropy)
         # summary_var_norm = tf.summary.scalar(
         #     "model/var_global_norm", tf.global_norm(self.new_network_vars))
-        # summaries: List[tf.Tensor] = []
         # Weight summaries: not turned on right now because they take too much space
         # TODO: use config to make this optional
         # for v in tf.trainable_variables():
         #    if "new_network" in v.name:
         #        summaries.append(tf.summary.histogram(v.name, v))
-        # summaries += self._specific_summaries()
-        # summaries += [summary_actor_loss, summary_critic_loss,
-        #               summary_loss,
-        #               summary_adv_mean, summary_adv_std,
-        #               # summary_ratio_mean, summary_ratio_std,
-        #               summary_new_log_prob_mean, summary_old_log_prob_mean,
-        #               summary_ret, summary_entropy, summary_grad_norm, summary_var_norm]
-        # self.model_summary_op = tf.summary.merge(summaries)
 
         self.writer = tf.summary.create_file_writer(self.monitor_path)
         self.env_runner = EnvRunner(self.env,
@@ -99,15 +87,16 @@ class PPO(Agent):
                                     normalize_states=self.config["normalize_states"],
                                     summary_writer=self.writer)
 
-        optim_kwargs = {k: self.config[l] for k, l in [("clipnorm", "gradient_clip_value")] if self.config[l] is not None}
+        optim_kwargs = {k: self.config[l]
+                        for k, l in [("clipnorm", "gradient_clip_value")] if self.config[l] is not None}
         self.optimizer = tf.keras.optimizers.Adam(
             learning_rate=self.config["learning_rate"],
             epsilon=self.config["adam_epsilon"],
             **optim_kwargs)
 
-    def _specific_summaries(self) -> List[tf.Tensor]:
-        """Summaries that are specific to the variant of the algorithm. None (empty list) for the base algorithm"""
-        return []
+    def _specific_summaries(self, n_updates: int) -> None:
+        """Summaries that are specific to the variant of the algorithm."""
+        return
 
     def _actor_loss(self, old_logits, new_logits, advantage):
         return ppo_loss(old_logits, new_logits, self.config["cso_epsilon"], advantage)
@@ -151,7 +140,7 @@ class PPO(Agent):
     def _critic_loss(self, returns, value):
         return critic_loss(returns, value)
 
-    # @tf.function
+    @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
@@ -171,7 +160,7 @@ class PPO(Agent):
             loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
             gradients = tape.gradient(loss, self.new_network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
-        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob
+        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob, new_logits
 
     def learn(self):
         """Run learning algorithm"""
@@ -199,10 +188,10 @@ class PPO(Agent):
                         batch_advs = np.array(normalized_advs)[batch_indices]
                         batch_rs = np.array(rs)[batch_indices]
                         train_actor_loss, train_critic_loss, train_loss, \
-                        grad_global_norm, new_log_prob, old_log_prob = self.train(batch_states,
-                                                                                  batch_actions,
-                                                                                  batch_advs,
-                                                                                  batch_rs)
+                            grad_global_norm, new_log_prob, old_log_prob, new_network_output = self.train(batch_states,
+                                                                                                          batch_actions,
+                                                                                                          batch_advs,
+                                                                                                          batch_rs)
                         if (n_updates % self.config["summary_every_updates"]) == 0:
                             tf.summary.scalar("model/Loss", train_loss, step=n_updates)
                             tf.summary.scalar("model/Actor_loss", train_actor_loss, step=n_updates)
@@ -211,15 +200,13 @@ class PPO(Agent):
                             tf.summary.scalar("model/advantage/std", np.std(batch_advs), step=n_updates)
                             tf.summary.scalar("model/new_log_prob/mean", tf.reduce_mean(new_log_prob), n_updates)
                             tf.summary.scalar("model/old_log_prob/mean", tf.reduce_mean(old_log_prob), n_updates)
-                            tf.summary.scalar("model/advantage/mean", np.mean(batch_advs), n_updates)
-                            tf.summary.scalar("model/advantage/std", np.std(batch_advs), n_updates)
                             tf.summary.scalar("model/return/mean", np.mean(batch_rs), n_updates)
                             tf.summary.scalar("model/return/std", np.std(batch_rs), n_updates)
-                            tf.summary.scalar("model/std",
-                                              tf.reduce_mean(tf.exp(self.new_network.action_mean.log_std)),
+                            tf.summary.scalar("model/entropy",
+                                              tf.reduce_mean(self.new_network.entropy(new_network_output)),
                                               n_updates)
-                            tf.summary.scalar("model/entropy", self.new_network.entropy(), n_updates)
                             tf.summary.scalar("model/grad_global_norm", grad_global_norm, n_updates)
+                            self._specific_summaries(n_updates)
                         n_updates += 1
 
             if self.config["save_model"]:
@@ -248,7 +235,7 @@ class PPOContinuous(PPO):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
-    # @tf.function
+    @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)
@@ -270,12 +257,12 @@ class PPOContinuous(PPO):
             gradients = tape.gradient(loss, self.new_network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
 
-        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob
+        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob, new_mean
 
-    # def _specific_summaries(self) -> List[tf.Tensor]:
-    #     summary_mean_mean = tf.summary.scalar("model/model/mean/mean", tf.reduce_mean(self.old_network.mean))
-    #     summary_std_mean = tf.summary.scalar("model/model/std/mean", tf.reduce_mean(self.old_network.std))
-    #     return [summary_mean_mean, summary_std_mean]
+    def _specific_summaries(self, n_updates: int) -> None:
+        tf.summary.scalar("model/std",
+                          tf.reduce_mean(tf.exp(self.new_network.action_mean.log_std)),
+                          n_updates)
 
     def choose_action(self, state, features) -> dict:
         action, _, value = self.new_network.action_value(state[None, :])

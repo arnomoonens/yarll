@@ -98,8 +98,8 @@ class PPO(Agent):
         """Summaries that are specific to the variant of the algorithm."""
         return
 
-    def _actor_loss(self, old_logits, new_logits, advantage):
-        return ppo_loss(old_logits, new_logits, self.config["cso_epsilon"], advantage)
+    def _actor_loss(self, old_logprob   , new_logprob  , advantage):
+        return ppo_loss(old_logprob , new_logprob    , self.config["cso_epsilon"], advantage)
 
     def build_networks(self):
         raise NotImplementedError

@@ -53,8 +53,8 @@ def env_runner(env, policy, n_steps: int, render=False, summary_writer=None):
                     state = env.reset()
                 if summary_writer is not None:
                     summary = tf.Summary()
-                    summary.value.add(tag="global/Episode_length", simple_value=float(episode_steps))
-                    summary.value.add(tag="global/Reward", simple_value=float(episode_reward))
+                    summary.value.add(tag="env/Episode_length", simple_value=float(episode_steps))
+                    summary.value.add(tag="env/Reward", simple_value=float(episode_reward))
                     summary_writer.add_summary(summary, n_episodes)
                     summary_writer.flush()
                 episode_steps = 0

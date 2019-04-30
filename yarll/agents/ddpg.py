@@ -293,9 +293,9 @@ class DDPG(Agent):
                     if done:
                         self.action_noise.reset()
                         summary = tf.Summary()
-                        summary.value.add(tag="global/Episode_length",
+                        summary.value.add(tag="env/Episode_length",
                                           simple_value=float(episode_length))
-                        summary.value.add(tag="global/Reward",
+                        summary.value.add(tag="env/Reward",
                                           simple_value=float(episode_reward))
                         self.summary_writer.add_summary(summary, episode)
                         self.summary_writer.flush()

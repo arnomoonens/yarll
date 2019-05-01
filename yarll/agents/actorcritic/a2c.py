@@ -2,6 +2,7 @@
 
 import os
 import logging
+import multiprocessing
 import tensorflow as tf
 import numpy as np
 
@@ -85,7 +86,12 @@ class A2C(Agent):
 
         self.init_op = tf.global_variables_initializer()
         # Launch the graph.
-        self.session = tf.Session()
+        num_cpu = multiprocessing.cpu_count()
+        tf_config = tf.ConfigProto(
+            allow_soft_placement=True,
+            inter_op_parallelism_threads=num_cpu,
+            intra_op_parallelism_threads=num_cpu)
+        self.session = tf.Session(config=tf_config)
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)

@@ -1,7 +1,7 @@
 # -*- coding: utf8 -*-
 
-import numpy as np
 import logging
+import numpy as np
 
 from gym import wrappers
 

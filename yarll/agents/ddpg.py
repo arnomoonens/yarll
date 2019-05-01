@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import multiprocessing
 import os
 import numpy as np
 import tensorflow as tf
@@ -82,7 +83,12 @@ class DDPG(Agent):
 
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
 
-        self.session = tf.Session()
+        num_cpu = multiprocessing.cpu_count()
+        tf_config = tf.ConfigProto(
+            allow_soft_placement=True,
+            inter_op_parallelism_threads=num_cpu,
+            intra_op_parallelism_threads=num_cpu)
+        self.session = tf.Session(config=tf_config)
         self.init_op = tf.global_variables_initializer()
 
         self.n_updates = 0

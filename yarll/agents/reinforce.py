@@ -6,6 +6,7 @@
 #  - Always choose the action with the highest probability
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html
 
+import multiprocessing
 import os
 from typing import Dict
 import numpy as np
@@ -67,7 +68,12 @@ class REINFORCE(Agent):
 
         self.init_op = tf.global_variables_initializer()
         # Launch the graph.
-        self.session = tf.Session()
+        num_cpu = multiprocessing.cpu_count()
+        tf_config = tf.ConfigProto(
+            allow_soft_placement=True,
+            inter_op_parallelism_threads=num_cpu,
+            intra_op_parallelism_threads=num_cpu)
+        self.session = tf.Session(config=tf_config)
         self.writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task0"), self.session.graph)
 
         self.env_runner = EnvRunner(self.env, self, usercfg, summary_writer=self.writer)

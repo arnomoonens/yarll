@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import multiprocessing
 import os
 from typing import List
 import tensorflow as tf
@@ -91,7 +92,12 @@ class PPO(Agent):
             trainable=False)
 
         self.n_steps = tf.shape(self.states)[0]
-        self.session = tf.Session()
+        num_cpu = multiprocessing.cpu_count()
+        tf_config = tf.ConfigProto(
+            allow_soft_placement=True,
+            inter_op_parallelism_threads=num_cpu,
+            intra_op_parallelism_threads=num_cpu)
+        self.session = tf.Session(config=tf_config)
         if self.config["save_model"]:
             tf.add_to_collection("action", self.action)
             tf.add_to_collection("states", self.states)

@@ -1,12 +1,12 @@
 # -*- coding: utf8 -*-
 
+import logging
+import multiprocessing
 import os
 import numpy as np
 import tensorflow as tf
-import logging
 
 from gym import wrappers
-# import gym_ple
 
 from yarll.agents.agent import Agent
 from yarll.misc.utils import discount_rewards, preprocess_image, FastSaver
@@ -108,7 +108,12 @@ class KarpathyCNN(Agent):
         init = tf.global_variables_initializer()
 
         # Launch the graph.
-        self.session = tf.Session()
+        num_cpu = multiprocessing.cpu_count()
+        tf_config = tf.ConfigProto(
+            allow_soft_placement=True,
+            inter_op_parallelism_threads=num_cpu,
+            intra_op_parallelism_threads=num_cpu)
+        self.session = tf.Session(config=tf_config)
         self.session.run(init)
 
     def choose_action(self, state):

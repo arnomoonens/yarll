@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import multiprocessing
 import os
 import numpy as np
 import tensorflow as tf
@@ -85,7 +86,12 @@ class SAC(Agent):
         self.summary_writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "summaries"), tf.get_default_graph())
 
-        self.session = tf.Session()
+        num_cpu = multiprocessing.cpu_count()
+        tf_config = tf.ConfigProto(
+            allow_soft_placement=True,
+            inter_op_parallelism_threads=num_cpu,
+            intra_op_parallelism_threads=num_cpu)
+        self.session = tf.Session(config=tf_config)
 
     def build_actor_network(self):
         w_bound = 3e-3

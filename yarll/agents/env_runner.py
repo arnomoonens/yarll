@@ -22,10 +22,11 @@ class EnvRunner(object):
         )
         self.episode_steps: int = 0
         self.episode_reward: float = 0.0
-        self.n_episodes: int = 0
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
         self.summary_writer = summary_writer
+        self.total_steps = 0
+        self.total_episodes = 0
 
         # Normalize states before giving it as input to the network.
         # Mean and std are only updated at the end of `get_steps`.
@@ -69,13 +70,15 @@ class EnvRunner(object):
             self.features = new_features
             self.episode_reward += rew
             self.episode_steps += 1
+            self.total_steps += 1
             if done or self.episode_steps >= self.config["episode_max_length"]:
+                self.total_episodes += 1
                 # summaries won't be written if there is no writer.as_default around it somewhere (e.g. in algorithm itself)
-                tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.n_episodes)
-                tf.summary.scalar("env/Reward", self.episode_reward, step=self.n_episodes)
+                tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.total_steps)
+                tf.summary.scalar("env/Reward", self.episode_reward, step=self.total_steps)
+                tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
                 self.episode_reward = 0
                 self.episode_steps = 0
-                self.n_episodes += 1
                 self.reset_env()
                 self.features = self.policy.initial_features
                 self.policy.new_trajectory()

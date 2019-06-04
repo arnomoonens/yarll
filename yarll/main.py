@@ -9,8 +9,10 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
 
     import os
 
-    if seed is not None:
-        set_seed(seed)
+    if seed is None:
+        import random
+        seed = random.randint(0, 2 ** 32 - 1)
+    set_seed(seed)
 
     import datetime
     import gym
@@ -33,9 +35,8 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         envs = [make(spec["environments"]["source"])]
     elif envs_type == "json":
         envs = make_environments(json_to_dict(spec["environments"]["source"]))
-    if seed is not None:
-        for env in envs:
-            env.seed(seed)
+    for env in envs:
+        env.seed(seed)
     args["seed"] = seed
     args["envs"] = envs
     if len(envs) == 1 or only_last:

@@ -201,7 +201,7 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
 
     def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         action, mean, value = self.predict(states)
-        return np.squeeze(action, axis=-1), np.squeeze(mean, axis=-1), np.squeeze(value, axis=-1)
+        return np.squeeze(action, axis=0), np.squeeze(mean, axis=0), np.squeeze(value)
 
     def entropy(self, *args):
         return self.action_mean.entropy()

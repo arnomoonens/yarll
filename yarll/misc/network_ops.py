@@ -18,8 +18,9 @@ class NormalDistrLayer(tf.keras.layers.Layer):
         super(NormalDistrLayer, self).__init__()
         self.n_outputs = n_outputs
         self.mean = Dense(n_outputs)
+        self.log_std = None # instantiated in build phase
 
-    def build(self, input_shape):
+    def build(self, _):
         self.log_std = self.add_variable("log_std",
                                          shape=(self.n_outputs,),
                                          initializer=tf.initializers.zeros)

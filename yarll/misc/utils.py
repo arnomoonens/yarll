@@ -190,3 +190,12 @@ def normalize(x: number_array, mean: number_array, std: number_array) -> Union[f
     if isinstance(x, np.ndarray):
         x = x.astype("float64")
     return np.clip((x - mean) / std, -5.0, 5.0)
+
+
+def soft_update(source_vars: Sequence[tf.Variable], target_vars: Sequence[tf.Variable], tau: float) -> None:
+    """
+    Move each source variable by a factor of tau towards
+    the corresponding target variable.
+    """
+    for source, target in zip(source_vars, target_vars):
+        target.assign((1.0 - tau) * target + tau * source)

@@ -15,7 +15,8 @@ setuptools.setup(
     install_requires=[
         "numpy",
         "gym>=0.8.0",
-        "tensorflow>=1.6.0",
+        "tensorflow>=1.13.1",
+        "tensorflow-probability==0.7.0rc0"
         "matplotlib",
         "scipy",
         "opencv-contrib-python"

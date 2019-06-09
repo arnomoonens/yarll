@@ -193,9 +193,24 @@ def normalize(x: number_array, mean: number_array, std: number_array) -> Union[f
 
 
 def soft_update(source_vars: Sequence[tf.Variable], target_vars: Sequence[tf.Variable], tau: float) -> None:
+    """Move each source variable by a factor of tau towards the corresponding target variable.
+
+    Arguments:
+        source_vars {Sequence[tf.Variable]} -- Source variables to copy from
+        target_vars {Sequence[tf.Variable]} -- Variables to copy data to
+        tau {float} -- How much to change to source var, between 0 and 1.
     """
-    Move each source variable by a factor of tau towards
-    the corresponding target variable.
-    """
+    if len(source_vars) != len(target_vars):
+        raise ValueError("source_vars and target_vars must have the same length.")
     for source, target in zip(source_vars, target_vars):
         target.assign((1.0 - tau) * target + tau * source)
+
+
+def hard_update(source_vars: Sequence[tf.Variable], target_vars: Sequence[tf.Variable]) -> None:
+    """Copy source variables to target variables.
+
+    Arguments:
+        source_vars {Sequence[tf.Variable]} -- Source variables to copy from
+        target_vars {Sequence[tf.Variable]} -- Variables to copy data to
+    """
+    soft_update(source_vars, target_vars, 1.0) # Tau of 1, so get everything from source and keep nothing from target

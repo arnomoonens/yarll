@@ -31,8 +31,7 @@ class SAC(Agent):
             n_hidden_units=128,
             n_train_steps=4, # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
-            replay_start_size=128,  # Required number of replay buffer entries to start training
-            weights_summary=False # Add weight distributions graphs to Tensorboard (can take up a lot of space)
+            replay_start_size=128  # Required number of replay buffer entries to start training
         )
         self.config.update(usercfg)
 
@@ -58,12 +57,6 @@ class SAC(Agent):
         self.softq_optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["softq_learning_rate"])
         self.value_optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["value_learning_rate"])
         self.actor_optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["actor_learning_rate"])
-
-        # if self.config["weights_summary"]:
-        #     summaries = []
-        #     for v in self.actor_vars + self.softq_vars + self.value_vars:
-        #         summaries.append(tf.summary.histogram(v.name, v))
-        #     self.model_summary_op = tf.summary.merge(summaries)
 
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
         self.n_updates = 0
@@ -94,22 +87,21 @@ class SAC(Agent):
         next_value_batch = self.target_value(state1_batch)
         softq_targets = reward_batch + (1 - terminal1_batch) * \
             self.config["gamma"] * tf.reshape(next_value_batch, [-1])
-        softq_targets = tf.cast(tf.reshape(softq_targets, [self.config["batch_size"], 1]), tf.float32)
-
-        actions, action_logprob = self.actor_network(state0_batch)
-        new_softq = self.softq_network(state0_batch, actions)
+        softq_targets = tf.reshape(softq_targets, [self.config["batch_size"], 1])
 
         with tf.GradientTape() as softq_tape:
             softq = self.softq_network(state0_batch, action_batch)
             softq_loss = tf.reduce_mean(tf.square(softq - softq_targets))
-        value_target = tf.stop_gradient(new_softq - action_logprob)
         with tf.GradientTape() as value_tape:
             values = self.value_network(state0_batch)
-            value_loss = tf.reduce_mean(tf.square(values - value_target))
-        advantage = tf.stop_gradient(action_logprob - new_softq + values)
         with tf.GradientTape() as actor_tape:
-            _, action_logprob = self.actor_network(state0_batch)
+            actions, action_logprob = self.actor_network(state0_batch)
+            new_softq = self.softq_network(state0_batch, actions)
+            advantage = tf.stop_gradient(action_logprob - new_softq + values)
             actor_loss = tf.reduce_mean(action_logprob * advantage)
+        value_target = tf.stop_gradient(new_softq - action_logprob)
+        with value_tape:
+            value_loss = tf.reduce_mean(tf.square(values - value_target))
 
         actor_gradients = actor_tape.gradient(actor_loss, self.actor_network.trainable_weights)
         softq_gradients = softq_tape.gradient(softq_loss, self.softq_network.trainable_weights)

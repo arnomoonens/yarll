@@ -15,11 +15,11 @@ class Memory(object):
         # Randomly sample batch_size examples
         experiences = random.sample(self.buffer, batch_size)
         return {
-            "states0": np.asarray([exp[0] for exp in experiences]),
-            "actions": np.asarray([exp[1] for exp in experiences]),
-            "rewards": np.asarray([exp[2] for exp in experiences]),
-            "states1": np.asarray([exp[3] for exp in experiences]),
-            "terminals1": np.asarray([exp[4] for exp in experiences])
+            "states0": np.asarray([exp[0] for exp in experiences], np.float32),
+            "actions": np.asarray([exp[1] for exp in experiences], np.float32),
+            "rewards": np.asarray([exp[2] for exp in experiences], np.float32),
+            "states1": np.asarray([exp[3] for exp in experiences], np.float32),
+            "terminals1": np.asarray([exp[4] for exp in experiences], np.float32)
         }
 
     def add(self, state: np.ndarray, action: np.ndarray, reward: float, new_state: np.ndarray, done: bool):

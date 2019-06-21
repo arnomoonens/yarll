@@ -1,13 +1,14 @@
 # -*- coding: utf8 -*-
 
 import os
+from pathlib import Path
 import tensorflow as tf
 import numpy as np
 from gym import wrappers
 
 from yarll.agents.agent import Agent
 from yarll.agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
-    ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous, critic_loss
+    ActorCriticNetworkBernoulli, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous, critic_loss
 from yarll.misc.network_ops import normal_dist_log_prob
 from yarll.agents.env_runner import EnvRunner
 
@@ -22,9 +23,9 @@ class PPO(Agent):
     """Proximal Policy Optimization agent."""
     RNN = False
 
-    def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = False, **usercfg) -> None:
+    def __init__(self, env, monitor_path: Path, monitor: bool = False, video: bool = False, **usercfg) -> None:
         super(PPO, self).__init__(**usercfg)
-        self.monitor_path: str = monitor_path
+        self.monitor_path = monitor_path
         self.env = env
         if monitor:
             self.env = wrappers.Monitor(
@@ -48,8 +49,9 @@ class PPO(Agent):
             vf_coef=0.5,
             entropy_coef=0.01,
             cso_epsilon=0.2,  # Clipped surrogate objective epsilon
-            summary_every_updates=1000,
-            save_model=False
+            summary_every_updates=200,
+            save_model=False,
+            checkpoints=True
         ))
         self.config.update(usercfg)
 
@@ -78,7 +80,7 @@ class PPO(Agent):
         #    if "new_network" in v.name:
         #        summaries.append(tf.summary.histogram(v.name, v))
 
-        self.writer = tf.summary.create_file_writer(self.monitor_path)
+        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
@@ -90,6 +92,12 @@ class PPO(Agent):
         self.optimizer = tf.keras.optimizers.Adam(
             learning_rate=self.config["learning_rate"],
             **optim_kwargs)
+
+        if self.config["checkpoints"]:
+            checkpoint_directory = self.monitor_path / "checkpoints"
+            self.ckpt = tf.train.Checkpoint(model=self.new_network)
+            self.cktp_manager = tf.train.CheckpointManager(self.ckpt, checkpoint_directory, 10)
+            self.checkpoint_every_iters = 10
 
     def _specific_summaries(self, n_updates: int) -> None:
         """Summaries that are specific to the variant of the algorithm."""
@@ -168,10 +176,12 @@ class PPO(Agent):
         n_updates = 0
         n_steps = 0
         with self.writer.as_default():
-            for _ in range(int(config["n_iter"])):
+            for iteration in range(1, int(config["n_iter"]) + 1):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 states, actions, advs, rs, _ = self.get_processed_trajectories()
-                n_steps += len(states)
+                traj_steps = len(states)
+                n_steps += traj_steps
+                self.ckpt.save_counter.assign_add(traj_steps - 1)
                 advs = np.array(advs)
                 normalized_advs = (advs - advs.mean()) / advs.std()
                 self.set_old_to_new()
@@ -204,12 +214,16 @@ class PPO(Agent):
                             tf.summary.scalar("model/entropy",
                                               tf.reduce_mean(self.new_network.entropy(new_network_output)),
                                               n_steps)
+                            tf.summary.scalar("model/action/mean", np.mean(batch_actions), n_steps)
+                            tf.summary.scalar("model/action/std", np.std(batch_actions), n_steps)
                             tf.summary.scalar("model/grad_global_norm", grad_global_norm, n_steps)
                             self._specific_summaries(n_steps)
                         n_updates += 1
+                if self.config["checkpoints"] and (iteration % self.checkpoint_every_iters) == 0:
+                    self.cktp_manager.save()
 
             if self.config["save_model"]:
-                tf.saved_model.save(self.ac_net, os.path.join(self.monitor_path, "model"))
+                tf.saved_model.save(self.new_network, os.path.join(self.monitor_path, "model"))
 
 
 class PPODiscrete(PPO):

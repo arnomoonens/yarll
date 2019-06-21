@@ -7,7 +7,7 @@ from yarll.misc.utils import json_to_dict, save_config, set_seed
 def run_experiment(spec, monitor_path=None, only_last=False, description=None, seed=None):
     """Run an experiment using a specification dictionary."""
 
-    import os
+    from pathlib import Path
 
     if seed is None:
         import random
@@ -17,19 +17,20 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     import datetime
     import gym
     gym.logger.set_level(gym.logger.ERROR)
-    from gym.spaces import Discrete
+    from gym.spaces import Discrete, Box, MultiBinary
     from yarll.environment.registration import make, make_environments
     from yarll.agents.registration import make_agent
 
     args = spec["agent"]["args"]
 
     if monitor_path:
+        monitor_path = Path(monitor_path).absolute()
         args["monitor_path"] = monitor_path
     else:
-        monitor_path = args["monitor_path"]
-    args["config_path"] = os.path.join(monitor_path, "config.json")
-    if not os.path.exists(monitor_path):
-        os.makedirs(monitor_path)
+        monitor_path = Path(args["monitor_path"]).absolute()
+    args["config_path"] = str(monitor_path / "config.json")
+    if not monitor_path.exists():
+        monitor_path.mkdir(parents=True)
     envs_type = spec["environments"]["type"]
     if envs_type == "single":
         envs = [make(spec["environments"]["source"])]
@@ -41,7 +42,13 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     args["envs"] = envs
     if len(envs) == 1 or only_last:
         args["env"] = envs[-1]
+    env_agent_action_space = {
+        Discrete: "discrete",
+        Box: "continuous",
+        MultiBinary: "multibinary"
+    }
     action_space_type = "discrete" if isinstance(envs[0].action_space, Discrete) else "continuous"
+    action_space_type = env_agent_action_space.get(envs[0].action_space, None)
     state_dimensions = "single" if len(envs[0].observation_space.shape) == 1 else "multi"
     agent = make_agent(spec["agent"]["name"], state_dimensions, action_space_type, **args)
     config = agent.config.copy()
@@ -49,7 +56,10 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         config["description"] = description
     config["seed"] = str(seed)
     config["start_time"] = datetime.datetime.now().astimezone().isoformat()
-    save_config(monitor_path, config, [env.metadata["parameters"] for env in envs], repo_path=os.path.abspath(os.path.join(os.path.realpath(__file__), "../../")))
+    save_config(monitor_path,
+                config,
+                [env.metadata["parameters"] for env in envs],
+                repo_path=(Path(__file__).resolve() / "../../").absolute())
     agent.learn()
 
 

@@ -47,6 +47,15 @@ def categorical_dist_entropy(logits):
     p_0 = exp_a_0 / z_0
     return tf.reduce_sum(p_0 * (tf.math.log(z_0) - a_0), axis=-1)
 
+def bernoulli_dist_entropy(logits):
+    """Entropy of Bernoulli distributions
+    Source: https://github.com/hill-a/stable-baselines/blob/master/stable_baselines/common/distributions.py#L453
+    Arguments:
+        logits {tf.Tensor} -- Logits of the bernoulli distributions
+    """
+    probs = tf.sigmoid(logits)
+    return tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=logits,
+                                                                 labels=probs), axis=-1)
 
 def normalized_columns_initializer(std: float = 1.0):
     def _initializer(shape, dtype=None, partition_info=None):

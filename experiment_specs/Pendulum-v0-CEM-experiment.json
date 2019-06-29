@@ -1,0 +1,19 @@
+{
+    "experiment_name": "Pendulum-CEM",
+    "environments": {
+        "type": "single",
+        "source": "Pendulum-v0"
+    },
+    "agent": {
+        "name": "CEM",
+        "args": {
+            "monitor_path": "/tmp/Pendulum-v0-CEM",
+            "video": false,
+            "save_model": true,
+            "monitor": true,
+            "n_iter": 500,
+            "batch_size": 75,
+            "elite_frac": 0.4
+        }
+    }
+}

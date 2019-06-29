@@ -1,0 +1,18 @@
+{
+    "experiment_name": "HalfCheetah-DDPG",
+    "environments": {
+        "type": "single",
+        "source": "HalfCheetah-v3"
+    },
+    "agent": {
+        "name": "DDPG",
+        "args": {
+            "monitor_path": "/tmp/HalfCheetah-v3-DDPG",
+            "video": false,
+            "n_hidden_units": 64,
+            "save_model": true,
+            "monitor": false,
+            "n_episodes": 400000
+        }
+    }
+}

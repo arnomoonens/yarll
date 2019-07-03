@@ -8,7 +8,7 @@ from gym import wrappers
 
 from yarll.agents.agent import Agent
 from yarll.agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
-    ActorCriticNetworkBernoulli, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous, critic_loss
+     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous, critic_loss
 from yarll.misc.network_ops import normal_dist_log_prob
 from yarll.agents.env_runner import EnvRunner
 

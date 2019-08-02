@@ -1,12 +1,11 @@
 # -*- coding: utf8 -*-
 
-from yarll.policies.policy import Policy
-
 import numpy as np
+from yarll.policies.policy import Policy
 
 class EGreedy(Policy):
     """Take the best action with a probability and a random one otherwise."""
-    def __init__(self, epsilon):
+    def __init__(self, epsilon: float):
         super(EGreedy, self).__init__()
         self.epsilon = epsilon
 

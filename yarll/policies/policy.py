@@ -1,9 +1,10 @@
 # -*- coding: utf8 -*-
 
-class Policy(object):
+class Policy:
     """Decides which action to take."""
-    def __init__(self):
-        super(Policy, self).__init__()
 
-    # def select_action(self, actions, values):
-    #     return
+    def select_action(self, values):
+        raise NotImplementedError()
+
+    def __call__(self, values):
+        return self.select_action(values)

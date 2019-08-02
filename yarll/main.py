@@ -17,7 +17,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     import datetime
     import gym
     gym.logger.set_level(gym.logger.ERROR)
-    from gym.spaces import Discrete
+    from gym.spaces import Discrete, Box, MultiBinary
     from yarll.environment.registration import make, make_environments
     from yarll.agents.registration import make_agent
 
@@ -41,8 +41,17 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     args["envs"] = envs
     if len(envs) == 1 or only_last:
         args["env"] = envs[-1]
-    action_space_type = "discrete" if isinstance(envs[0].action_space, Discrete) else "continuous"
-    state_dimensions = "single" if len(envs[0].observation_space.shape) == 1 else "multi"
+    spaces_mapping = {
+        Discrete: "discrete",
+        Box: "continuous",
+        MultiBinary: "multibinary"
+    }
+    action_space_type = spaces_mapping.get(type(envs[0].action_space), None)
+    if len(envs[0].observation_space.shape) > 1:
+        state_dimensions = "multi"
+    else:
+        state_dimensions = spaces_mapping.get(type(envs[0].observation_space), None)
+
     agent = make_agent(spec["agent"]["name"], state_dimensions, action_space_type, **args)
     config = agent.config.copy()
     if description is not None:

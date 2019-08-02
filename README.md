@@ -20,6 +20,7 @@ Different algorithms have currently been implemented (in no particular order):
   - [Distributed version (DTRPO)](./yarll/agents/trpo/dtrpo.py)
 - [REINFORCE](./yarll/agents/reinforce.py) (convolutional neural network part has not been tested yet)
 - [Cross-Entropy Method](./yarll/agents/cem.py)
+- [Q-Learning](./yarll/agents/q_learning.py)
 - [Sarsa with with function approximation and eligibility traces](./yarll/agents/sarsa/sarsa_fa.py)
 - [Karpathy's policy gradient algorithm](./yarll/agents/karpathy.py) ([version using convolutional neural networks](./yarll/agents/karpathy_cnn.py) has not been tested yet)
 - [(Sequential) knowledge transfer](./yarll/agents/knowledgetransfer/knowledge_transfer.py)

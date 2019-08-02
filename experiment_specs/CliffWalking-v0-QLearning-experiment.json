@@ -1,0 +1,15 @@
+{
+    "experiment_name": "MountainCar-SarsaFA",
+    "environments": {
+        "type": "single",
+        "source": "CliffWalking-v0"
+    },
+    "agent": {
+        "name": "QLearning",
+        "args": {
+            "n_episodes": 500,
+            "monitor_path": "/tmp/CliffWalking-QLearning",
+            "gamma": 1.0
+        }
+    }
+}

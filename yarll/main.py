@@ -42,14 +42,17 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     args["envs"] = envs
     if len(envs) == 1 or only_last:
         args["env"] = envs[-1]
-    env_agent_action_space = {
+    spaces_mapping = {
         Discrete: "discrete",
         Box: "continuous",
         MultiBinary: "multibinary"
     }
-    action_space_type = "discrete" if isinstance(envs[0].action_space, Discrete) else "continuous"
-    action_space_type = env_agent_action_space.get(envs[0].action_space, None)
-    state_dimensions = "single" if len(envs[0].observation_space.shape) == 1 else "multi"
+    action_space_type = spaces_mapping.get(type(envs[0].action_space), None)
+    if len(envs[0].observation_space.shape) > 1:
+        state_dimensions = "multi"
+    else:
+        state_dimensions = spaces_mapping.get(type(envs[0].observation_space), None)
+
     agent = make_agent(spec["agent"]["name"], state_dimensions, action_space_type, **args)
     config = agent.config.copy()
     if description is not None:
@@ -59,7 +62,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     save_config(monitor_path,
                 config,
                 [env.metadata["parameters"] for env in envs],
-                repo_path=(Path(__file__).resolve() / "../../").absolute())
+                repo_path=(Path(__file__) / "../../").resolve())
     agent.learn()
 
 

@@ -10,66 +10,56 @@ from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, GRU
 import numpy as np
 
-from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer, normal_dist_log_prob, categorical_dist_entropy, bernoulli_dist_entropy
+from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer, \
+     normal_dist_log_prob, categorical_dist_entropy, bernoulli_dist_entropy
 
 class ActorCriticNetwork(Model):
 
     def entropy(self, *args):
         raise NotImplementedError()
 
-class ActorCriticNetworkDiscrete(ActorCriticNetwork):
-    """
-    Neural network for the Actor of an Actor-Critic algorithm using a discrete action space.
-    """
+    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        raise NotImplementedError()
 
-    def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
-        super(ActorCriticNetworkDiscrete, self).__init__()
+class ActorCriticNetworkLatent(ActorCriticNetwork):
+    def __init__(self, n_latent: int, n_hidden_units: int, n_hidden_layers: int) -> None:
+        super(ActorCriticNetworkLatent, self).__init__()
 
         self.logits = Sequential()
         for _ in range(n_hidden_layers):
             self.logits.add(Dense(n_hidden_units, activation="tanh"))
-        self.logits.add(Dense(n_actions))
-
-        self.dist = ProbabilityDistribution()
+        self.logits.add(Dense(n_latent))
 
         self.value = Sequential()
         for _ in range(n_hidden_layers):
             self.value.add(Dense(n_hidden_units, activation="tanh"))
         self.value.add(Dense(1))
 
-        # self.entropy = self.probs * self.log_probs
-
     def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
         return self.logits(x), self.value(x)
 
+class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
+    def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
+        super(ActorCriticNetworkDiscrete, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
+        self.dist = ProbabilityDistribution()
+
+    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
+        """
+        logits, value = self.predict(states)
+        action = self.dist(logits)
+        return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
 
     def entropy(self, *args):
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
 
-class ActorCriticNetworkBernoulli(ActorCriticNetwork):
-    """
-    Neural network for the Actor of an Actor-Critic algorithm using a discrete action space.
-    """
-
+class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
     def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
-        super(ActorCriticNetworkBernoulli, self).__init__()
-
-        self.logits = Sequential()
-        for _ in range(n_hidden_layers):
-            self.logits.add(Dense(n_hidden_units, activation="tanh"))
-        self.logits.add(Dense(n_actions))
-
-        self.value = Sequential()
-        for _ in range(n_hidden_layers):
-            self.value.add(Dense(n_hidden_units, activation="tanh"))
-        self.value.add(Dense(1))
-
-    def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
-        x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
-        return self.logits(x), self.value(x)
+        super(ActorCriticNetworkBernoulli, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
 
     def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """

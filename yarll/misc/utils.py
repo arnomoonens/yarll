@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import itertools
 import sys
 import argparse
 import json
@@ -7,7 +8,7 @@ import os
 from os import path
 import random
 import subprocess
-from typing import Any, Callable, Sequence, Union
+from typing import Any, Callable, List, Sequence, Union
 import pkg_resources
 import tensorflow as tf
 from scipy import signal
@@ -214,3 +215,6 @@ def hard_update(source_vars: Sequence[tf.Variable], target_vars: Sequence[tf.Var
         target_vars {Sequence[tf.Variable]} -- Variables to copy data to
     """
     soft_update(source_vars, target_vars, 1.0) # Tau of 1, so get everything from source and keep nothing from target
+
+def flatten_list(l: List[List]):
+    return list(itertools.chain.from_iterable(l))

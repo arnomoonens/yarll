@@ -1,0 +1,13 @@
+{
+    "experiment_name": "CartPole-FittedQ",
+    "environments": {
+        "type": "single",
+        "source": "CartPole-v0"
+    },
+    "agent": {
+        "name": "FittedQIteration",
+        "args": {
+            "monitor_path": "/tmp/CartPole-v0-FittedQ"
+        }
+    }
+}

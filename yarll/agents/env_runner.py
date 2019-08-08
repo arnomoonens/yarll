@@ -65,7 +65,7 @@ class EnvRunner(object):
             value = results.get("value", None)
             new_features = results.get("features", None)
             new_state, rew, done, _ = self.step_env(action)
-            memory.add(self.state, action, rew, value, terminal=done, features=self.features)
+            memory.add(self.state, action, rew, value, terminal=done, features=self.features, next_state=new_state)
             self.state = new_state
             self.features = new_features
             self.episode_reward += rew

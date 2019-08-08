@@ -2,7 +2,7 @@
 
 from collections import namedtuple
 
-Experience = namedtuple("Experience", ["state", "action", "reward", "value", "features", "terminal"])
+Experience = namedtuple("Experience", ["state", "action", "reward", "next_state", "value", "features", "terminal"])
 
 class ExperiencesMemory(object):
     """Experience gathered from an environment."""
@@ -12,9 +12,9 @@ class ExperiencesMemory(object):
         self.experiences = []
         self.steps = 0
 
-    def add(self, state, action, reward, value=None, features=None, terminal=False):
+    def add(self, state, action, reward, value=None, features=None, terminal=False, next_state=None):
         """Add a single transition to the trajectory."""
-        exp = Experience(state, action, reward, value, features, terminal)
+        exp = Experience(state, action, reward, next_state, value, features, terminal)
         self.experiences.append(exp)
         self.steps += 1
 
@@ -53,3 +53,7 @@ class ExperiencesMemory(object):
     @property
     def terminals(self):
         return [exp.terminal for exp in self.experiences]
+
+    @property
+    def next_states(self):
+        return [exp.next_state for exp in self.experiences]

@@ -189,3 +189,8 @@ register_agent(name="QLearning",
                entry_point="yarll.agents.q_learning:QLearning",
                state_dimensions="discrete",
                action_space="discrete")
+register_agent(name="FittedQIteration",
+               entry_point="yarll.agents.fitted_q:FittedQIteration",
+               state_dimensions="continuous",
+               action_space="discrete"
+               )

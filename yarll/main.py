@@ -7,7 +7,7 @@ from yarll.misc.utils import json_to_dict, save_config, set_seed
 def run_experiment(spec, monitor_path=None, only_last=False, description=None, seed=None):
     """Run an experiment using a specification dictionary."""
 
-    import os
+    from pathlib import Path
 
     if seed is None:
         import random
@@ -24,12 +24,13 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     args = spec["agent"]["args"]
 
     if monitor_path:
+        monitor_path = Path(monitor_path).absolute()
         args["monitor_path"] = monitor_path
     else:
-        monitor_path = args["monitor_path"]
-    args["config_path"] = os.path.join(monitor_path, "config.json")
-    if not os.path.exists(monitor_path):
-        os.makedirs(monitor_path)
+        monitor_path = Path(args["monitor_path"]).absolute()
+    args["config_path"] = str(monitor_path / "config.json")
+    if not monitor_path.exists():
+        monitor_path.mkdir(parents=True)
     envs_type = spec["environments"]["type"]
     if envs_type == "single":
         envs = [make(spec["environments"]["source"])]
@@ -58,7 +59,10 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         config["description"] = description
     config["seed"] = str(seed)
     config["start_time"] = datetime.datetime.now().astimezone().isoformat()
-    save_config(monitor_path, config, [env.metadata["parameters"] for env in envs], repo_path=os.path.abspath(os.path.join(os.path.realpath(__file__), "../../")))
+    save_config(monitor_path,
+                config,
+                [env.metadata["parameters"] for env in envs],
+                repo_path=(Path(__file__) / "../../").resolve())
     agent.learn()
 
 

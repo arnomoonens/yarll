@@ -234,6 +234,40 @@ class PPODiscrete(PPO):
             int(self.config["n_hidden_layers"]))
 
 
+class PPOBernoulli(PPO):
+    def build_networks(self) -> ActorCriticNetwork:
+        return ActorCriticNetworkBernoulli(
+            self.env.action_space.n,
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
+
+    @tf.function
+    def train(self, states, actions_taken, advantages, returns, features=None):
+        states = tf.cast(states, dtype=tf.float32)
+        actions_taken = tf.cast(actions_taken, dtype=tf.float32)
+        advantages = tf.cast(advantages, dtype=tf.float32)
+        returns = tf.cast(returns, dtype=tf.float32)
+        inp = states if features is None else [states, tf.cast(features, tf.float32)]
+        with tf.GradientTape() as tape:
+            new_res = self.new_network(inp)
+            new_logits = new_res[0]
+            values = tf.squeeze(new_res[1])
+            old_res = self.old_network(inp)
+            old_logits = old_res[0]
+            new_log_prob = -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=new_logits,
+                                                                                  labels=actions_taken),
+                                          axis=-1)
+            old_log_prob = -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=old_logits,
+                                                                                  labels=actions_taken),
+                                          axis=-1)
+            mean_actor_loss = -tf.reduce_mean(self._actor_loss(old_log_prob, new_log_prob, advantages))
+            mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
+            loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
+            gradients = tape.gradient(loss, self.new_network.trainable_weights)
+        self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
+        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob, new_logits
+
+
 class PPODiscreteCNN(PPODiscrete):
     def build_networks(self) -> ActorCriticNetwork:
         return ActorCriticNetworkDiscreteCNN(

@@ -53,6 +53,11 @@ register_agent(name="PPO",
                action_space="discrete"
               )
 register_agent(name="PPO",
+               entry_point="yarll.agents.ppo.ppo:PPOBernoulli",
+               state_dimensions="single",
+               action_space="multibinary"
+               )
+register_agent(name="PPO",
                entry_point="yarll.agents.ppo.ppo:PPODiscreteCNN",
                state_dimensions="multi",
                action_space="discrete"

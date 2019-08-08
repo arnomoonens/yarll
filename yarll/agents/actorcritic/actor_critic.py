@@ -4,14 +4,15 @@
 Functions and networks for actor-critic agents.
 """
 
-from typing import Tuple
+from typing import List, Tuple
 import tensorflow as tf
 from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, GRU
+from tensorflow.keras.initializers import Orthogonal
 import numpy as np
 
-from yarll.misc.network_ops import ProbabilityDistribution, NormalDistrLayer, \
-     normal_dist_log_prob, categorical_dist_entropy, bernoulli_dist_entropy
+from yarll.misc.network_ops import CategoricalProbabilityDistribution, MultiCategoricalProbabilityDistribution, \
+    NormalDistrLayer, normal_dist_log_prob, categorical_dist_entropy, bernoulli_dist_entropy
 
 class ActorCriticNetwork(Model):
 
@@ -27,13 +28,13 @@ class ActorCriticNetworkLatent(ActorCriticNetwork):
 
         self.logits = Sequential()
         for _ in range(n_hidden_layers):
-            self.logits.add(Dense(n_hidden_units, activation="tanh"))
-        self.logits.add(Dense(n_latent))
+            self.logits.add(Dense(n_hidden_units, activation="tanh", kernel_initializer=Orthogonal(gain=np.sqrt(2))))
+        self.logits.add(Dense(n_latent, kernel_initializer=Orthogonal(gain=0.01)))
 
         self.value = Sequential()
         for _ in range(n_hidden_layers):
-            self.value.add(Dense(n_hidden_units, activation="tanh"))
-        self.value.add(Dense(1))
+            self.value.add(Dense(n_hidden_units, activation="tanh", kernel_initializer=Orthogonal(gain=np.sqrt(2))))
+            self.value.add(Dense(1, kernel_initializer=Orthogonal(gain=0.01)))
 
     def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
@@ -42,7 +43,7 @@ class ActorCriticNetworkLatent(ActorCriticNetwork):
 class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
     def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
         super(ActorCriticNetworkDiscrete, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
-        self.dist = ProbabilityDistribution()
+        self.dist = CategoricalProbabilityDistribution()
 
     def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -55,6 +56,37 @@ class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
     def entropy(self, *args):
         logits, *_ = args
         return categorical_dist_entropy(logits)
+
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
+
+
+class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
+    def __init__(self, n_actions_per_dim: List[int], n_hidden_units: int, n_hidden_layers: int) -> None:
+        self.n_actions_per_dim = tf.cast(n_actions_per_dim, tf.int32)
+        super(ActorCriticNetworkMultiDiscrete, self).__init__(sum(n_actions_per_dim), n_hidden_units, n_hidden_layers)
+        self.dist = MultiCategoricalProbabilityDistribution()
+
+    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
+        """
+        logits, value = self.predict(states)
+        reshaped_logits = tf.split(logits, self.n_actions_per_dim, axis=-1)
+        action = self.dist(reshaped_logits)
+        return np.squeeze(action), np.squeeze(value, axis=-1)
+
+    def entropy(self, *args):
+        logits, *_ = args
+        reshaped_logits = tf.split(logits, self.n_actions_per_dim, axis=-1)
+        return tf.add_n([categorical_dist_entropy(l) for l in reshaped_logits])
+
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
+                               (tf.transpose(tf.cast(actions, dtype=tf.int32)),
+                                tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
+                               dtype=tf.float32)
+        return tf.reduce_sum(map_result, axis=0)
 
 
 class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
@@ -76,6 +108,10 @@ class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
         logits, *_ = args
         return bernoulli_dist_entropy(logits)
 
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        return -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(actions, tf.float32),
+                                                                      logits=logits),
+                              axis=-1)
 
 class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
@@ -93,7 +129,7 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
         self.shared_layers.add(Dense(n_hidden, activation="relu"))
 
         self.logits = Dense(n_actions)
-        self.dist = ProbabilityDistribution()
+        self.dist = CategoricalProbabilityDistribution()
 
         self.value = Dense(1)
 
@@ -115,6 +151,13 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
+                               (tf.transpose(tf.cast(actions, dtype=tf.int32)),
+                                tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
+                               dtype=tf.float32)
+        return tf.reduce_sum(map_result, axis=0)
+
 class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
@@ -133,7 +176,7 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
         self.initial_features = np.zeros((1, rnn_size))
 
         self.logits = Dense(n_actions)
-        self.dist = ProbabilityDistribution()
+        self.dist = CategoricalProbabilityDistribution()
 
         self.value = Dense(1)
 
@@ -158,22 +201,12 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
-# def actor_critic_discrete_loss(logits,
-#                                probs,
-#                                value,
-#                                actions_taken,
-#                                advantage,
-#                                ret,
-#                                vf_coef: float = 0.5,
-#                                entropy_coef: float = 0.01,
-#                                reducer="sum"):
-#     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
-#     log_probs = tf.nn.log_softmax(logits)
-#     actor_loss = - tf_reducer(tf.reduce_sum(log_probs * actions_taken, [1]) * advantage)
-#     critic_loss = tf_reducer(tf.square(value - ret))
-#     entropy = tf_reducer(probs * log_probs)
-#     loss = actor_loss + vf_coef * critic_loss - entropy_coef * entropy
-#     return actor_loss, critic_loss, loss
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
+                               (tf.transpose(tf.cast(actions, dtype=tf.int32)),
+                                tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
+                               dtype=tf.float32)
+        return tf.reduce_sum(map_result, axis=0)
 
 def actor_discrete_loss(actions, advantages, logits):
     """
@@ -225,20 +258,6 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
 
     def entropy(self, *args):
         return self.action_mean.entropy()
-
-# def actor_continuous_loss(action_log_prob,
-#                           entropy,
-#                           value,
-#                           advantage,
-#                           ret,
-#                           vf_coef: float = 0.5,
-#                           entropy_coef: float = 0.01,
-#                           reducer: str = "sum"):
-#     tf_reducer = tf.reduce_sum if reducer == "sum" else tf.reduce_mean
-#     actor_loss = - tf_reducer(action_log_prob * advantage)
-#     critic_loss = tf_reducer(tf.square(value - ret))
-#     loss = actor_loss + vf_coef * critic_loss - entropy_coef * entropy
-#     return actor_loss, critic_loss, loss
 
 def actor_continuous_loss(actions_taken, mean, log_std, advantage):
     action_log_prob = normal_dist_log_prob(actions_taken, mean, log_std)

@@ -8,10 +8,14 @@ import numpy as np
 # Where the 1 is the sequence length: 1 because only 1 step at a time
 flatten_to_rnn = Lambda(lambda x: tf.expand_dims(x, [1]))
 
-class ProbabilityDistribution(tf.keras.Model):
+class CategoricalProbabilityDistribution(tf.keras.Model):
     def call(self, logits):
         # sample a random categorical action from given logits
         return tf.squeeze(tf.random.categorical(logits, 1), axis=-1)
+
+class MultiCategoricalProbabilityDistribution(tf.keras.Model):
+    def call(self, logits):
+        return tf.cast(tf.stack([tf.random.categorical(l, 1) for l in logits], axis=-1), tf.int32)
 
 class NormalDistrLayer(tf.keras.layers.Layer):
     def __init__(self, n_outputs):

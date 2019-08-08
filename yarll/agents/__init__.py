@@ -67,6 +67,11 @@ register_agent(name="PPO",
                state_dimensions="continuous",
                action_space="continuous"
               )
+register_agent(name="PPO",
+               entry_point="yarll.agents.ppo.ppo:PPOMultiDiscrete",
+               state_dimensions="continuous",
+               action_space="multidiscrete"
+               )
 register_agent(name="DPPO",
                entry_point="yarll.agents.ppo.dppo:DPPODiscrete",
                state_dimensions="continuous",

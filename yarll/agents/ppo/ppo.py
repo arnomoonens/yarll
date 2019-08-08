@@ -8,7 +8,8 @@ from gym import wrappers
 
 from yarll.agents.agent import Agent
 from yarll.agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
-     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous, critic_loss
+    ActorCriticNetworkMultiDiscrete, ActorCriticNetworkBernoulli, ActorCriticNetworkDiscreteCNN, \
+    ActorCriticNetworkContinuous, critic_loss
 from yarll.misc.network_ops import normal_dist_log_prob
 from yarll.agents.env_runner import EnvRunner
 
@@ -136,7 +137,7 @@ class PPO(Agent):
             delta = trajectory.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
             gaelam[t] = last_gaelam = delta + gamma * lambda_ * nonterminal * last_gaelam
         rs = advantages + trajectory.values
-        return trajectory.states, trajectory.actions, advantages, rs, trajectory.features
+        return trajectory.states, trajectory.actions, advantages, rs, trajectory.values, trajectory.features
 
     def set_old_to_new(self):
         for old_var, new_var in zip(self.old_network.trainable_variables, self.new_network.trainable_variables):
@@ -148,7 +149,6 @@ class PPO(Agent):
     @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
-        actions_taken = tf.cast(actions_taken, dtype=tf.int32)
         advantages = tf.cast(advantages, dtype=tf.float32)
         returns = tf.cast(returns, dtype=tf.float32)
         inp = states if features is None else [states, tf.cast(features, tf.float32)]
@@ -158,8 +158,8 @@ class PPO(Agent):
             values = tf.squeeze(new_res[1])
             old_res = self.old_network(inp)
             old_logits = old_res[0]
-            new_log_prob = -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions_taken, logits=new_logits)
-            old_log_prob = -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=actions_taken, logits=old_logits)
+            new_log_prob = self.new_network.log_prob(actions_taken, new_logits)
+            old_log_prob = self.old_network.log_prob(actions_taken, old_logits)
             mean_actor_loss = -tf.reduce_mean(self._actor_loss(old_log_prob, new_log_prob, advantages))
             mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
             loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
@@ -178,12 +178,12 @@ class PPO(Agent):
         with self.writer.as_default():
             for iteration in range(1, int(config["n_iter"]) + 1):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
-                states, actions, advs, rs, _ = self.get_processed_trajectories()
+                states, actions, advs, rs, values, _ = self.get_processed_trajectories()
                 traj_steps = len(states)
                 n_steps += traj_steps
                 self.ckpt.save_counter.assign_add(traj_steps - 1)
-                advs = np.array(advs)
-                normalized_advs = (advs - advs.mean()) / advs.std()
+                advs = np.array(advs) - values
+                normalized_advs = (advs - advs.mean()) / (advs.std() + 1e-8) # Add small value to denominator for num stability
                 self.set_old_to_new()
 
                 indices = np.arange(len(states))
@@ -195,6 +195,7 @@ class PPO(Agent):
                         batch_states = np.array(states)[batch_indices]
                         batch_actions = np.array(actions)[batch_indices]
                         batch_advs = np.array(normalized_advs)[batch_indices]
+                        batch_values = np.array(values)[batch_indices]
                         batch_rs = np.array(rs)[batch_indices]
                         train_actor_loss, train_critic_loss, train_loss, \
                             grad_global_norm, new_log_prob, old_log_prob, new_network_output = self.train(batch_states,
@@ -209,6 +210,7 @@ class PPO(Agent):
                             tf.summary.scalar("model/advantage/std", np.std(batch_advs), step=n_steps)
                             tf.summary.scalar("model/new_log_prob/mean", tf.reduce_mean(new_log_prob), n_steps)
                             tf.summary.scalar("model/old_log_prob/mean", tf.reduce_mean(old_log_prob), n_steps)
+                            tf.summary.scalar("model/old_value_pred/mean", tf.reduce_mean(batch_values), n_steps)
                             tf.summary.scalar("model/return/mean", np.mean(batch_rs), n_steps)
                             tf.summary.scalar("model/return/std", np.std(batch_rs), n_steps)
                             tf.summary.scalar("model/entropy",
@@ -233,6 +235,12 @@ class PPODiscrete(PPO):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
+class PPOMultiDiscrete(PPO):
+    def build_networks(self) -> ActorCriticNetwork:
+        return ActorCriticNetworkMultiDiscrete(
+            self.env.action_space.nvec,
+            int(self.config["n_hidden_units"]),
+            int(self.config["n_hidden_layers"]))
 
 class PPOBernoulli(PPO):
     def build_networks(self) -> ActorCriticNetwork:
@@ -240,32 +248,6 @@ class PPOBernoulli(PPO):
             self.env.action_space.n,
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
-
-    @tf.function
-    def train(self, states, actions_taken, advantages, returns, features=None):
-        states = tf.cast(states, dtype=tf.float32)
-        actions_taken = tf.cast(actions_taken, dtype=tf.float32)
-        advantages = tf.cast(advantages, dtype=tf.float32)
-        returns = tf.cast(returns, dtype=tf.float32)
-        inp = states if features is None else [states, tf.cast(features, tf.float32)]
-        with tf.GradientTape() as tape:
-            new_res = self.new_network(inp)
-            new_logits = new_res[0]
-            values = tf.squeeze(new_res[1])
-            old_res = self.old_network(inp)
-            old_logits = old_res[0]
-            new_log_prob = -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=new_logits,
-                                                                                  labels=actions_taken),
-                                          axis=-1)
-            old_log_prob = -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(logits=old_logits,
-                                                                                  labels=actions_taken),
-                                          axis=-1)
-            mean_actor_loss = -tf.reduce_mean(self._actor_loss(old_log_prob, new_log_prob, advantages))
-            mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
-            loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss
-            gradients = tape.gradient(loss, self.new_network.trainable_weights)
-        self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
-        return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob, new_logits
 
 
 class PPODiscreteCNN(PPODiscrete):

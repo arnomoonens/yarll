@@ -17,7 +17,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     import datetime
     import gym
     gym.logger.set_level(gym.logger.ERROR)
-    from gym.spaces import Discrete, Box, MultiBinary
+    from gym.spaces import Discrete, Box, MultiBinary, MultiDiscrete
     from yarll.environment.registration import make, make_environments
     from yarll.agents.registration import make_agent
 
@@ -44,6 +44,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         args["env"] = envs[-1]
     spaces_mapping = {
         Discrete: "discrete",
+        MultiDiscrete: "multidiscrete",
         Box: "continuous",
         MultiBinary: "multibinary"
     }

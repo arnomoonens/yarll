@@ -54,7 +54,7 @@ class A2C(Agent):
 
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"],
                                                   clipnorm=self.config["gradient_clip_value"])
-        self.writer = tf.summary.create_file_writer(self.monitor_path)
+        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
         return
 
     def build_networks(self):
@@ -89,7 +89,7 @@ class A2C(Agent):
                     inp = [np.asarray(trajectory.states)[None, -1]]
                     if features[-1] is not None:
                         inp.append(features[None, -1])
-                    v = self.ac_net.action_value(*inp)[-2][0]
+                    v = self.ac_net.action_value(*inp)[-2 if features[-1] is not None else -1][0]
                 rewards_plus_v = np.asarray(trajectory.rewards + [v])
                 vpred_t = np.asarray(trajectory.values + [v])
                 delta_t = trajectory.rewards + \
@@ -117,7 +117,7 @@ class A2CDiscrete(A2C):
             int(self.config["n_hidden_units"]),
             int(self.config["n_hidden_layers"]))
 
-    @tf.function
+    # @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)

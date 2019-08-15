@@ -20,16 +20,16 @@ class EnvSpec(gym.envs.registration.EnvSpec):
 
     def make(self, **kwargs):
         """Instantiates an instance of the environment with appropriate kwargs"""
-        if self._entry_point is None:
+        if self.entry_point is None:
             raise gym.error.Error(
                 "Attempting to make deprecated env {}. (HINT: is there a newer registered version of this env?)".format(self.id))
 
-        elif callable(self._entry_point):
-            env = self._entry_point()
+        elif callable(self.entry_point):
+            env = self.entry_point()
         else:
             all_kwargs = self._kwargs
             all_kwargs.update(kwargs)
-            cls = gym.envs.registration.load(self._entry_point)
+            cls = gym.envs.registration.load(self.entry_point)
             if cls == Environment:
                 env = cls(gym.make(all_kwargs["old_env_name"]), **all_kwargs)
             else:
@@ -45,11 +45,10 @@ def make(env_id: str, **kwargs):
     env = spec.make(**kwargs)
 
     if not isinstance(env, Environment):
-        if (env.spec.timestep_limit is not None) and not spec.tags.get('vnc'):
+        if (env.spec.max_episode_steps is not None) and not spec.tags.get('vnc'):
             from gym.wrappers.time_limit import TimeLimit
             env = TimeLimit(env,
-                            max_episode_steps=env.spec.max_episode_steps,
-                            max_episode_seconds=env.spec.max_episode_seconds)
+                            max_episode_steps=env.spec.max_episode_steps)
         env = Environment(env)
     if "atari.atari_env" in env.unwrapped.__module__:
         env = AtariRescale42x42(env)
@@ -71,7 +70,7 @@ def make_environments(descriptions: Sequence[dict]) -> list:
 def make_random_environments(env_id: str, n_envs: int) -> list:
     """Make n_envs random environments of the env_name class."""
     spec = gym.envs.registry.spec(env_id)
-    cls = gym.envs.registration.load(spec._entry_point)
+    cls = gym.envs.registration.load(spec.entry_point)
     envs = []
     for _ in range(n_envs):
         args = {"id": env_id}

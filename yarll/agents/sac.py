@@ -62,7 +62,7 @@ class SAC(Agent):
         self.n_updates = 0
         self.total_steps = 0
         self.total_episodes = 0
-        self.writer = tf.summary.create_file_writer(self.monitor_path)
+        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def value(self, states: np.ndarray) -> np.ndarray:
         return self.value_network(states)

@@ -50,7 +50,7 @@ class REINFORCE(Agent):
 
         self.network = self.build_network()
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"])
-        self.writer = tf.summary.create_file_writer(self.monitor_path)
+        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def build_network(self) -> tf.keras.Model:
         raise NotImplementedError()

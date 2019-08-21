@@ -96,7 +96,7 @@ class PPO(Agent):
 
         if self.config["checkpoints"]:
             checkpoint_directory = self.monitor_path / "checkpoints"
-            self.ckpt = tf.train.Checkpoint(model=self.new_network)
+            self.ckpt = tf.train.Checkpoint(net=self.new_network)
             self.cktp_manager = tf.train.CheckpointManager(self.ckpt, checkpoint_directory, 10)
             self.checkpoint_every_iters = 10
 
@@ -126,7 +126,7 @@ class PPO(Agent):
             inp = [np.asarray(trajectory.states)[None, -1]]
             if features[-1] is not None:
                 inp.append(features[None, -1])
-            v = self.new_network.action_value(*inp)[-2 if features[-1] is not None else -1]
+            v = self.new_network.action_value(*inp)[-2 if features[-1] is not None else -1][0]
         vpred = np.asarray(trajectory.values + [v])
         gamma = self.config["gamma"]
         lambda_ = self.config["gae_lambda"]

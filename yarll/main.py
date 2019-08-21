@@ -2,6 +2,8 @@
 # -*- coding: utf8 -*-
 
 import argparse
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from yarll.misc.utils import json_to_dict, save_config, set_seed, spaces_mapping
 
 def run_experiment(spec, monitor_path=None, only_last=False, description=None, seed=None):

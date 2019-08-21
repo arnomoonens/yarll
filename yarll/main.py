@@ -22,7 +22,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
 
     args = spec["agent"]["args"]
 
-    if monitor_path:
+    if monitor_path is not None:
         monitor_path = Path(monitor_path).absolute()
         args["monitor_path"] = monitor_path
     else:
@@ -30,6 +30,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     args["config_path"] = str(monitor_path / "config.json")
     if not monitor_path.exists():
         monitor_path.mkdir(parents=True)
+    print(f"Logging to {monitor_path}")
     envs_type = spec["environments"]["type"]
     if envs_type == "single":
         envs = [make(spec["environments"]["source"])]

@@ -44,6 +44,15 @@ pip install yarll
 
 ```
 
+For now, install the dependencies in requirements and install yarll by making a symbolic link:
+```Shell
+
+cd ~/miniconda3/lib/python3.7/site-packages/
+ln -s /Users/plibin/projects/yarll-private/yarll ./yarll
+
+```
+
+
 ### Algorithms/experiments
 
 You can run algorithms by passing the path to an experiment specification (which is a file in _json_ format) to `main.py`:

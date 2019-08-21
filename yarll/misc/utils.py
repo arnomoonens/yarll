@@ -15,7 +15,7 @@ from scipy import signal
 import numpy as np
 
 import gym
-from gym.spaces.box import Box
+from gym.spaces import Discrete, Box, MultiBinary, MultiDiscrete
 
 def discount_rewards(x: Sequence, gamma: float) -> np.ndarray:
     """
@@ -77,16 +77,16 @@ def save_config(directory: str, config: dict, envs: list, repo_path: str = path.
     git_dir = os.path.join(repo_path, ".git")
     try:
         git = {
-            "head": execute_command(r"git --git-dir='{}' branch | grep \* | cut -d ' ' -f2".format(git_dir)),
-            "commit": execute_command(r"git --git-dir='{}' rev-parse HEAD".format(git_dir)),
-            "message": execute_command(r"git --git-dir='{}' log -1 --pretty=%B".format(git_dir))[:-1],
-            "diff": execute_command(r"git --git-dir='{}' diff --no-prefix".format(git_dir))
+            "head": execute_command(f"git --git-dir='{git_dir}' branch | grep \* | cut -d ' ' -f2"),
+            "commit": execute_command(f"git --git-dir='{git_dir}' rev-parse HEAD"),
+            "message": execute_command(f"git --git-dir='{git_dir}' log -1 --pretty=%B")[:-1],
+            "diff": execute_command(f"git --git-dir='{git_dir}' diff --no-prefix")
         }
         filtered_config["git"] = git
     except ImportError:
         pass
     # save pip freeze output
-    pipfreeze = execute_command("{} -m pip freeze".format(sys.executable))
+    pipfreeze = execute_command(f"{sys.executable} -m pip freeze")
     filtered_config["packages"] = pipfreeze.split("\n")
     with open(path.join(directory, "config.json"), "w") as outfile:
         json.dump(filtered_config, outfile, indent=4)
@@ -218,3 +218,10 @@ def hard_update(source_vars: Sequence[tf.Variable], target_vars: Sequence[tf.Var
 
 def flatten_list(l: List[List]):
     return list(itertools.chain.from_iterable(l))
+
+spaces_mapping = {
+    Discrete: "discrete",
+    MultiDiscrete: "multidiscrete",
+    Box: "continuous",
+    MultiBinary: "multibinary"
+}

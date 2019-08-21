@@ -296,7 +296,7 @@ class PPOContinuous(PPO):
 
     def choose_action(self, state, features) -> dict:
         action, _, value = self.new_network.action_value(state[None, :])
-        return {"action": action, "value": value}
+        return {"action": action, "value": value[0]}
 
     def get_env_action(self, action):
         return action

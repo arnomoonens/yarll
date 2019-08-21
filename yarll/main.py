@@ -2,7 +2,7 @@
 # -*- coding: utf8 -*-
 
 import argparse
-from yarll.misc.utils import json_to_dict, save_config, set_seed
+from yarll.misc.utils import json_to_dict, save_config, set_seed, spaces_mapping
 
 def run_experiment(spec, monitor_path=None, only_last=False, description=None, seed=None):
     """Run an experiment using a specification dictionary."""
@@ -17,7 +17,6 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     import datetime
     import gym
     gym.logger.set_level(gym.logger.ERROR)
-    from gym.spaces import Discrete, Box, MultiBinary, MultiDiscrete
     from yarll.environment.registration import make, make_environments
     from yarll.agents.registration import make_agent
 
@@ -42,12 +41,6 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     args["envs"] = envs
     if len(envs) == 1 or only_last:
         args["env"] = envs[-1]
-    spaces_mapping = {
-        Discrete: "discrete",
-        MultiDiscrete: "multidiscrete",
-        Box: "continuous",
-        MultiBinary: "multibinary"
-    }
     action_space_type = spaces_mapping.get(type(envs[0].action_space), None)
     if len(envs[0].observation_space.shape) > 1:
         state_dimensions = "multi"

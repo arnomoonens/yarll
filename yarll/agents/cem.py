@@ -6,6 +6,7 @@
 import numpy as np
 from gym import wrappers
 from gym.spaces import Discrete, Box, MultiBinary
+import tensorflow as tf # for summaries
 
 from yarll.agents.agent import Agent
 from yarll.misc.exceptions import WrongShapeError
@@ -116,6 +117,10 @@ class CEM(Agent):
         self.theta_mean = np.zeros(self.dim_theta)
         self.theta_std = np.ones(self.dim_theta)
 
+        self.total_steps = 0
+        self.total_episodes = 0
+        self.writer = tf.summary.create_file_writer(str(monitor_path))
+
     def make_policy(self, theta) -> Policy:
         if isinstance(self.env.action_space, Discrete):
             return DeterministicDiscreteActionLinearPolicy(theta, self.env.observation_space, self.env.action_space)
@@ -135,31 +140,36 @@ class CEM(Agent):
         total_rew = 0
         ob = self.env.reset()
         for _ in range(self.config["num_steps"]):
-            a = policy.act(ob)
+            a = np.squeeze(policy.act(ob))
             ob, reward, done, _info = self.env.step(a)
+            self.total_steps += 1
             if render:
                 self.env.render()
             total_rew += reward
             if done:
                 break
+        self.total_episodes += 1
+        tf.summary.scalar("env/Reward", total_rew, step=self.total_steps)
+        tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
         return total_rew
 
     def learn(self):
-        for iteration in range(self.config["n_iter"]):
-            # Sample parameter vectors
-            thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta)
-                      for _ in range(self.config["batch_size"])]
-            rewards = [self.noisy_evaluation(theta) for theta in thetas]
-            # Get elite parameters
-            n_elite = int(self.config["batch_size"] * self.config["elite_frac"])
-            elite_inds = np.argsort(rewards)[self.config["batch_size"] - n_elite:self.config["batch_size"]]
-            elite_thetas = [thetas[i] for i in elite_inds]
-            # Update theta_mean, theta_std
-            self.theta_mean = np.mean(elite_thetas, axis=0)
-            self.theta_std = np.std(elite_thetas, axis=0)
-            print("iteration {:d}. mean f: {:>8.3g}. max f: {:>8.3g}".format(
-                iteration,
-                np.mean(rewards),
-                np.max(rewards)))
-            self.do_episode(self.make_policy(self.theta_mean))
-        self.do_episode(self.make_policy(self.theta_mean), render=True)
+        with self.writer.as_default():
+            for iteration in range(self.config["n_iter"]):
+                # Sample parameter vectors
+                thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta)
+                        for _ in range(self.config["batch_size"])]
+                rewards = [self.noisy_evaluation(theta) for theta in thetas]
+                # Get elite parameters
+                n_elite = int(self.config["batch_size"] * self.config["elite_frac"])
+                elite_inds = np.argsort(rewards)[self.config["batch_size"] - n_elite:self.config["batch_size"]]
+                elite_thetas = [thetas[i] for i in elite_inds]
+                # Update theta_mean, theta_std
+                self.theta_mean = np.mean(elite_thetas, axis=0)
+                self.theta_std = np.std(elite_thetas, axis=0)
+                print("iteration {:d}. mean f: {:>8.3g}. max f: {:>8.3g}".format(
+                    iteration,
+                    np.mean(rewards),
+                    np.max(rewards)))
+                self.do_episode(self.make_policy(self.theta_mean))
+            self.do_episode(self.make_policy(self.theta_mean), render=True)

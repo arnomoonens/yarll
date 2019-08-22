@@ -44,14 +44,15 @@ pip install yarll
 
 ```
 
-For now, install the dependencies in requirements and install yarll by making a symbolic link:
+To use the library on a specific branch or to use it while changing the code, you can add the path to the library to your `$PYTHONPATH` (e.g., in your `.bashrc` or `.zshrc` file):
+
 ```Shell
 
-cd ~/miniconda3/lib/python3.7/site-packages/
-ln -s /Users/plibin/projects/yarll-private/yarll ./yarll
+export PYTHONPATH=/path/to/yarll:$PYTHONPATH
 
 ```
 
+Alternatively, you can add a symlink from your `site-packages` to the _yarll_ directory.
 
 ### Algorithms/experiments
 
@@ -59,9 +60,11 @@ You can run algorithms by passing the path to an experiment specification (which
 
 ```Shell
 
-python -m yarll.main <path_to_experiment_specification>
+python yarll/main.py <path_to_experiment_specification>
 
 ```
+
+You can see all the possible arguments by running `python yarll/main.py -h`.
 
 Examples of experiment specifications can be found in the [_experiment_specs_](./experiment_specs) folder.
 

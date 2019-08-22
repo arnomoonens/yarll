@@ -5,7 +5,7 @@
 
 import numpy as np
 from gym import wrappers
-from gym.spaces import Discrete, Box
+from gym.spaces import Discrete, Box, MultiBinary
 
 from yarll.agents.agent import Agent
 from yarll.misc.exceptions import WrongShapeError
@@ -47,6 +47,30 @@ class DeterministicDiscreteActionLinearPolicy(Policy):
         a = y.argmax()
         return a
 
+
+class DeterministicMultiBinaryActionLinearPolicy(Policy):
+    """Deterministicially select an action from a discrete action space using a linear function."""
+
+    def __init__(self, theta, ob_space, ac_space) -> None:
+        """
+        dim_ob: dimension of observations
+        n_actions: number of actions
+        theta: flat vector of parameters
+        """
+        dim_ob = ob_space.shape[0]
+        n_actions = ac_space.n
+        expected_shape = (dim_ob + 1) * n_actions
+        if len(theta) != expected_shape:
+            raise WrongShapeError("Expected a theta of length {} instead of {}".format(expected_shape, len(theta)))
+        self.W = theta[0: dim_ob * n_actions].reshape(dim_ob, n_actions)
+        self.b = theta[dim_ob * n_actions: None].reshape(1, n_actions)
+
+    def act(self, ob):
+        """Select the action that got the highest value from the linear function."""
+        y = ob.dot(self.W) + self.b
+        a = (y >= 0.5).astype(np.int32)
+        return a
+
 class DeterministicContinuousActionLinearPolicy(Policy):
     """Deterministicially select an action from a continuous action space using a linear function."""
     def __init__(self, theta, ob_space, ac_space) -> None:
@@ -84,6 +108,8 @@ class CEM(Agent):
             self.dim_theta = (env.observation_space.shape[0] + 1) * env.action_space.n
         elif isinstance(env.action_space, Box):
             self.dim_theta = (env.observation_space.shape[0] + 1) * env.action_space.shape[0]
+        elif isinstance(env.action_space, MultiBinary):
+            self.dim_theta = (env.observation_space.shape[0] + 1) * env.action_space.n
         else:
             raise NotImplementedError
         # Initialize mean and standard deviation
@@ -95,6 +121,8 @@ class CEM(Agent):
             return DeterministicDiscreteActionLinearPolicy(theta, self.env.observation_space, self.env.action_space)
         elif isinstance(self.env.action_space, Box):
             return DeterministicContinuousActionLinearPolicy(theta, self.env.observation_space, self.env.action_space)
+        elif isinstance(self.env.action_space, MultiBinary):
+            return DeterministicMultiBinaryActionLinearPolicy(theta, self.env.observation_space, self.env.action_space)
         else:
             raise NotImplementedError
 

@@ -117,7 +117,7 @@ def set_seed(seed: int):
 def load(name: str):
     """Load an object by string."""
     entry_point = pkg_resources.EntryPoint.parse("x={}".format(name))
-    result = entry_point.load(False)
+    result = entry_point.resolve()
     return result
 
 def cluster_spec(num_workers: int, num_ps: int, num_masters: int = 0) -> dict:

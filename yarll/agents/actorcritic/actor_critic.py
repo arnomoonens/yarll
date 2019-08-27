@@ -34,7 +34,7 @@ class ActorCriticNetworkLatent(ActorCriticNetwork):
         self.value = Sequential()
         for _ in range(n_hidden_layers):
             self.value.add(Dense(n_hidden_units, activation="tanh", kernel_initializer=Orthogonal(gain=np.sqrt(2))))
-            self.value.add(Dense(1, kernel_initializer=Orthogonal(gain=0.01)))
+        self.value.add(Dense(1, kernel_initializer=Orthogonal(gain=0.01)))
 
     def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor

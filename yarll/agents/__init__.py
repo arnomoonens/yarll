@@ -54,7 +54,7 @@ register_agent(name="PPO",
               )
 register_agent(name="PPO",
                entry_point="yarll.agents.ppo.ppo:PPOBernoulli",
-               state_dimensions="single",
+               state_dimensions="continuous",
                action_space="multibinary"
                )
 register_agent(name="PPO",
@@ -130,6 +130,11 @@ register_agent(name="CEM",
 register_agent(name="CEM",
                entry_point="yarll.agents.cem:CEM",
                state_dimensions="continuous",
+               action_space="multibinary"
+               )
+register_agent(name="CEM",
+               entry_point="yarll.agents.cem:CEM",
+               state_dimensions="continuous",
                action_space="continuous"
               )
 register_agent(name="Karpathy",
@@ -153,6 +158,11 @@ register_agent(name="REINFORCE",
                action_space="discrete",
                RNN=True
               )
+register_agent(name="REINFORCE",
+               entry_point="yarll.agents.reinforce:REINFORCEBernoulli",
+               state_dimensions="continuous",
+               action_space="multibinary"
+               )
 register_agent(name="REINFORCE",
                entry_point="yarll.agents.reinforce:REINFORCEDiscreteCNN",
                state_dimensions="multi",

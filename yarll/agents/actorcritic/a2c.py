@@ -172,6 +172,7 @@ class A2CContinuous(A2C):
     def train(self, states, actions_taken, advantages, returns, features=None):
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)
+        returns = tf.cast(returns, dtype=tf.float32)
         inp = states if features is None else [states, tf.reshape(
             features, [features.shape[0], self.config["n_hidden_units"]])]
         with tf.GradientTape() as tape:

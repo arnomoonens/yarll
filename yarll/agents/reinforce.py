@@ -57,10 +57,7 @@ class REINFORCE(Agent):
 
     def choose_action(self, state, features) -> Dict[str, np.ndarray]:
         """Choose an action."""
-        inp = tf.convert_to_tensor([state], dtype=tf.float32)
-        probs = self.network(inp)
-        action = tf.random.categorical(tf.math.log(probs), 1).numpy()[0, 0]
-        return {"action": action}
+        raise NotImplementedError()
 
     @tf.function
     def train(self, states, actions_taken, advantages, features=None):
@@ -70,11 +67,12 @@ class REINFORCE(Agent):
         inp = states if features is None else [states, features]
         with tf.GradientTape() as tape:
             res = self.network(inp)
-            probs = res if features is None else res[0]
-            good_probs = tf.reduce_sum(tf.multiply(probs,
-                                                   tf.one_hot(actions_taken, self.env.action_space.n)),
-                                       axis=1)
-            eligibility = tf.math.log(good_probs) * advantages
+            if features is None:
+                logits = res
+            else:
+                logits = res[0]
+            log_probs = self.network.log_prob(actions_taken, logits)
+            eligibility = log_probs * advantages
             loss = -tf.reduce_sum(eligibility)
             gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
@@ -122,15 +120,23 @@ class REINFORCE(Agent):
 class ActorDiscrete(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, n_actions, activation="tanh"):
         super(ActorDiscrete, self).__init__()
-        self.hidden = Sequential()
+        self.logits = Sequential()
 
         for _ in range(n_hidden_layers):
-            self.hidden.add(Dense(n_hidden_units, activation=activation))
-        self.probs = Dense(n_actions, activation="softmax")
+            self.logits.add(Dense(n_hidden_units, activation=activation))
+        self.logits.add(Dense(n_actions))
 
-    def call(self, state):
-        x = self.hidden(state)
-        return self.probs(x)
+    def call(self, inp):
+        return self.logits(inp)
+
+    def action(self, states):
+        logits = self.predict(states)
+        probs = tf.nn.softmax(logits)
+        return tf.random.categorical(tf.math.log(probs), 1)
+
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
+
 
 class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
@@ -141,6 +147,11 @@ class REINFORCEDiscrete(REINFORCE):
                              self.config["n_hidden_units"],
                              self.env.action_space.n)
 
+    def choose_action(self, state, features) -> Dict[str, np.ndarray]:
+        """Choose an action."""
+        inp = tf.convert_to_tensor([state], dtype=tf.float32)
+        action = self.network.action(inp).numpy()[0, 0]
+        return {"action": action}
 
 class ActorDiscreteCNN(Model):
     def __init__(self, n_actions, n_hidden_units, n_conv_layers=4, n_filters=32, kernel_size=3, strides=2, padding="same", activation="elu"):
@@ -155,12 +166,20 @@ class ActorDiscreteCNN(Model):
                                         activation=activation))
         self.conv_layers.add(Flatten())
         self.hidden = Dense(n_hidden_units)
-        self.probs = Dense(n_actions, activation="softmax")
+        self.logits = Dense(n_actions)
 
     def call(self, state):
         x = self.conv_layers(state)
         x = self.hidden(x)
-        return self.probs(x)
+        return self.logits(x)
+
+    def action(self, states):
+        logits = self.predict(states)
+        probs = tf.nn.softmax(logits)
+        return tf.random.categorical(tf.math.log(probs), 1)
+
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 class REINFORCEDiscreteCNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
@@ -176,14 +195,21 @@ class ActorDiscreteRNN(Model):
         super(ActorDiscreteRNN, self).__init__()
         self.expand = flatten_to_rnn
         self.rnn = GRU(rnn_size, return_state=True)
-        self.probs = Dense(n_actions, activation="softmax")
+        self.logits = Dense(n_actions)
 
     def call(self, inp):
         state, hidden = inp
         x = self.expand(state)
         x, new_hidden = self.rnn(x, hidden)
-        return self.probs(x), new_hidden
+        return self.logits(x), new_hidden
 
+    def action(self, inp):
+        logits, hidden = self.predict(inp)
+        probs = tf.nn.softmax(logits)
+        return tf.random.categorical(tf.math.log(probs), 1), hidden
+
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
@@ -193,13 +219,12 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def build_network(self):
         return ActorDiscreteRNN(self.config["n_hidden_units"], self.env.action_space.n)
 
-    def choose_action(self, state, features):
+    def choose_action(self, state, features) -> Dict[str, np.ndarray]:
         """Choose an action."""
-        inp = tf.cast([state], tf.float32)
+        inp = tf.convert_to_tensor([state], dtype=tf.float32)
         features = tf.reshape(features, (1, self.config["n_hidden_units"]))
-        probs, new_state = self.network([inp, features])
-        action = tf.random.categorical(tf.math.log(probs), 1).numpy()[0, 0]
-        return {"action": action, "features": new_state}
+        action, new_state = self.network.action([inp, features])
+        return {"action": action.numpy()[0, 0], features: new_state}
 
 
 class ActorDiscreteCNNRNN(Model):
@@ -213,19 +238,59 @@ class ActorDiscreteCNNRNN(Model):
         self.conv_layers.add(flatten_to_rnn)
 
         self.rnn = GRU(rnn_size, return_state=True)
-        self.probs = Dense(n_actions, activation="softmax")
+        self.logits = Dense(n_actions)
 
     def call(self, inp):
         state, hidden = inp
         x = self.conv_layers(state)
         x, new_hidden = self.rnn(x, hidden)
-        return self.probs(x), new_hidden
+        return self.logits(x), new_hidden
 
+    def action(self, inp):
+        logits, hidden = self.predict(inp)
+        probs = tf.nn.softmax(logits)
+        return tf.random.categorical(tf.math.log(probs), 1), hidden
+
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
     def build_network(self):
         return ActorDiscreteCNNRNN(self.config["n_hidden_units"], self.env.action_space.n)
 
+class ActorBernoulli(Model):
+    def __init__(self, n_hidden_layers, n_hidden_units, n_actions, activation="tanh"):
+        super(ActorBernoulli, self).__init__()
+        self.logits = Sequential()
+
+        for _ in range(int(n_hidden_layers)):
+            self.logits.add(Dense(n_hidden_units, activation=activation))
+        self.logits.add(Dense(n_actions))
+
+    def call(self, states):
+        return self.logits(tf.convert_to_tensor(states, dtype=tf.float32))
+
+    def action(self, inp):
+        logits = self.predict(inp)
+        probs = tf.sigmoid(logits)
+        samples_from_uniform = tf.random.uniform(probs.shape)
+        return tf.cast(tf.less(samples_from_uniform, probs), tf.float32)
+
+    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        return -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(actions, tf.float32),
+                                                                      logits=logits),
+                              axis=-1)
+
+class REINFORCEBernoulli(REINFORCE):
+
+    def build_network(self):
+        return ActorBernoulli(self.config["n_hidden_units"], self.config["n_hidden_layers"], self.env.action_space.n)
+
+    def choose_action(self, state, features):
+        """Choose an action."""
+        inp = tf.cast([state], tf.float32)
+        action = self.network.action(inp)[0]
+        return {"action": action}
 
 class ActorContinuous(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, action_space_shape, activation="tanh"):

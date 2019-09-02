@@ -3,6 +3,7 @@
 #  Cross-Entropy Method
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab1.html
 
+from pathlib import Path
 import numpy as np
 from gym import wrappers
 from gym.spaces import Discrete, Box, MultiBinary
@@ -69,6 +70,7 @@ class DeterministicMultiBinaryActionLinearPolicy(Policy):
     def act(self, ob):
         """Select the action that got the highest value from the linear function."""
         y = ob.dot(self.W) + self.b
+        y = 1 / (1 + np.exp(-y))
         a = (y >= 0.5).astype(np.int32)
         return a
 
@@ -97,6 +99,7 @@ class CEM(Agent):
     """Cross-Entropy Method learner"""
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(CEM, self).__init__(**usercfg)
+        self.monitor_path = Path(monitor_path)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.config.update(dict(
             num_steps=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),  # maximum length of episode
@@ -105,6 +108,7 @@ class CEM(Agent):
             elite_frac=0.2  # fraction of samples used as elite set
         ))
         self.config.update(usercfg)
+
         if isinstance(env.action_space, Discrete):
             self.dim_theta = (env.observation_space.shape[0] + 1) * env.action_space.n
         elif isinstance(env.action_space, Box):
@@ -172,4 +176,6 @@ class CEM(Agent):
                     np.mean(rewards),
                     np.max(rewards)))
                 self.do_episode(self.make_policy(self.theta_mean))
+            theta_path = self.monitor_path / "best_theta"
+            np.save(theta_path, elite_thetas[-1])
             self.do_episode(self.make_policy(self.theta_mean), render=True)

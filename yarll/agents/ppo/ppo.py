@@ -42,7 +42,7 @@ class PPO(Agent):
             gae_lambda=0.95,
             learning_rate=0.001,
             n_epochs=10,
-            n_iter=10000,
+            max_steps=500000,
             batch_size=64,  # Timesteps per training batch
             n_local_steps=256,
             normalize_states=False,
@@ -176,8 +176,10 @@ class PPO(Agent):
         self.new_network.build(input_shape)
         n_updates = 0
         n_steps = 0
+        iteration = 0
         with self.writer.as_default():
-            for iteration in range(1, int(config["n_iter"]) + 1):
+            # for iteration in range(1, int(config["n_iter"]) + 1):
+            while n_steps < int(config["max_steps"]):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 states, actions, advs, rs, values, _ = self.get_processed_trajectories()
                 traj_steps = len(states)
@@ -224,6 +226,7 @@ class PPO(Agent):
                         n_updates += 1
                 if self.config["checkpoints"] and (iteration % self.checkpoint_every_iters) == 0:
                     self.cktp_manager.save()
+                iteration += 1
 
             if self.config["save_model"]:
                 tf.saved_model.save(self.new_network, os.path.join(self.monitor_path, "model"))

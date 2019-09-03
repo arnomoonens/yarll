@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import List
 import numpy as np
 import tensorflow as tf
@@ -14,7 +15,7 @@ class FittedQIteration(Agent):
         super(FittedQIteration, self).__init__()
 
         self.env = env
-        self.monitor_path = monitor_path
+        self.monitor_path = Path(monitor_path)
 
         self.config.update(
             n_episodes=1000,

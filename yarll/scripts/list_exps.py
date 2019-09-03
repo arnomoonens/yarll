@@ -1,21 +1,22 @@
 import os
 import json
 import argparse
+from pathlib import Path
 import pandas as pd
 import dateutil
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("directory", help="Path to the directory.")
+parser.add_argument("directory", type=Path help="Path to the directory.")
 
 
 def main():
     args = parser.parse_args()
-    dirs = sorted([d for d in os.listdir(args.directory) if os.path.isdir(os.path.join(args.directory, d))], key=lambda x: int(x[3:]))
+    dirs = sorted([d for d in os.listdir(args.directory) if os.path.isdir(args.directory / d)], key=lambda x: int(x[3:]))
     header = ["RUN", "DESCR", "START", "BRANCH", "COMMITMSG"]
     data = []
     for d in dirs:
-        config_path = os.path.join(args.directory, d, "config.json")
+        config_path = args.directory / d / "config.json"
         if os.path.exists(config_path):
             with open(config_path) as f:
                 config = json.load(f)

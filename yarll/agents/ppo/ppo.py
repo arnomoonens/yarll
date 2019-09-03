@@ -229,8 +229,7 @@ class PPO(Agent):
                 iteration += 1
 
             if self.config["save_model"]:
-                tf.saved_model.save(self.new_network, os.path.join(self.monitor_path, "model"))
-
+                tf.saved_model.save(self.new_network, self.monitor_path / "model")
 
 class PPODiscrete(PPO):
     def build_networks(self) -> ActorCriticNetwork:

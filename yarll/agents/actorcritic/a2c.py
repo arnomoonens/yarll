@@ -26,7 +26,7 @@ class A2C(Agent):
 
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
         super(A2C, self).__init__(**usercfg)
-        self.monitor_path = monitor_path
+        self.monitor_path = Path(monitor_path)
 
         self.env = wrappers.Monitor(
             env,
@@ -107,7 +107,7 @@ class A2C(Agent):
                 tf.summary.scalar("model/actor_loss", iter_actor_loss, step=iteration)
                 tf.summary.scalar("model/critic_loss", iter_critic_loss, step=iteration)
             if self.config["save_model"]:
-                tf.saved_model.save(self.ac_net, os.path.join(self.monitor_path, "model"))
+                tf.saved_model.save(self.ac_net, self.monitor_path / "model")
 
 
 class A2CDiscrete(A2C):

@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 import tensorflow as tf
 
@@ -9,7 +10,7 @@ class QLearning(Agent):
     def __init__(self, env: Environment, monitor_path: str, **usercfg) -> None:
         super(QLearning, self).__init__()
         self.env = env
-        self.monitor_path = monitor_path
+        self.monitor_path = Path(monitor_path)
 
         self.config.update(
             n_episodes=1000,

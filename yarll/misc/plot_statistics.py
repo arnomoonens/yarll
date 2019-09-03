@@ -7,6 +7,7 @@ import json
 import argparse
 import operator
 import logging
+from pathlib import Path
 import numpy as np
 from tensorboard.backend.event_processing.plugin_event_multiplexer import EventMultiplexer
 import matplotlib.pyplot as plt
@@ -89,7 +90,7 @@ def plot_tasks(data, x_label: str, smoothing_function=None, xmin=None, xmax=None
         plt.title("{} per {}".format(scalar, x_label))
         fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
         if save_directory is not None:
-            plt.savefig(os.path.join(save_directory, "{}_per_{}".format(scalar, x_label) + IMAGES_EXT))
+            plt.savefig(save_directory / f"{scalar}_per_{x_label}{IMAGES_EXT}")
     if show_plots:
         plt.show()
 
@@ -105,7 +106,7 @@ def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None, save_
     ymax = max(0, max_aer + 0.1 * max_aer)
     plot(range(len(data)), data, "episode", "total reward", xmax=xmax, ymin=ymin, ymax=ymax)
     if save_directory is not None:
-        plt.savefig(os.path.join(save_directory, "totalreward_per_episode" + IMAGES_EXT))
+        plt.savefig(save_directory / f"totalreward_per_episode{IMAGES_EXT}")
 
     data = contents["episode_lengths"]
     if smoothing_function:
@@ -115,7 +116,7 @@ def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None, save_
     ymax = (max_ael + 0.1 * max_ael)
     plot(range(len(data)), data, "episode", "length", xmax=xmax, ymin=ymin, ymax=ymax)
     if save_directory is not None:
-        plt.savefig(os.path.join(save_directory, "length_per_episode" + IMAGES_EXT))
+        plt.savefig(save_directory / f"length_per_episode{IMAGES_EXT}")
     if show_plots:
         plt.show()
 

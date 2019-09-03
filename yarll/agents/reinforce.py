@@ -33,7 +33,7 @@ class REINFORCE(Agent):
                                         monitor_path,
                                         force=True,
                                         video_callable=(None if video else False))
-        self.monitor_path = monitor_path
+        self.monitor_path = Path(monitor_path)
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
             batch_update="timesteps",
@@ -114,7 +114,7 @@ class REINFORCE(Agent):
 
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         if self.config["save_model"]:
-            tf.saved_model.save(self.network, os.path.join(self.monitor_path, "model"))
+            tf.saved_model.save(self.network, self.monitor_path / "model")
 
 
 class ActorDiscrete(Model):

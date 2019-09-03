@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf8 -*-
 
-import os
 import argparse
+from pathlib import Path
 import tensorflow as tf
 from gym import wrappers
 
@@ -16,8 +16,8 @@ class ModelRunner(object):
     def __init__(self, env, model_directory: str, save_directory: str, **usercfg) -> None:
         super(ModelRunner, self).__init__()
         self.env = env
-        self.model_directory = model_directory
-        self.save_directory = save_directory
+        self.model_directory = Path(model_directory)
+        self.save_directory = Path(save_directory)
         self.config = dict(
             episode_max_length=self.env.spec.tags.get('wrapper_config.TimeLimit.max_episode_steps'),
             repeat_n_actions=1
@@ -25,8 +25,8 @@ class ModelRunner(object):
         self.config.update(usercfg)
 
         self.session = tf.Session()
-        self.saver = tf.train.import_meta_graph(os.path.join(self.model_directory, "model.meta"))
-        self.saver.restore(self.session, os.path.join(self.model_directory, "model"))
+        self.saver = tf.train.import_meta_graph(self.model_directory / "model.meta")
+        self.saver.restore(self.session, self.model_directory / "model")
 
         self.action = tf.get_collection("action")[0]
         self.states = tf.get_collection("states")[0]

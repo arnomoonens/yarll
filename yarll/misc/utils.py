@@ -5,10 +5,10 @@ import sys
 import argparse
 import json
 import os
-from os import path
+from pathlib import Path
 import random
 import subprocess
-from typing import Any, Callable, List, Sequence, Union
+from typing import Any, Callable, Dict, List, Sequence, Union
 import pkg_resources
 import tensorflow as tf
 from scipy import signal
@@ -63,32 +63,34 @@ def preprocess_image(img: np.ndarray) -> np.ndarray:
     img = img[::2, ::2]  # downsample by factor of 2
     return (rgb2gray(img) / 256.0)[:, :, None]
 
-def execute_command(cmd: str) -> str:
+def execute_command(cmd: List[str]) -> str:
     """Execute a terminal command and return the stdout."""
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-    stdout, _ = p.communicate()
-    return stdout.decode()[:-1] # decode to go from bytes to str, [:-1] to remove newline at end
+    res = subprocess.check_output(cmd, stderr=subprocess.DEVNULL)
+    return res.decode()[:-1]  # decode to go from bytes to str, [:-1] to remove newline at end
 
-def save_config(directory: str, config: dict, envs: list, repo_path: str = path.join(path.dirname(path.realpath(__file__)), "..")) -> None:
+def save_config(directory: Union[str, Path],
+                config: Dict,
+                envs: list,
+                repo_path: Union[str, Path] = Path(__file__).parent / "../../") -> None:
     """Save the configuration of an agent to a file."""
     filtered_config = {k: v for k, v in config.items() if not k.startswith("env")}
     filtered_config["envs"] = envs
     # Save git information if possible
-    git_dir = os.path.join(repo_path, ".git")
+    git_dir = Path(repo_path) / ".git"
     try:
         git = {
-            "head": execute_command(f"git --git-dir='{git_dir}' branch | grep \* | cut -d ' ' -f2"),
-            "commit": execute_command(f"git --git-dir='{git_dir}' rev-parse HEAD"),
-            "message": execute_command(f"git --git-dir='{git_dir}' log -1 --pretty=%B")[:-1],
-            "diff": execute_command(f"git --git-dir='{git_dir}' diff --no-prefix")
+            "head": execute_command(["git", f"--git-dir={git_dir}", "rev-parse", "--abbrev-ref", "HEAD"]),
+            "commit": execute_command(["git", f"--git-dir={git_dir}", "rev-parse", "HEAD"]),
+            "message": execute_command(["git", f"--git-dir={git_dir}", "log", "-1", "--pretty=%B"])[:-1],
+            "diff": execute_command(["git", f"--git-dir={git_dir}", "diff", "--no-prefix"])
         }
         filtered_config["git"] = git
-    except ImportError:
+    except subprocess.CalledProcessError:
         pass
     # save pip freeze output
-    pipfreeze = execute_command(f"{sys.executable} -m pip freeze")
+    pipfreeze = execute_command([sys.executable, "-m", "pip", "freeze"])
     filtered_config["packages"] = pipfreeze.split("\n")
-    with open(path.join(directory, "config.json"), "w") as outfile:
+    with open(Path(directory) / "config.json", "w") as outfile:
         json.dump(filtered_config, outfile, indent=4)
 
 def json_to_dict(filename: str) -> dict:

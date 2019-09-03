@@ -22,6 +22,7 @@ class EnvRunner(object):
         )
         self.episode_steps: int = 0
         self.episode_reward: float = 0.0
+        self.episodes_rewards: List[float] = []
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
         self.summary_writer = summary_writer
@@ -77,6 +78,7 @@ class EnvRunner(object):
                 tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.total_steps)
                 tf.summary.scalar("env/Reward", self.episode_reward, step=self.total_steps)
                 tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
+                self.episodes_rewards.append(self.episode_reward)
                 self.episode_reward = 0
                 self.episode_steps = 0
                 self.reset_env()

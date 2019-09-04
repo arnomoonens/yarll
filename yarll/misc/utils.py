@@ -70,6 +70,7 @@ def execute_command(cmd: List[str]) -> str:
 
 def save_config(directory: Union[str, Path],
                 config: Dict,
+                agent_class: type,
                 envs: list,
                 repo_path: Union[str, Path] = Path(__file__).parent / "../../") -> None:
     """Save the configuration of an agent to a file."""
@@ -87,9 +88,15 @@ def save_config(directory: Union[str, Path],
         filtered_config["git"] = git
     except subprocess.CalledProcessError:
         pass
+
     # save pip freeze output
     pipfreeze = execute_command([sys.executable, "-m", "pip", "freeze"])
     filtered_config["packages"] = pipfreeze.split("\n")
+    # Save command used to run program
+    filtered_config["program_command"] = " ".join(sys.argv)
+    # Save agent class
+    filtered_config["agent_class"] = str(agent_class)
+
     with open(Path(directory) / "config.json", "w") as outfile:
         json.dump(filtered_config, outfile, indent=4)
 

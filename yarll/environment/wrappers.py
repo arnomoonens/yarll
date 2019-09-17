@@ -90,3 +90,24 @@ class NormalizedRewardWrapper(gym.RewardWrapper):
 
     def reward(self, rew):
         return (rew - self.low) / (self.high - self.low)
+
+class CenteredScaledActionWrapper(gym.ActionWrapper):
+    """
+    Centers and scales the actions such that they range between -1 and 1.
+    """
+
+    def __init__(self, env):
+        if not isinstance(env.action_space, gym.spaces.Box):
+            raise AssertionError("The action space must be a Box.")
+        super(CenteredScaledActionWrapper, self).__init__(env)
+
+        self._low = self.env.action_space.low
+        self._high = self.env.action_space.high
+        self._diff = self._high - self._low
+        self.action_space = gym.spaces.Box(-1., 1., self.env.action_space.shape)
+
+    def action(self, action):
+        return self._low + self._diff / 2 + action * self._diff / 2
+
+    def reverse_action(self, action):
+        return (2 * action - self._high - self._low) / self._diff

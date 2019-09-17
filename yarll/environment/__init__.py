@@ -1,5 +1,5 @@
 import gym
-from yarll.environment.registration import EnvSpec
+from gym.envs.registration import EnvSpec
 
 def register_env(name, entry_point: str, tags=None, **kwargs):
     already_registered = name in gym.envs.registry.env_specs
@@ -11,10 +11,18 @@ def register_env(name, entry_point: str, tags=None, **kwargs):
         new_tags = {}
     if tags is not None:
         new_tags.update(tags)
+    if already_registered:
+        if "kwargs" not in kwargs:
+            kwargs["kwargs"] = {}
+        kwargs["kwargs"]["old_env_name"] = old_env_name
+    max_episode_steps = None
+    if "max_episode_steps" in kwargs:
+        max_episode_steps = kwargs["max_episode_steps"]
+        del kwargs["max_episode_steps"]
     gym.envs.registry.env_specs[name] = EnvSpec(
         name,
         entry_point=entry_point,
-        kwargs={"old_env_name": old_env_name} if already_registered else {},
+        max_episode_steps=max_episode_steps,
         tags=new_tags,
         **kwargs)
 

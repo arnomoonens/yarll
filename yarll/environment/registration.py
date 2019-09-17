@@ -12,34 +12,6 @@ from yarll.environment.environment import Environment
 
 gym.logger.set_level(gym.logger.ERROR)
 
-class EnvSpec(gym.envs.registration.EnvSpec):
-    """
-    Modified version of `gym.envs.registration.EnvSpec`
-    to allow env initalization with different parameters.
-    """
-
-    def make(self, **kwargs):
-        """Instantiates an instance of the environment with appropriate kwargs"""
-        if self.entry_point is None:
-            raise gym.error.Error(
-                "Attempting to make deprecated env {}. (HINT: is there a newer registered version of this env?)".format(self.id))
-
-        elif callable(self.entry_point):
-            env = self.entry_point()
-        else:
-            all_kwargs = self._kwargs
-            all_kwargs.update(kwargs)
-            cls = gym.envs.registration.load(self.entry_point)
-            if cls == Environment:
-                env = cls(gym.make(all_kwargs["old_env_name"]), **all_kwargs)
-            else:
-                env = cls(**all_kwargs)
-
-        # Make the enviroment aware of which spec it came from.
-        env.unwrapped.spec = self
-
-        return env
-
 def make(env_id: str, **kwargs):
     spec = gym.envs.registry.spec(env_id)
     env = spec.make(**kwargs)

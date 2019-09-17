@@ -82,10 +82,10 @@ class NormalizedRewardWrapper(gym.RewardWrapper):
     Normalizes rewards such that the values are between 0.0 and 1.0.
     """
 
-    def __init__(self, env, low, high):
+    def __init__(self, env, low=None, high=None):
         super(NormalizedRewardWrapper, self).__init__(env)
-        self.low = low
-        self.high = high
+        self.low = low if low is not None else self.env.reward_range[0]
+        self.high = high if high is not None else self.env.reward_range[1]
         self.reward_range = (0.0, 1.0)
 
     def reward(self, rew):

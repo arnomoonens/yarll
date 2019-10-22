@@ -236,13 +236,12 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
     def __init__(self, action_space_shape, n_hidden_units: int, n_hidden_layers: int = 1) -> None:
         super(ActorCriticNetworkContinuous, self).__init__()
 
-        self.policy_hidden = Sequential()
-
+        self.policy_hidden = Sequential(name="policy_hidden")
         for _ in range(n_hidden_layers):
             self.policy_hidden.add(Dense(n_hidden_units, activation="tanh"))
-        self.action_mean = NormalDistrLayer(action_space_shape[0])
+        self.action_mean = NormalDistrLayer(action_space_shape[0], name="action_mean")
 
-        self.critic = Sequential()
+        self.critic = Sequential(name="critic")
         for _ in range(n_hidden_layers):
             self.critic.add(Dense(n_hidden_units, activation="tanh"))
         self.critic.add(Dense(1))

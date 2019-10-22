@@ -59,25 +59,25 @@ class FittedQIteration(Agent):
             action = np.random.randint(0, self.n_actions)
         else:
             # make batch of state-actions for every action (as onehot), then pass through network, then do argmax
-            tiled_state = tf.tile([state], [self.n_actions, 1])
-            actions_onehot = tf.one_hot(tf.range(self.n_actions), depth=self.n_actions, dtype=tf.float64)
+            tiled_state = tf.tile([state.astype(np.float32)], [self.n_actions, 1])
+            actions_onehot = tf.one_hot(tf.range(self.n_actions), depth=self.n_actions, dtype=tf.float32)
             inp = tf.concat([tiled_state, actions_onehot], axis=1)
             q_values = self.q_network(inp)
             action = tf.argmax(q_values).numpy()[0]
         return {"action": action}
 
     def get_processed_trajectories(self, trajectories: List[ExperiencesMemory]):
-        states = tf.convert_to_tensor(flatten_list([t.states for t in trajectories]), dtype=tf.float64)
+        states = tf.convert_to_tensor(flatten_list([t.states for t in trajectories]), dtype=tf.float32)
         actions = tf.convert_to_tensor(flatten_list([t.actions for t in trajectories]), dtype=tf.int32)
-        rewards = tf.convert_to_tensor(flatten_list([t.rewards for t in trajectories]), dtype=tf.float64)
-        next_states = tf.convert_to_tensor(flatten_list([t.next_states for t in trajectories]), dtype=tf.float64)
-        terminals = tf.convert_to_tensor(flatten_list([t.terminals for t in trajectories]), dtype=tf.float64)
+        rewards = tf.convert_to_tensor(flatten_list([t.rewards for t in trajectories]), dtype=tf.float32)
+        next_states = tf.convert_to_tensor(flatten_list([t.next_states for t in trajectories]), dtype=tf.float32)
+        terminals = tf.convert_to_tensor(flatten_list([t.terminals for t in trajectories]), dtype=tf.float32)
         return states, actions, rewards, next_states, terminals
 
     def calculate_target_q(self, rewards: tf.Tensor, next_states: tf.Tensor, terminals: tf.Tensor):
         n_states = len(rewards)
         # For every state, make a sample with the one-hot of every action concatenated to it
-        oh = np.zeros([self.n_actions, self.n_actions], dtype=np.float64)
+        oh = np.zeros([self.n_actions, self.n_actions], dtype=np.float32)
         actions_range = np.arange(self.n_actions)
         oh[actions_range, actions_range] = 1
         repeated_oh = np.repeat(oh, n_states, axis=0)
@@ -95,7 +95,7 @@ class FittedQIteration(Agent):
                 trajs = self.env_runner.get_trajectories()
                 states, actions, rewards, next_states, terminals = self.get_processed_trajectories(trajs)
                 target_q = self.calculate_target_q(rewards, next_states, terminals)
-                actions_oh = tf.one_hot(actions, depth=self.n_actions, dtype=tf.float64)
+                actions_oh = tf.one_hot(actions, depth=self.n_actions, dtype=tf.float32)
                 states_actions_oh = tf.concat([states, actions_oh], axis=1)
                 history = self.q_network.fit(states_actions_oh,
                                 target_q,

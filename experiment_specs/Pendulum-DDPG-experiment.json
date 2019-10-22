@@ -8,9 +8,8 @@
         "name": "DDPG",
         "args": {
             "monitor_path": "/tmp/Pendulum-v0-DDPG",
+            "replay_start_size": 1000,
             "video": false,
-            "n_hidden_units": 64,
-            "save_model": true,
             "monitor": false,
             "n_episodes": 400000
         }

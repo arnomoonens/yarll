@@ -1,17 +1,16 @@
 {
-    "experiment_name": "Pendulum-A2C",
+    "experiment_name": "CartPole-A3C",
     "environments": {
         "type": "single",
-        "source": "Pendulum-v0"
+        "source": "CartPole-v0"
     },
     "agent": {
-        "name": "A2C",
+        "name": "A3C",
         "args": {
-            "monitor_path": "/tmp/Pendulum-v0-A2C",
+            "monitor_path": "/tmp/CartPole-v0-A3C",
             "video": false,
             "save_model": true,
             "n_iter": 10000,
-            "n_hidden_units": 10,
             "monitor": true
         }
     }

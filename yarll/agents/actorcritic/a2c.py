@@ -4,6 +4,7 @@ import os
 import logging
 from typing import Optional, Tuple
 import tensorflow as tf
+import tensorflow_addons as tfa
 import numpy as np
 
 from gym import wrappers
@@ -52,8 +53,8 @@ class A2C(Agent):
         self.initial_features = None
         self.ac_net: tf.keras.Model = self.build_networks()
 
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"],
-                                                  clipnorm=self.config["gradient_clip_value"])
+        self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"],
+                                                      clipnorm=self.config["gradient_clip_value"])
         self.writer = tf.summary.create_file_writer(str(self.monitor_path))
         return
 

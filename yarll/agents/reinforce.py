@@ -4,13 +4,14 @@
 #  Adapted for Tensorflow
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html
 
-import os
+from pathlib import Path
 from typing import Dict
 import numpy as np
 
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, GRU
 from tensorflow.keras import Model, Sequential
+import tensorflow_addons as tfa
 from gym import wrappers
 
 from yarll.agents.agent import Agent
@@ -49,7 +50,7 @@ class REINFORCE(Agent):
         self.config.update(usercfg)
 
         self.network = self.build_network()
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["learning_rate"])
+        self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"])
         self.writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def build_network(self) -> tf.keras.Model:

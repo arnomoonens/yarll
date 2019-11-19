@@ -1,3 +1,8 @@
-tensorflow==2.0.0-beta1
+numpy
+gym>=0.8.0
+tensorflow>=2.0.0
+tensorflow-probability>=0.7.0rc0
+tensorflow-addons
+matplotlib
 scipy
-gym
+opencv-contrib-python

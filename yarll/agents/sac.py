@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Dense
+import tensorflow_addons as tfa
 import tensorflow_probability as tfp
 
 from yarll.agents.agent import Agent
@@ -54,9 +55,9 @@ class SAC(Agent):
         hard_update(self.value_network.variables, self.target_value_network.variables)
 
         # Make train ops
-        self.softq_optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["softq_learning_rate"])
-        self.value_optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["value_learning_rate"])
-        self.actor_optimizer = tf.keras.optimizers.Adam(learning_rate=self.config["actor_learning_rate"])
+        self.softq_optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["softq_learning_rate"])
+        self.value_optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["value_learning_rate"])
+        self.actor_optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["actor_learning_rate"])
 
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
         self.n_updates = 0

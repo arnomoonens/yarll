@@ -3,6 +3,7 @@
 import sys
 import os
 import tensorflow as tf
+import tensorflow_addons as tfa
 from mpi4py import MPI
 import numpy as np
 
@@ -119,7 +120,7 @@ class DPPO(Agent):
             grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
 
         with tf.variable_scope("optimizer"):
-            self.optimizer = tf.train.AdamOptimizer(
+            self.optimizer = tfa.optimizers.RectifiedAdam(
                 self.config["learning_rate"], name="optim")
             apply_grads = self.optimizer.apply_gradients(
                 zip(grads, self.new_network_vars))

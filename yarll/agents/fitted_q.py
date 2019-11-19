@@ -3,6 +3,7 @@ from typing import List
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense
+import tensorflow_addons as tfa
 
 from yarll.agents.agent import Agent
 from yarll.environment.environment import Environment
@@ -36,7 +37,7 @@ class FittedQIteration(Agent):
         self.n_actions = self.env.action_space.n
 
         self.q_network = self.make_q_network()
-        self.q_network.compile(optimizer=tf.keras.optimizers.Adam(self.config["learning_rate"]),
+        self.q_network.compile(optimizer=tfa.optimizers.RectifiedAdam(self.config["learning_rate"]),
                                loss="mse")
 
         self.writer = tf.summary.create_file_writer(str(self.monitor_path))
@@ -98,7 +99,9 @@ class FittedQIteration(Agent):
                 actions_oh = tf.one_hot(actions, depth=self.n_actions, dtype=tf.float32)
                 states_actions_oh = tf.concat([states, actions_oh], axis=1)
                 history = self.q_network.fit(states_actions_oh,
-                                target_q,
-                                epochs=self.config["n_epochs"],
-                                verbose=0)
-                tf.summary.scalar("model/loss/mean", np.average(history.history["loss"]), step=self.env_runner.total_steps)
+                                             target_q,
+                                             epochs=self.config["n_epochs"],
+                                             verbose=0)
+                tf.summary.scalar("model/loss/mean",
+                                  np.average(history.history["loss"]),
+                                  step=self.env_runner.total_steps)

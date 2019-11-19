@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import tensorflow as tf
+import tensorflow_addons as tfa
 import numpy as np
 from gym import wrappers
 
@@ -90,7 +91,7 @@ class PPO(Agent):
 
         optim_kwargs = {k: self.config[l]
                         for k, l in [("clipnorm", "gradient_clip_value")] if self.config[l] is not None}
-        self.optimizer = tf.keras.optimizers.Adam(
+        self.optimizer = tfa.optimizers.RectifiedAdam(
             learning_rate=self.config["learning_rate"],
             **optim_kwargs)
 

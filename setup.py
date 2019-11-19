@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="yarll",
-    version="0.0.11",
+    version="0.0.12",
     author="Arno Moonens",
     author_email="arno.moonens@outlook.com",
     description="Yet Another Reinforcement Learning Library",

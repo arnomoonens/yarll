@@ -14,11 +14,11 @@
             "learning_rate": 1e-3,
             "entropy_coef": 0.0,
             "vf_coef": 1.0,
-            "n_local_steps": 256,
+            "n_local_steps": 2048,
+            "max_steps": 50000,
             "video": false,
             "save_model": true,
-            "monitor": true,
-            "n_iter": 400000
+            "monitor": true
         }
     }
 }

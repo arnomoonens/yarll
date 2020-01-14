@@ -15,6 +15,7 @@ setuptools.setup(
     install_requires=[
         "numpy",
         "gym>=0.8.0",
+        "gast==0.2.2",
         "tensorflow>=2.0.0",
         "tensorflow-probability>=0.7.0rc0",
         "tensorflow-addons",

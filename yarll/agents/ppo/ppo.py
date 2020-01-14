@@ -134,7 +134,7 @@ class PPO(Agent):
         gaelam = advantages = np.empty(T, 'float32')
         last_gaelam = 0
         for t in reversed(range(T)):
-            nonterminal = 1 - trajectory.terminals[t]
+            nonterminal = 1 - trajectory.terminals[min(t + 1, T - 1)]
             delta = trajectory.rewards[t] + gamma * vpred[t + 1] * nonterminal - vpred[t]
             gaelam[t] = last_gaelam = delta + gamma * lambda_ * nonterminal * last_gaelam
         rs = advantages + trajectory.values
@@ -162,7 +162,7 @@ class PPO(Agent):
             new_log_prob = self.new_network.log_prob(actions_taken, new_logits)
             old_log_prob = self.old_network.log_prob(actions_taken, old_logits)
             mean_actor_loss = -tf.reduce_mean(self._actor_loss(old_log_prob, new_log_prob, advantages))
-            mean_critic_loss = tf.reduce_mean(self._critic_loss(returns, values))
+            mean_critic_loss = .5 * tf.reduce_mean(self._critic_loss(returns, values))
             loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss - \
                 self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy(new_logits))
             gradients = tape.gradient(loss, self.new_network.trainable_weights)
@@ -179,15 +179,12 @@ class PPO(Agent):
         n_steps = 0
         iteration = 0
         with self.writer.as_default():
-            # for iteration in range(1, int(config["n_iter"]) + 1):
             while n_steps < int(config["max_steps"]):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 states, actions, advs, rs, values, _ = self.get_processed_trajectories()
                 traj_steps = len(states)
                 n_steps += traj_steps
                 self.ckpt.save_counter.assign_add(traj_steps - 1)
-                advs = np.array(advs) - values
-                normalized_advs = (advs - advs.mean()) / (advs.std() + 1e-8) # Add small value to denominator for num stability
                 self.set_old_to_new()
 
                 indices = np.arange(len(states))
@@ -198,20 +195,21 @@ class PPO(Agent):
                         batch_indices = indices[j:(j + batch_size)]
                         batch_states = np.array(states)[batch_indices]
                         batch_actions = np.array(actions)[batch_indices]
-                        batch_advs = np.array(normalized_advs)[batch_indices]
+                        batch_advs = np.array(advs)[batch_indices]
+                        normalized_advs = (batch_advs - batch_advs.mean()) / (batch_advs.std() + 1e-8)
                         batch_values = np.array(values)[batch_indices]
                         batch_rs = np.array(rs)[batch_indices]
                         train_actor_loss, train_critic_loss, train_loss, \
                             grad_global_norm, new_log_prob, old_log_prob, new_network_output = self.train(batch_states,
                                                                                                           batch_actions,
-                                                                                                          batch_advs,
+                                                                                                          normalized_advs,
                                                                                                           batch_rs)
                         if (n_updates % self.config["summary_every_updates"]) == 0:
                             tf.summary.scalar("model/Loss", train_loss, step=n_steps)
                             tf.summary.scalar("model/Actor_loss", train_actor_loss, step=n_steps)
                             tf.summary.scalar("model/Critic_loss", train_critic_loss, step=n_steps)
-                            tf.summary.scalar("model/advantage/mean", np.mean(batch_advs), step=n_steps)
-                            tf.summary.scalar("model/advantage/std", np.std(batch_advs), step=n_steps)
+                            tf.summary.scalar("model/advantage/mean", np.mean(normalized_advs), step=n_steps)
+                            tf.summary.scalar("model/advantage/std", np.std(normalized_advs), step=n_steps)
                             tf.summary.scalar("model/new_log_prob/mean", tf.reduce_mean(new_log_prob), n_steps)
                             tf.summary.scalar("model/old_log_prob/mean", tf.reduce_mean(old_log_prob), n_steps)
                             tf.summary.scalar("model/old_value_pred/mean", tf.reduce_mean(batch_values), n_steps)

@@ -4,7 +4,7 @@
 Functions and networks for actor-critic agents.
 """
 
-from typing import List, Tuple
+from typing import List
 import tensorflow as tf
 from tensorflow.keras import Model, Sequential
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, GRU
@@ -19,7 +19,7 @@ class ActorCriticNetwork(Model):
     def entropy(self, *args):
         raise NotImplementedError()
 
-    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def action_value(self, states):
         raise NotImplementedError()
 
 class ActorCriticNetworkLatent(ActorCriticNetwork):
@@ -36,7 +36,7 @@ class ActorCriticNetworkLatent(ActorCriticNetwork):
             self.value.add(Dense(n_hidden_units, activation="tanh", kernel_initializer=Orthogonal(gain=np.sqrt(2))))
         self.value.add(Dense(1, kernel_initializer=Orthogonal(gain=0.01)))
 
-    def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
+    def call(self, states):
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
         return self.logits(x), self.value(x)
 
@@ -45,7 +45,7 @@ class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
         super(ActorCriticNetworkDiscrete, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
         self.dist = CategoricalProbabilityDistribution()
 
-    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def action_value(self, states):
         """
         Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
         """
@@ -57,7 +57,7 @@ class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
-    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+    def log_prob(self, actions, logits):
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 
@@ -67,7 +67,7 @@ class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
         super(ActorCriticNetworkMultiDiscrete, self).__init__(sum(n_actions_per_dim), n_hidden_units, n_hidden_layers)
         self.dist = MultiCategoricalProbabilityDistribution()
 
-    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def action_value(self, states):
         """
         Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
         """
@@ -81,7 +81,7 @@ class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
         reshaped_logits = tf.split(logits, self.n_actions_per_dim, axis=-1)
         return tf.add_n([categorical_dist_entropy(l) for l in reshaped_logits])
 
-    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+    def log_prob(self, actions, logits):
         map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
                                (tf.transpose(tf.cast(actions, dtype=tf.int32)),
                                 tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
@@ -93,7 +93,7 @@ class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
     def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
         super(ActorCriticNetworkBernoulli, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
 
-    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def action_value(self, states):
         """
         Source: https://github.com/hill-a/stable-baselines/blob/master/stable_baselines/common/distributions.py#L457
         """
@@ -108,7 +108,7 @@ class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
         logits, *_ = args
         return bernoulli_dist_entropy(logits)
 
-    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+    def log_prob(self, actions, logits):
         return -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(actions, tf.float32),
                                                                       logits=logits),
                               axis=-1)
@@ -133,12 +133,12 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
 
         self.value = Dense(1)
 
-    def call(self, states: np.ndarray) -> Tuple[tf.Tensor, tf.Tensor]:
+    def call(self, states):
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
         x = self.shared_layers(x)
         return self.logits(x), self.value(x)
 
-    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def action_value(self, states):
         """
         Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
         """
@@ -151,7 +151,7 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
-    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+    def log_prob(self, actions, logits):
         map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
                                (tf.transpose(tf.cast(actions, dtype=tf.int32)),
                                 tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
@@ -187,7 +187,7 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
         x, new_rnn_state = self.rnn(x, hiddens)
         return self.logits(x), self.value(x), new_rnn_state
 
-    def action_value(self, states: np.ndarray, features=None):
+    def action_value(self, states, features=None):
         """
         Source: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
         """
@@ -201,7 +201,7 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
-    def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+    def log_prob(self, actions, logits):
         map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
                                (tf.transpose(tf.cast(actions, dtype=tf.int32)),
                                 tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
@@ -251,7 +251,7 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
         action, mean = self.action_mean(x)
         return action, mean, self.critic(inp)
 
-    def action_value(self, states: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def action_value(self, states):
         action, mean, value = self.predict(states)
         return np.squeeze(action, axis=0), np.squeeze(mean, axis=0), np.squeeze(value, axis=-1)
 

@@ -1,6 +1,6 @@
 # -*- coding: utf8 -*-
 
-import os
+import csv
 from pathlib import Path
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -228,7 +228,7 @@ class PPO(Agent):
                 iteration += 1
 
             if self.config["save_model"]:
-                tf.saved_model.save(self.new_network, self.monitor_path / "model")
+                tf.saved_model.save(self.new_network, str(self.monitor_path / "model.h5"))
 
 class PPODiscrete(PPO):
     def build_networks(self) -> ActorCriticNetwork:

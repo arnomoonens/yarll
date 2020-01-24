@@ -25,9 +25,9 @@ class NormalDistrLayer(tf.keras.layers.Layer):
         self.log_std = None # instantiated in build phase
 
     def build(self, _):
-        self.log_std = self.add_variable("log_std",
-                                         shape=(self.n_outputs,),
-                                         initializer=tf.initializers.zeros)
+        self.log_std = self.add_weight("log_std",
+                                       shape=(self.n_outputs,),
+                                       initializer=tf.initializers.zeros)
 
     def call(self, inp):
         mean = self.mean(inp)

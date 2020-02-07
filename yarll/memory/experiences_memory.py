@@ -57,3 +57,6 @@ class ExperiencesMemory(object):
     @property
     def next_states(self):
         return [exp.next_state for exp in self.experiences]
+
+    def __getitem__(self, i):
+        return self.experiences[i]

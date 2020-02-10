@@ -8,7 +8,14 @@ from yarll.misc.utils import RunningMeanStd, normalize
 
 class EnvRunner(object):
     """Environment runner using a policy"""
-    def __init__(self, env, policy, config: dict, normalize_states=False, state_preprocessor=None, summary_writer=None) -> None:
+    def __init__(self,
+                 env,
+                 policy,
+                 config: dict,
+                 normalize_states=False,
+                 state_preprocessor=None,
+                 summaries=True,
+                 summary_writer=None) -> None:
         super(EnvRunner, self).__init__()
         self.env = env
         self.policy = policy
@@ -16,7 +23,7 @@ class EnvRunner(object):
         self.features: Any = policy.initial_features
         self.config: dict = dict(
             batch_update="timesteps",
-            episode_max_length=env.spec.max_episode_steps,
+            episode_max_length=env.spec.max_episode_steps if env.spec is not None else np.inf,
             timesteps_per_batch=10000,
             n_iter=100
         )
@@ -25,6 +32,7 @@ class EnvRunner(object):
         self.episodes_rewards: List[float] = []
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
+        self.summaries = summaries
         self.summary_writer = summary_writer
         self.total_steps = 0
         self.total_episodes = 0
@@ -60,7 +68,8 @@ class EnvRunner(object):
             self.policy.new_trajectory()
         memory = ExperiencesMemory()
         for _ in range(n_steps):
-            input_state = self.normalize(self.state) if self.normalize_states else self.state
+            input_state = np.asarray(self.state, dtype=np.float32)
+            input_state = self.normalize(input_state) if self.normalize_states else input_state
             results = self.choose_action(input_state)
             action = results["action"]
             value = results.get("value", None)
@@ -75,9 +84,10 @@ class EnvRunner(object):
             if done or self.episode_steps >= self.config["episode_max_length"]:
                 self.total_episodes += 1
                 # summaries won't be written if there is no writer.as_default around it somewhere (e.g. in algorithm itself)
-                tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.total_steps)
-                tf.summary.scalar("env/Reward", self.episode_reward, step=self.total_steps)
-                tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
+                if self.summaries:
+                    tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.total_steps)
+                    tf.summary.scalar("episode_reward", self.episode_reward, step=self.total_steps)
+                    tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
                 self.episodes_rewards.append(self.episode_reward)
                 self.episode_reward = 0
                 self.episode_steps = 0
@@ -97,6 +107,7 @@ class EnvRunner(object):
                 memory.experiences[i] = Experience(self.normalize(exp.state),
                                                    exp.action,
                                                    exp.reward,
+                                                   exp.next_state,
                                                    exp.value,
                                                    exp.features,
                                                    exp.terminal)

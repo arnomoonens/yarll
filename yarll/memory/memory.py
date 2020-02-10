@@ -2,9 +2,12 @@
 
 from collections import deque
 import random
+from typing import List
 import numpy as np
 
-class Memory(object):
+from yarll.memory.experiences_memory import Experience
+
+class Memory:
 
     def __init__(self, buffer_size: int) -> None:
         self.buffer_size: int = buffer_size
@@ -22,7 +25,7 @@ class Memory(object):
             "terminals1": np.asarray([exp[4] for exp in experiences], np.float32)
         }
 
-    def add(self, state: np.ndarray, action: np.ndarray, reward: float, new_state: np.ndarray, done: bool):
+    def add(self, state: np.ndarray, action: np.ndarray, reward: float, new_state: np.ndarray, done: bool) -> None:
         experience = (state, action, reward, new_state, done)
         if self.num_experiences < self.buffer_size:
             self.buffer.append(experience)
@@ -30,6 +33,11 @@ class Memory(object):
         else:
             self.buffer.popleft()
             self.buffer.append(experience)
+
+    def add_by_experiences(self, experiences: List[Experience]) -> None:
+        for experience in experiences:
+            self.add(experience.state, experience.action, experience.reward,
+                     experience.next_state, experience.terminal)
 
     @property
     def size(self) -> int:

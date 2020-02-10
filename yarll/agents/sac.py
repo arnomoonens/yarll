@@ -96,8 +96,7 @@ class SAC(Agent):
     def train(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
         # Calculate critic targets
         next_value_batch = self.target_value(state1_batch)
-        softq_targets = reward_batch + (1 - terminal1_batch) * \
-            self.config["gamma"] * tf.reshape(next_value_batch, [-1])
+        softq_targets = reward_batch + (1 - terminal1_batch) * self.config["gamma"] * tf.reshape(next_value_batch, [-1])
         softq_targets = tf.reshape(softq_targets, [self.config["batch_size"], 1])
 
         with tf.GradientTape() as softq_tape:
@@ -199,8 +198,7 @@ class ActorNetwork(Model):
         normal_dist = tfp.distributions.Normal(mean, tf.exp(log_std_clipped))
         action = tf.stop_gradient(normal_dist.sample())
         squashed_actions = tf.tanh(action)
-        logprob = normal_dist.log_prob(action) - \
-            tf.math.log(1.0 - tf.pow(squashed_actions, 2) + self.logprob_epsilon)
+        logprob = normal_dist.log_prob(action) - tf.math.log(1.0 - tf.pow(squashed_actions, 2) + self.logprob_epsilon)
         logprob = tf.reduce_sum(logprob, axis=-1, keepdims=True)
         return squashed_actions, logprob
 

@@ -1,5 +1,7 @@
 # -*- coding: utf8 -*-
 
+from pathlib import Path
+from typing import Union
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model, Sequential
@@ -14,10 +16,10 @@ from yarll.misc.utils import hard_update, soft_update
 
 
 class SAC(Agent):
-    def __init__(self, env, monitor_path: str, **usercfg) -> None:
+    def __init__(self, env, monitor_path: Union[Path, str], **usercfg) -> None:
         super(SAC, self).__init__(**usercfg)
         self.env = env
-        self.monitor_path: str = monitor_path
+        self.monitor_path = Path(monitor_path)
 
         self.config.update(
             n_episodes=100000,
@@ -34,7 +36,9 @@ class SAC(Agent):
             n_hidden_units=128,
             n_train_steps=4,  # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
-            replay_start_size=128  # Required number of replay buffer entries to start training
+            replay_start_size=128,  # Required number of replay buffer entries to start training
+            checkpoints=True,
+            save_model=True
         )
         self.config.update(usercfg)
 
@@ -74,6 +78,12 @@ class SAC(Agent):
                                     usercfg,
                                     normalize_states=False,
                                     summary_writer=self.writer)
+
+        if self.config["checkpoints"]:
+            checkpoint_directory = self.monitor_path / "checkpoints"
+            self.ckpt = tf.train.Checkpoint(net=self.actor_network)
+            self.cktp_manager = tf.train.CheckpointManager(self.ckpt, checkpoint_directory, 10)
+            self.checkpoint_every_episodes = 10
 
     def value(self, states: np.ndarray) -> np.ndarray:
         return self.value_network(states)
@@ -133,7 +143,7 @@ class SAC(Agent):
         value_losses = np.empty((self.config["n_train_steps"],), np.float32)
         action_logprob_means = np.empty((self.config["n_train_steps"],), np.float32)
         with self.writer.as_default():
-            for _ in range(self.config["n_episodes"]):
+            for episode in range(self.config["n_episodes"]):
                 for _ in range(self.config["n_timesteps"]):
                     experience = self.env_runner.get_steps(1)[0]
                     self.replay_buffer.add(experience.state, experience.action, experience.reward,
@@ -166,6 +176,10 @@ class SAC(Agent):
                         self.n_updates += 1
                     if experience.terminal:
                         break
+                if self.config["checkpoints"] and ((episode + 1) % self.checkpoint_every_episodes) == 0:
+                    self.cktp_manager.save()
+        if self.config["save_model"]:
+            tf.saved_model.save(self.actor_network, str(self.monitor_path / "model.h5"))
 
     def choose_action(self, state, features):
         return {"action": self.action(state)}

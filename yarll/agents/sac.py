@@ -22,8 +22,7 @@ class SAC(Agent):
         self.monitor_path = Path(monitor_path)
 
         self.config.update(
-            n_episodes=100000,
-            n_timesteps=env.spec.max_episode_steps,
+            max_steps=100000,
             actor_learning_rate=3e-4,
             softq_learning_rate=3e-4,
             value_learning_rate=3e-4,
@@ -96,11 +95,11 @@ class SAC(Agent):
 
     def actions(self, states: np.ndarray) -> np.ndarray:
         """Get the actions for a batch of states."""
-        return self.actor_network(states)[0]
+        return self.actor_network(states)[0].numpy()
 
     def action(self, state: np.ndarray) -> np.ndarray:
         """Get the action for a single state."""
-        return self.actor_network(state[None, :])[0][0]
+        return self.actor_network(state[None, :])[0].numpy()[0]
 
     @tf.function
     def train(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
@@ -142,42 +141,43 @@ class SAC(Agent):
         actor_losses = np.empty((self.config["n_train_steps"],), np.float32)
         value_losses = np.empty((self.config["n_train_steps"],), np.float32)
         action_logprob_means = np.empty((self.config["n_train_steps"],), np.float32)
+        total_episodes = 0
         with self.writer.as_default():
-            for episode in range(self.config["n_episodes"]):
-                for _ in range(self.config["n_timesteps"]):
-                    experience = self.env_runner.get_steps(1)[0]
-                    self.replay_buffer.add(experience.state, experience.action, experience.reward,
-                                           experience.next_state, experience.terminal)
-                    if self.replay_buffer.n_entries > self.config["replay_start_size"]:
-                        for i in range(self.config["n_train_steps"]):
-                            sample = self.replay_buffer.get_batch(self.config["batch_size"])
-                            softq_mean, softq_std, softq_loss, actor_loss, value_loss, action_logprob_mean = self.train(
-                                sample["states0"],
-                                np.resize(sample["actions"], [self.config["batch_size"],
-                                                              self.n_actions]),  # for n_actions == 1
-                                sample["rewards"],
-                                sample["states1"],
-                                sample["terminals1"])
-                            softq_means[i] = softq_mean
-                            softq_stds[i] = softq_std
-                            softq_losses[i] = softq_loss
-                            actor_losses[i] = actor_loss
-                            value_losses[i] = value_loss
-                            action_logprob_means[i] = action_logprob_mean
-                        tf.summary.scalar("model/predicted_softq_mean", np.mean(softq_means), self.total_steps)
-                        tf.summary.scalar("model/predicted_softq_std", np.mean(softq_stds), self.total_steps)
-                        tf.summary.scalar("model/softq_loss", np.mean(softq_losses), self.total_steps)
-                        tf.summary.scalar("model/actor_loss", np.mean(actor_losses), self.total_steps)
-                        tf.summary.scalar("model/value_loss", np.mean(value_losses), self.total_steps)
-                        tf.summary.scalar("model/action_logprob_mean", np.mean(action_logprob_means), self.total_steps)
-                        # Update the target networks
-                        soft_update(self.value_network.variables,
-                                    self.target_value_network.variables, self.config["tau"])
-                        self.n_updates += 1
-                    if experience.terminal:
-                        break
-                if self.config["checkpoints"] and ((episode + 1) % self.checkpoint_every_episodes) == 0:
-                    self.cktp_manager.save()
+            for _ in range(self.config["max_steps"]):
+                experience = self.env_runner.get_steps(1)[0]
+                self.total_steps += 1
+                self.replay_buffer.add(experience.state, experience.action, experience.reward,
+                                       experience.next_state, experience.terminal)
+                if self.replay_buffer.n_entries > self.config["replay_start_size"]:
+                    for i in range(self.config["n_train_steps"]):
+                        sample = self.replay_buffer.get_batch(self.config["batch_size"])
+                        softq_mean, softq_std, softq_loss, actor_loss, value_loss, action_logprob_mean = self.train(
+                            sample["states0"],
+                            # for n_actions == 1
+                            np.resize(sample["actions"], [self.config["batch_size"], self.n_actions]),
+                            sample["rewards"],
+                            sample["states1"],
+                            sample["terminals1"])
+                        softq_means[i] = softq_mean
+                        softq_stds[i] = softq_std
+                        softq_losses[i] = softq_loss
+                        actor_losses[i] = actor_loss
+                        value_losses[i] = value_loss
+                        action_logprob_means[i] = action_logprob_mean
+                    tf.summary.scalar("model/predicted_softq_mean", np.mean(softq_means), self.total_steps)
+                    tf.summary.scalar("model/predicted_softq_std", np.mean(softq_stds), self.total_steps)
+                    tf.summary.scalar("model/softq_loss", np.mean(softq_losses), self.total_steps)
+                    tf.summary.scalar("model/actor_loss", np.mean(actor_losses), self.total_steps)
+                    tf.summary.scalar("model/value_loss", np.mean(value_losses), self.total_steps)
+                    tf.summary.scalar("model/action_logprob_mean", np.mean(action_logprob_means), self.total_steps)
+                    # Update the target networks
+                    soft_update(self.value_network.variables,
+                                self.target_value_network.variables, self.config["tau"])
+                    self.n_updates += 1
+                if experience.terminal:
+                    total_episodes += 1
+                    if self.config["checkpoints"] and (total_episodes % self.checkpoint_every_episodes) == 0:
+                        self.cktp_manager.save()
         if self.config["save_model"]:
             tf.saved_model.save(self.actor_network, str(self.monitor_path / "model.h5"))
 

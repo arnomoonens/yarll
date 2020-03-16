@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+import csv
 from pathlib import Path
 from typing import Union
 import numpy as np
@@ -36,6 +37,7 @@ class SAC(Agent):
             n_train_steps=4,  # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
             replay_start_size=128,  # Required number of replay buffer entries to start training
+            hidden_layer_activation="relu",
             checkpoints=True,
             save_model=True
         )
@@ -51,10 +53,17 @@ class SAC(Agent):
         self.actor_network = ActorNetwork(self.config["n_hidden_layers"],
                                           self.config["n_hidden_units"],
                                           self.n_actions,
-                                          self.config["logprob_epsilon"])
-        self.softq_network = SoftQNetwork(self.config["n_hidden_layers"], self.config["n_hidden_units"])
-        self.value_network = ValueNetwork(self.config["n_hidden_layers"], self.config["n_hidden_units"])
-        self.target_value_network = ValueNetwork(self.config["n_hidden_layers"], self.config["n_hidden_units"])
+                                          self.config["logprob_epsilon"],
+                                          self.config["hidden_layer_activation"])
+        self.softq_network = SoftQNetwork(self.config["n_hidden_layers"],
+                                          self.config["n_hidden_units"],
+                                          self.config["hidden_layer_activation"])
+        self.value_network = ValueNetwork(self.config["n_hidden_layers"],
+                                          self.config["n_hidden_units"],
+                                          self.config["hidden_layer_activation"])
+        self.target_value_network = ValueNetwork(self.config["n_hidden_layers"],
+                                                 self.config["n_hidden_units"],
+                                                 self.config["hidden_layer_activation"])
 
         input_shape = (None, *self.state_shape)
         self.value_network.build(input_shape)
@@ -75,7 +84,7 @@ class SAC(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    normalize_states=False,
+                                    scale_states=True,
                                     summary_writer=self.writer)
 
         if self.config["checkpoints"]:
@@ -95,7 +104,7 @@ class SAC(Agent):
 
     def actions(self, states: np.ndarray) -> np.ndarray:
         """Get the actions for a batch of states."""
-        return self.actor_network(states)[0].numpy()
+        return self.actor_network(states)[0]
 
     def action(self, state: np.ndarray) -> np.ndarray:
         """Get the action for a single state."""
@@ -141,6 +150,7 @@ class SAC(Agent):
         actor_losses = np.empty((self.config["n_train_steps"],), np.float32)
         value_losses = np.empty((self.config["n_train_steps"],), np.float32)
         action_logprob_means = np.empty((self.config["n_train_steps"],), np.float32)
+        to_save = []
         total_episodes = 0
         with self.writer.as_default():
             for _ in range(self.config["max_steps"]):
@@ -148,13 +158,15 @@ class SAC(Agent):
                 self.total_steps += 1
                 self.replay_buffer.add(experience.state, experience.action, experience.reward,
                                        experience.next_state, experience.terminal)
+                to_save.append(experience.state.tolist() + experience.action.tolist() +
+                               [experience.reward] + experience.next_state.tolist())
                 if self.replay_buffer.n_entries > self.config["replay_start_size"]:
                     for i in range(self.config["n_train_steps"]):
                         sample = self.replay_buffer.get_batch(self.config["batch_size"])
                         softq_mean, softq_std, softq_loss, actor_loss, value_loss, action_logprob_mean = self.train(
                             sample["states0"],
-                            # for n_actions == 1
-                            np.resize(sample["actions"], [self.config["batch_size"], self.n_actions]),
+                            np.resize(sample["actions"], [self.config["batch_size"],
+                                                          self.n_actions]),  # for n_actions == 1
                             sample["rewards"],
                             sample["states1"],
                             sample["terminals1"])
@@ -178,6 +190,9 @@ class SAC(Agent):
                     total_episodes += 1
                     if self.config["checkpoints"] and (total_episodes % self.checkpoint_every_episodes) == 0:
                         self.cktp_manager.save()
+        with open(self.monitor_path / "experiences.csv", "w") as f:
+            writer = csv.writer(f)
+            writer.writerows(to_save)
         if self.config["save_model"]:
             tf.saved_model.save(self.actor_network, str(self.monitor_path / "model.h5"))
 
@@ -189,13 +204,13 @@ class SAC(Agent):
 
 
 class ActorNetwork(Model):
-    def __init__(self, n_hidden_layers, n_hidden_units, n_actions, logprob_epsilon):
+    def __init__(self, n_hidden_layers, n_hidden_units, n_actions, logprob_epsilon, hidden_layer_activation="relu"):
         super(ActorNetwork, self).__init__()
         self.logprob_epsilon = logprob_epsilon
         w_bound = 3e-3
         self.hidden = Sequential()
         for _ in range(n_hidden_layers):
-            self.hidden.add(Dense(n_hidden_units, activation="relu"))
+            self.hidden.add(Dense(n_hidden_units, activation=hidden_layer_activation))
 
         self.mean = Dense(n_actions,
                           kernel_initializer=tf.random_uniform_initializer(-w_bound, w_bound),
@@ -218,11 +233,11 @@ class ActorNetwork(Model):
 
 
 class SoftQNetwork(Model):
-    def __init__(self, n_hidden_layers, n_hidden_units):
+    def __init__(self, n_hidden_layers, n_hidden_units, hidden_layer_activation="relu"):
         super(SoftQNetwork, self).__init__()
         self.softq = Sequential()
         for _ in range(n_hidden_layers):
-            self.softq.add(Dense(n_hidden_units, activation="relu"))
+            self.softq.add(Dense(n_hidden_units, activation=hidden_layer_activation))
         self.softq.add(Dense(1,
                              kernel_initializer=tf.random_uniform_initializer(-3e-3, 3e-3),
                              bias_initializer=tf.random_uniform_initializer(-3e-3, 3e-3)))
@@ -233,11 +248,11 @@ class SoftQNetwork(Model):
 
 
 class ValueNetwork(Model):
-    def __init__(self, n_hidden_layers, n_hidden_units):
+    def __init__(self, n_hidden_layers, n_hidden_units, hidden_layer_activation="relu"):
         super(ValueNetwork, self).__init__()
         self.value = Sequential()
         for _ in range(n_hidden_layers):
-            self.value.add(Dense(n_hidden_units, activation="relu"))
+            self.value.add(Dense(n_hidden_units, activation=hidden_layer_activation))
 
         self.value.add(Dense(1,
                              kernel_initializer=tf.random_uniform_initializer(-3e-3, 3e-3),

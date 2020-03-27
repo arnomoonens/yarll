@@ -3,7 +3,7 @@ from typing import Any, List, Optional
 import tensorflow as tf
 import numpy as np
 from yarll.memory.experiences_memory import ExperiencesMemory, Experience
-from yarll.misc.utils import RunningMeanStd, normalize
+from yarll.misc.scalers import LowsHighsScaler, RunningMeanStdScaler
 
 
 class EnvRunner(object):
@@ -12,7 +12,7 @@ class EnvRunner(object):
                  env,
                  policy,
                  config: dict,
-                 normalize_states=False,
+                 scale_states=False,
                  state_preprocessor=None,
                  summaries=True,
                  summary_writer=None) -> None:
@@ -23,7 +23,7 @@ class EnvRunner(object):
         self.features: Any = policy.initial_features
         self.config: dict = dict(
             batch_update="timesteps",
-            episode_max_length=env.spec.max_episode_steps if env.spec is not None else np.inf,
+            episode_max_length=env.spec.max_episode_steps if env.spec is not None and env.spec.max_episode_steps is not None else np.inf,
             timesteps_per_batch=10000,
             n_iter=100
         )
@@ -39,17 +39,21 @@ class EnvRunner(object):
 
         # Normalize states before giving it as input to the network.
         # Mean and std are only updated at the end of `get_steps`.
-        self.normalize_states = normalize_states
-        if normalize_states:
-            self.rms = RunningMeanStd(self.env.observation_space.shape)
+        self.scale_states = scale_states
+        if scale_states:
+            # check obs space
+            if all(np.isfinite(np.append(env.observation_space.low, env.observation_space.high))):
+                self.state_scaler = LowsHighsScaler(env.observation_space.low, env.observation_space.high)
+            else:
+                self.state_scaler = RunningMeanStdScaler(self.env.observation_space.shape)
         self.reset_env()
 
     def choose_action(self, state: np.ndarray):
         """Choose an action based on the current state in the environment."""
         return self.policy.choose_action(state, self.features)
 
-    def normalize(self, state: np.ndarray) -> np.ndarray:
-        return normalize(state, self.rms.mean, self.rms.std)
+    def scale_state(self, state: np.ndarray) -> np.ndarray:
+        return self.state_scaler.scale(state)
 
     def reset_env(self) -> None:
         """Reset the current environment and get the initial state"""
@@ -69,7 +73,7 @@ class EnvRunner(object):
         memory = ExperiencesMemory()
         for _ in range(n_steps):
             input_state = np.asarray(self.state, dtype=np.float32)
-            input_state = self.normalize(input_state) if self.normalize_states else input_state
+            input_state = self.scale_state(input_state) if self.scale_states else input_state
             results = self.choose_action(input_state)
             action = results["action"]
             value = results.get("value", None)
@@ -101,10 +105,10 @@ class EnvRunner(object):
             if render:
                 self.env.render()
 
-        if self.normalize_states:
-            self.rms.add_values([exp.state for exp in memory.experiences])
+        if self.scale_states:
+            self.state_scaler.fit([exp.state for exp in memory.experiences])
             for i, exp in enumerate(memory.experiences):
-                memory.experiences[i] = Experience(self.normalize(exp.state),
+                memory.experiences[i] = Experience(self.scale_state(exp.state),
                                                    exp.action,
                                                    exp.reward,
                                                    exp.next_state,

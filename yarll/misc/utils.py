@@ -157,51 +157,6 @@ def cluster_spec(num_workers: int, num_ps: int, num_masters: int = 0) -> dict:
         cluster["master"] = all_masters
     return cluster
 
-
-class RunningMeanStd(object):
-    """
-    Calculates the running mean and standard deviation of values of shape `shape`.
-    """
-
-    def __init__(self, shape, epsilon=1e-2):
-        super(RunningMeanStd, self).__init__()
-        self.count = epsilon
-        self._sum = np.zeros(shape, dtype="float64")
-        self._sumsq = np.full(shape, epsilon, dtype="float64")
-
-    def add_value(self, x):
-        """
-        Update count, sum and sum squared using a new value `x`.
-        """
-        x = np.asarray(x, dtype="float64")
-        self.count += 1
-        self._sum += x
-        self._sumsq += np.square(x)
-
-    def add_values(self, x):
-        """
-        Update count, sum and sum squared using multiple values `x`.
-        """
-        x = np.asarray(x, dtype="float64")
-        self.count += np.shape(x)[0]
-        self._sum += np.sum(x, axis=0)
-        self._sumsq += np.square(x).sum(axis=0)
-
-    @property
-    def mean(self):
-        return self._sum / self.count
-
-    @property
-    def std(self):
-        return np.sqrt(np.maximum((self._sumsq / self.count) - np.square(self.mean), 1e-2))
-
-number_array = Union[int, float, np.ndarray]
-def normalize(x: number_array, mean: number_array, std: number_array) -> Union[float, np.ndarray]:
-    if isinstance(x, np.ndarray):
-        x = x.astype("float64")
-    return np.clip((x - mean) / std, -5.0, 5.0)
-
-
 def soft_update(source_vars: Sequence[tf.Variable], target_vars: Sequence[tf.Variable], tau: float) -> None:
     """Move each source variable by a factor of tau towards the corresponding target variable.
 

@@ -37,15 +37,16 @@ class SAC(Agent):
             n_softqs=2,
             reward_scale=1.0,
             n_hidden_layers=2,
-            n_hidden_units=128,
+            n_hidden_units=256,
             gamma=0.99,
-            batch_size=128,
-            tau=0.01,
+            batch_size=256,
+            tau=0.005,
             logprob_epsilon=1e-6,  # For numerical stability when computing tf.log
-            n_train_steps=4,  # Number of parameter update steps per iteration
+            n_train_steps=1,  # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
-            replay_start_size=128,  # Required number of replay buffer entries to start training
+            replay_start_size=256,  # Required number of replay buffer entries to start training
             hidden_layer_activation="relu",
+            normalize_inputs=False,
             checkpoints=True,
             save_model=True
         )
@@ -96,7 +97,7 @@ class SAC(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    scale_states=True,
+                                    scale_states=self.config["normalize_inputs"],
                                     summary_writer=self.writer)
 
         if self.config["checkpoints"]:
@@ -113,16 +114,16 @@ class SAC(Agent):
         """Get the action for a single state."""
         return self.actor_network(state[None, :])[0].numpy()[0]
 
-    # @tf.function
+    @tf.function
     def train(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
         # Calculate critic targets
 
-        next_action_batch, next_logprob_batch = self.actor_network(state1_batch) # TODO: should we use the squashed actions here?
+        next_action_batch, next_logprob_batch = self.actor_network(state1_batch)
         next_qs_values = [net(state1_batch, next_action_batch) for net in self.target_softq_networks]
         next_q_values = tf.reduce_min(next_qs_values, axis=0)
         next_values = next_q_values - self._alpha * next_logprob_batch
         next_values = tf.expand_dims(1.0 - terminal1_batch, 1) * next_values
-        softq_targets = self.config["reward_scale"] * tf.expand_dims(reward_batch, 1) + self.config["gamma"] * next_values # pylint: line-too-long
+        softq_targets = self.config["reward_scale"] * tf.expand_dims(reward_batch, 1) + self.config["gamma"] * next_values
         softq_targets = tf.reshape(softq_targets, [self.config["batch_size"]])
 
         # Update critics
@@ -242,7 +243,7 @@ class ActorNetwork(Model):
         log_std = self.log_std(x)
         log_std_clipped = tf.clip_by_value(log_std, -20, 2)
         normal_dist = tfp.distributions.Normal(mean, tf.exp(log_std_clipped))
-        action = tf.stop_gradient(normal_dist.sample())
+        action = normal_dist.sample() # gradient flows through this; using reparameterization trick
         squashed_actions = tf.tanh(action)
         logprob = normal_dist.log_prob(action) - tf.math.log(1.0 - tf.pow(squashed_actions, 2) + self.logprob_epsilon)
         logprob = tf.reduce_sum(logprob, axis=-1, keepdims=True)

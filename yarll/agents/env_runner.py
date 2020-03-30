@@ -111,7 +111,7 @@ class EnvRunner(object):
                 memory.experiences[i] = Experience(self.scale_state(exp.state),
                                                    exp.action,
                                                    exp.reward,
-                                                   exp.next_state,
+                                                   self.scale_state(exp.next_state),
                                                    exp.value,
                                                    exp.features,
                                                    exp.terminal)

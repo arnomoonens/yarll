@@ -97,8 +97,7 @@ class SAC(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    scale_states=self.config["normalize_inputs"],
-                                    summary_writer=self.writer)
+                                    scale_states=self.config["normalize_inputs"])
 
         if self.config["checkpoints"]:
             checkpoint_directory = self.monitor_path / "checkpoints"
@@ -248,6 +247,11 @@ class ActorNetwork(Model):
         logprob = normal_dist.log_prob(action) - tf.math.log(1.0 - tf.pow(squashed_actions, 2) + self.logprob_epsilon)
         logprob = tf.reduce_sum(logprob, axis=-1, keepdims=True)
         return squashed_actions, logprob
+
+    @tf.function
+    def deterministic_actions(self, inp):
+        x = self.hidden(inp)
+        return tf.tanh(self.mean(x))
 
 
 class SoftQNetwork(Model):

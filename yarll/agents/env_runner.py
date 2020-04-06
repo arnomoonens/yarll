@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
-from typing import Any, List, Optional
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Union
 import tensorflow as tf
 import numpy as np
 from yarll.memory.experiences_memory import ExperiencesMemory, Experience
@@ -11,11 +12,12 @@ class EnvRunner(object):
     def __init__(self,
                  env,
                  policy,
-                 config: dict,
-                 scale_states=False,
-                 state_preprocessor=None,
-                 summaries=True,
-                 summary_writer=None) -> None:
+                 config: Dict[str, Any],
+                 scale_states: bool = False,
+                 state_preprocessor: Optional[Callable] = None,
+                 summaries: bool = True, # Write tensorflow summaries
+                 episode_rewards_file: Optional[Union[Path, str]] = None, # write each episode reward to the given file
+                 ) -> None:
         super(EnvRunner, self).__init__()
         self.env = env
         self.policy = policy
@@ -33,7 +35,7 @@ class EnvRunner(object):
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
         self.summaries = summaries
-        self.summary_writer = summary_writer
+        self.episode_rewards_file = episode_rewards_file
         self.total_steps = 0
         self.total_episodes = 0
 
@@ -92,6 +94,9 @@ class EnvRunner(object):
                     tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.total_steps)
                     tf.summary.scalar("episode_reward", self.episode_reward, step=self.total_steps)
                     tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
+                if self.episode_rewards_file is not None:
+                    with open(self.episode_rewards_file, "a") as f:
+                        f.write(f"{self.episode_reward}\n")
                 self.episodes_rewards.append(self.episode_reward)
                 self.episode_reward = 0
                 self.episode_steps = 0

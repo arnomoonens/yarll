@@ -86,8 +86,7 @@ class PPO(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    normalize_states=self.config["normalize_states"],
-                                    summary_writer=self.writer)
+                                    scale_states=self.config["normalize_states"])
 
         optim_kwargs = {k: self.config[l]
                         for k, l in [("clipnorm", "gradient_clip_value")] if self.config[l] is not None}
@@ -118,6 +117,10 @@ class PPO(Agent):
     def get_processed_trajectories(self):
         trajectory = self.env_runner.get_steps(
             int(self.config["n_local_steps"]), stop_at_trajectory_end=False)
+        to_save = [exp.state.tolist() + exp.action.tolist() + [exp.reward] + exp.next_state.tolist() for exp in trajectory.experiences]
+        with open(self.monitor_path / "experiences.csv", "a") as f:
+            writer = csv.writer(f)
+            writer.writerows(to_save)
         features = trajectory.features
         features = np.concatenate(trajectory.features) if features[-1] is not None else np.array([None])
         T = trajectory.steps
@@ -227,8 +230,8 @@ class PPO(Agent):
                     self.cktp_manager.save()
                 iteration += 1
 
-            if self.config["save_model"]:
-                tf.saved_model.save(self.new_network, str(self.monitor_path / "model.h5"))
+        if self.config["save_model"]:
+            tf.saved_model.save(self.new_network, str(self.monitor_path / "model.h5"))
 
 class PPODiscrete(PPO):
     def build_networks(self) -> ActorCriticNetwork:

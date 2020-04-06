@@ -48,7 +48,7 @@ class DPPOWorker(object):
                     trainable=False)
 
             self.env_runner = EnvRunner(
-                self.env, self, {}, summary_writer=self.writer)
+                self.env, self, {})
 
     def build_networks(self):
         raise NotImplementedError

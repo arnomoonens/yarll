@@ -28,6 +28,7 @@ class SAC(Agent):
         super(SAC, self).__init__(**usercfg)
         self.env = env
         self.monitor_path = Path(monitor_path)
+        self.monitor_path.mkdir(parents=True, exist_ok=True)
 
         self.config.update(
             max_steps=100000,
@@ -47,6 +48,7 @@ class SAC(Agent):
             replay_start_size=256,  # Required number of replay buffer entries to start training
             hidden_layer_activation="relu",
             normalize_inputs=False,
+            summaries=True,
             checkpoints=True,
             save_model=True
         )
@@ -92,12 +94,14 @@ class SAC(Agent):
         self.n_updates = 0
         self.total_steps = 0
         self.total_episodes = 0
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.writer = tf.summary.create_file_writer(str(self.monitor_path)) if self.config["summaries"] else tf.summary.create_noop_writer()
 
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    scale_states=self.config["normalize_inputs"])
+                                    scale_states=self.config["normalize_inputs"],
+                                    summaries=self.config["summaries"]
+                                    )
 
         if self.config["checkpoints"]:
             checkpoint_directory = self.monitor_path / "checkpoints"

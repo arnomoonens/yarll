@@ -22,6 +22,25 @@ from yarll.agents.env_runner import EnvRunner
 from yarll.memory.memory import Memory
 from yarll.misc.utils import hard_update, soft_update
 
+# TODO: put this in separate file
+class DeterministicPolicy:
+    def __init__(self, env, policy_fn):
+        self.env = env
+        self.policy_fn = policy_fn
+        self.initial_features = None
+
+        self.action_low = env.action_space.low
+        self.action_high = env.action_space.high
+
+    def choose_action(self, state, features):
+        res = self.policy_fn(state[None, :])[0].numpy()[0]
+        return {"action": res}
+
+    def get_env_action(self, action):
+        return self.action_low + (action + 1.0) * 0.5 * (self.action_high - self.action_low)
+
+    def new_trajectory(self):
+        pass
 
 class SAC(Agent):
     def __init__(self, env, monitor_path: Union[Path, str], **usercfg) -> None:
@@ -50,7 +69,9 @@ class SAC(Agent):
             normalize_inputs=False,
             summaries=True,
             checkpoints=True,
-            save_model=True
+            save_model=True,
+            test_frequency=0,
+            n_test_episodes=5,
         )
         self.config.update(usercfg)
 
@@ -108,6 +129,31 @@ class SAC(Agent):
             self.ckpt = tf.train.Checkpoint(net=self.actor_network)
             self.cktp_manager = tf.train.CheckpointManager(self.ckpt, checkpoint_directory, 10)
             self.checkpoint_every_episodes = 10
+
+        if self.config["test_frequency"] > 0 and self.config["n_test_episodes"] > 0:
+            test_env = deepcopy(env)
+            unw = test_env.unwrapped
+            if hasattr(unw, "summaries"):
+                unw.summaries = False
+            deterministic_policy = DeterministicPolicy(test_env, self.actor_network.deterministic_actions)
+            usercfg["episode_max_length"] = 1000
+            self.test_env_runner = EnvRunner(test_env,
+                                             deterministic_policy,
+                                             usercfg,
+                                             scale_states=True,
+                                             summaries=False,
+                                             episode_rewards_file=(
+                                             self.monitor_path / "test_rewards.txt")
+                                             )
+            header = [""] # (epoch) id has no name in header
+            header += [f"rew_{i}" for i in range(self.config["n_test_episodes"])]
+            header += ["rew_mean","rew_std"]
+            self.test_results_file = self.monitor_path / "test_results.csv"
+            with open(self.test_results_file, "w") as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+
+            self.total_rewards = np.empty((self.config["n_test_episodes"],), dtype=np.float32)
 
     def actions(self, states: np.ndarray) -> np.ndarray:
         """Get the actions for a batch of states."""
@@ -170,7 +216,18 @@ class SAC(Agent):
         to_save = []
         total_episodes = 0
         with self.writer.as_default():
-            for _ in range(self.config["max_steps"]):
+            for step in range(self.config["max_steps"]):
+                if self.config["test_frequency"] > 0 and (step % self.config["test_frequency"]) == 0 and self.config["n_test_episodes"] > 0:
+                    for i in range(self.config["n_test_episodes"]):
+                        test_trajectory = self.test_env_runner.get_trajectory(stop_at_trajectory_end=True)
+                        self.total_rewards[i] = np.sum(test_trajectory.rewards)
+                    test_rewards_mean = np.mean(self.total_rewards)
+                    test_rewards_std = np.std(self.total_rewards)
+                    to_write = [step] + self.total_rewards.tolist() + [test_rewards_mean, test_rewards_std]
+                    with open(self.test_results_file, "a") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(to_write)
+
                 experience = self.env_runner.get_steps(1)[0]
                 self.total_steps += 1
                 self.replay_buffer.add(experience.state, experience.action, experience.reward,

@@ -204,3 +204,7 @@ register_agent(name="FittedQIteration",
                state_dimensions="continuous",
                action_space="discrete"
                )
+register_agent(name="DQN",
+               entry_point="yarll.agents.dqn:DQN",
+               state_dimensions="continuous",
+               action_space="discrete")

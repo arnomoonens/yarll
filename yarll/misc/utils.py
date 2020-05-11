@@ -100,9 +100,9 @@ def save_config(directory: Union[str, Path],
     with open(Path(directory) / "config.json", "w") as outfile:
         json.dump(filtered_config, outfile, indent=4)
 
-def json_to_dict(filename: str) -> dict:
+def json_to_dict(file: Union[str, Path]) -> dict:
     """Load a json file as a dictionary."""
-    with open(filename) as f:
+    with open(file) as f:
         return json.load(f)
 
 def ge(minimum: int) -> Callable[[Any], int]:

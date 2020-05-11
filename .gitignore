@@ -100,3 +100,4 @@ yarll/environment/*.json
 yarll/scripts/generate_exp_description.py
 .mypy_cache/
 *.srctrl*
+cluster-results

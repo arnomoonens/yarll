@@ -1,0 +1,15 @@
+{
+    "experiment_name": "CartPole-DQN",
+    "environments": {
+        "type": "single",
+        "source": "CartPole-v0"
+    },
+    "agent": {
+        "name": "DQN",
+        "args": {
+            "monitor_path": "/tmp/CartPole-v0-DQN",
+            "save_model": true,
+            "max_steps": 50000
+        }
+    }
+}

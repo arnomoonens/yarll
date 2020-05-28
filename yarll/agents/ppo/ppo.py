@@ -166,8 +166,7 @@ class PPO(Agent):
             old_log_prob = self.old_network.log_prob(actions_taken, old_logits)
             mean_actor_loss = -tf.reduce_mean(self._actor_loss(old_log_prob, new_log_prob, advantages))
             mean_critic_loss = .5 * tf.reduce_mean(self._critic_loss(returns, values))
-            loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss - \
-                self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy(new_logits))
+            loss = mean_actor_loss + self.config["vf_coef"] * mean_critic_loss - self.config["entropy_coef"] * tf.reduce_mean(self.new_network.entropy(new_logits))
             gradients = tape.gradient(loss, self.new_network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.new_network.trainable_weights))
         return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob, new_logits

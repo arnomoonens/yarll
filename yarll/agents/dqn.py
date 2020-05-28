@@ -39,7 +39,9 @@ class DQN(Agent):
             gamma=0.99,
             batch_size=32,
             tau=0.005,
-            epsilon=0.1,
+            epsilon=1.0,
+            epsilon_min=0.01,
+            epsilon_decay=.999,
             n_train_steps=1,  # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
             replay_start_size=32,  # Required number of replay buffer entries to start training
@@ -127,6 +129,10 @@ class DQN(Agent):
             for _ in range(self.config["max_steps"]):
 
                 experience = self.env_runner.get_steps(1)[0]
+
+                # Update epsilon
+                self.policy.epsilon = max(self.config["epsilon_min"], self.policy.epsilon * self.config["epsilon_decay"])
+
                 self.total_steps += 1
                 self.replay_buffer.add(experience.state, experience.action, experience.reward,
                                        experience.next_state, experience.terminal)

@@ -45,8 +45,7 @@ class FittedQIteration(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     self.config,
-                                    normalize_states=self.config["normalize_states"],
-                                    summary_writer=self.writer)
+                                    scale_states=self.config["normalize_states"])
 
     def make_q_network(self):
         model = tf.keras.Sequential()

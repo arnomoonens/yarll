@@ -2,15 +2,15 @@
 
 from collections import deque
 import random
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 import numpy as np
 
 from yarll.memory.experiences_memory import Experience
 
 class Memory:
 
-    def __init__(self, buffer_size: int) -> None:
-        self.buffer_size: int = buffer_size
+    def __init__(self, buffer_size: Optional[int] = None) -> None:
+        self.buffer_size = buffer_size
         self.num_experiences: int = 0
         self.buffer: deque = deque()
 
@@ -36,7 +36,7 @@ class Memory:
 
     def add(self, state: np.ndarray, action: np.ndarray, reward: float, new_state: np.ndarray, done: bool) -> None:
         experience = (state, action, reward, new_state, done)
-        if self.num_experiences < self.buffer_size:
+        if self.buffer_size is None or self.num_experiences < self.buffer_size:
             self.buffer.append(experience)
             self.num_experiences += 1
         else:
@@ -49,13 +49,11 @@ class Memory:
                      experience.next_state, experience.terminal)
 
     @property
-    def size(self) -> int:
+    def size(self) -> Union[int, None]:
         return self.buffer_size
 
     @property
     def n_entries(self) -> int:
-        # if buffer is full, return buffer size
-        # otherwise, return experience counter
         return self.num_experiences
 
     def erase(self):

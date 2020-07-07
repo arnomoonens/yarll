@@ -6,11 +6,6 @@ def register_env(name, entry_point: str, tags=None, **kwargs):
     if already_registered:
         old_env_name = "Old" + name
         gym.envs.registry.env_specs[old_env_name] = gym.envs.registry.env_specs[name]
-        new_tags = gym.envs.registry.env_specs[name].tags
-    else:
-        new_tags = {}
-    if tags is not None:
-        new_tags.update(tags)
     if already_registered:
         if "kwargs" not in kwargs:
             kwargs["kwargs"] = {}
@@ -23,7 +18,6 @@ def register_env(name, entry_point: str, tags=None, **kwargs):
         name,
         entry_point=entry_point,
         max_episode_steps=max_episode_steps,
-        tags=new_tags,
         **kwargs)
 
 register_env(

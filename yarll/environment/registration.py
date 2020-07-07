@@ -12,27 +12,19 @@ from yarll.environment.environment import Environment
 
 gym.logger.set_level(gym.logger.ERROR)
 
+# TODO: is this function still necessary?
 def make(env_id: str, **kwargs):
     spec = gym.envs.registry.spec(env_id)
     env = spec.make(**kwargs)
 
     if not isinstance(env, Environment):
-        if (env.spec.max_episode_steps is not None) and not spec.tags.get('vnc'):
+        if env.spec.max_episode_steps is not None:
             from gym.wrappers.time_limit import TimeLimit
             env = TimeLimit(env,
                             max_episode_steps=env.spec.max_episode_steps)
         env = Environment(env)
     if "atari.atari_env" in env.unwrapped.__module__:
         env = AtariRescale42x42(env)
-    if "wrapper_entry_points" in spec.tags:
-        for wrapper_info in spec.tags["wrapper_entry_points"]:
-            kwargs = {}
-            if isinstance(wrapper_info, str):
-                cls = gym.envs.registration.load(wrapper_info)
-            else:
-                cls = gym.envs.registration.load(wrapper_info["entry_point"])
-                kwargs = wrapper_info["kwargs"]
-            env = cls(env, **kwargs)
     return env
 
 def make_environments(descriptions: Sequence[dict]) -> list:

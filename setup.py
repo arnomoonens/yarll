@@ -3,6 +3,9 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
+with open("requirements.txt", "r") as fh:
+   requirements = fh.readlines()
+
 setuptools.setup(
     name="yarll",
     version="0.0.10",
@@ -11,18 +14,8 @@ setuptools.setup(
     description="Yet Another Reinforcement Learning Library",
     license="MIT",
     keywords="deep learning reinforcement learning a3c ddpg sac ppo machine neural networks",
-    python_requires=">=3.4",
-    install_requires=[
-        "numpy",
-        "gym>=0.8.0",
-        "gast==0.3.3",
-        "tensorflow>=2.0.0",
-        "tensorflow-probability>=0.7.0rc0",
-        "tensorflow-addons",
-        "matplotlib",
-        "scipy",
-        "opencv-contrib-python"
-    ],
+    python_requires=">=3.6",
+    install_requires=[req for req in requirements if req[:2] != "# "],
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/arnomoonens/YARLL",

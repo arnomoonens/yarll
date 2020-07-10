@@ -102,7 +102,7 @@ class CEM(Agent):
         self.monitor_path = Path(monitor_path)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.config.update(dict(
-            num_steps=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),  # maximum length of episode
+            num_steps=env.spec.max_episode_steps,  # maximum length of episode
             n_iter=100,  # number of iterations of CEM
             batch_size=25,  # number of samples per batch
             elite_frac=0.2  # fraction of samples used as elite set
@@ -123,7 +123,7 @@ class CEM(Agent):
 
         self.total_steps = 0
         self.total_episodes = 0
-        self.writer = tf.summary.create_file_writer(str(monitor_path))
+        self.writer = tf.summary.create_file_writer(str(monitor_path)) # pylint: disable=no-member
 
     def make_policy(self, theta) -> Policy:
         if isinstance(self.env.action_space, Discrete):
@@ -143,26 +143,25 @@ class CEM(Agent):
     def do_episode(self, policy: Policy, render=False):
         total_rew = 0
         ob = self.env.reset()
-        for _ in range(self.config["num_steps"]):
-            a = np.squeeze(policy.act(ob))
+        done = False
+        while not done:
+            a = policy.act(ob)[0]
             ob, reward, done, _info = self.env.step(a)
             self.total_steps += 1
             if render:
                 self.env.render()
             total_rew += reward
-            if done:
-                break
         self.total_episodes += 1
-        tf.summary.scalar("env/Reward", total_rew, step=self.total_steps)
-        tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
+        tf.summary.scalar("env/episode_reward", total_rew, step=self.total_steps)
+        tf.summary.scalar("env/total_episodes", self.total_episodes, step=self.total_steps)
         return total_rew
 
     def learn(self):
-        with self.writer.as_default():
+        with self.writer.as_default(): # pylint: disable=not-context-manager
             for iteration in range(self.config["n_iter"]):
                 # Sample parameter vectors
                 thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta)
-                        for _ in range(self.config["batch_size"])]
+                          for _ in range(self.config["batch_size"])]
                 rewards = [self.noisy_evaluation(theta) for theta in thetas]
                 # Get elite parameters
                 n_elite = int(self.config["batch_size"] * self.config["elite_frac"])

@@ -16,12 +16,33 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 # Adaption of Karpathy's Pong from Pixels article to apply it using a simple neural network on other environments
 
 def scale_state(state, O):
+    """
+    Scale the state of a state.
+
+    Args:
+        state: (bool): write your description
+        O: (todo): write your description
+    """
     return state - O.low
 
 def sigmoid(x):
+    """
+    Return the sigmoid
+
+    Args:
+        x: (float): write your description
+    """
     return 1.0 / (1.0 + np.exp(-x))
 
 def random_with_probability(output, n_actions, temperature=1.0):
+    """
+    Randomly generate_with probability.
+
+    Args:
+        output: (todo): write your description
+        n_actions: (int): write your description
+        temperature: (float): write your description
+    """
     # total = sum([np.exp(float(o) / temperature) for o in output])
     # probs = [np.exp(float(o) / temperature) / total for o in output]
     probs = output / np.sum(output)
@@ -31,6 +52,16 @@ def random_with_probability(output, n_actions, temperature=1.0):
 class Karpathy(Agent):
     """Karpathy policy gradient agent"""
     def __init__(self, env, monitor_path, video=True, **usercfg):
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(Karpathy, self).__init__(**usercfg)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.nA = self.env.action_space.n
@@ -51,15 +82,35 @@ class Karpathy(Agent):
         self.build_network()
 
     def build_network(self):
+        """
+        Build a random network
+
+        Args:
+            self: (todo): write your description
+        """
         self.w1 = np.random.randn(self.nO, self.config["n_hidden_units"]) / np.sqrt(self.config["n_hidden_units"])
         self.w2 = np.random.randn(self.config["n_hidden_units"], self.nA) / np.sqrt(self.nA)
 
     def choose_action(self, state):
+        """
+        Finds the next state.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+        """
         x1, nn_outputs = self.forward_step(state)
         action, probabilities = random_with_probability(nn_outputs, self.nA)
         return action, probabilities, x1
 
     def forward_step(self, state):
+        """
+        Perform step.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+        """
         x1 = np.dot(state, self.w1)
         x1[x1 < 0] = 0  # ReLU
         output = sigmoid(np.dot(x1, self.w2))
@@ -106,6 +157,12 @@ class Karpathy(Agent):
                 }
 
     def learn(self):
+        """
+        Perform the model
+
+        Args:
+            self: (todo): write your description
+        """
         reporter = Reporter()
 
         gradient1 = np.zeros_like(self.w1)

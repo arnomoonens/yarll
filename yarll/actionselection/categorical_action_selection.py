@@ -11,6 +11,12 @@ class ProbabilisticCategoricalActionSelection(CategoricalActionSelection):
 
     @staticmethod
     def select_action(probabilities):
+        """
+        Select a single action.
+
+        Args:
+            probabilities: (todo): write your description
+        """
         return np.random.choice(len(probabilities), p=probabilities)
 
 class MaxCategoricalActionSelection(CategoricalActionSelection):
@@ -18,4 +24,10 @@ class MaxCategoricalActionSelection(CategoricalActionSelection):
 
     @staticmethod
     def select_action(probabilities):
+        """
+        Return the action of the given probabilities.
+
+        Args:
+            probabilities: (todo): write your description
+        """
         return np.argmax(probabilities)

@@ -34,6 +34,16 @@ class Acrobot(DescriptionWrapper):
     ]
 
     def __init__(self, link_length_1=None, link_length_2=None, link_mass_1=None, link_mass_2=None, **kwargs):
+        """
+        Stub
+
+        Args:
+            self: (todo): write your description
+            link_length_1: (int): write your description
+            link_length_2: (int): write your description
+            link_mass_1: (todo): write your description
+            link_mass_2: (todo): write your description
+        """
         super(Acrobot, self).__init__(gym.make("OldAcrobot-v1"), **kwargs)
         self.link_length_1 = link_length_1
         self.link_length_2 = link_length_2

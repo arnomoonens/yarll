@@ -8,6 +8,12 @@ class ExperiencesMemory(object):
     """Experience gathered from an environment."""
 
     def __init__(self):
+        """
+        Initialize gradient.
+
+        Args:
+            self: (todo): write your description
+        """
         super(ExperiencesMemory, self).__init__()
         self.experiences = []
         self.steps = 0
@@ -27,22 +33,52 @@ class ExperiencesMemory(object):
 
     @property
     def states(self):
+        """
+        List of all states.
+
+        Args:
+            self: (todo): write your description
+        """
         return [exp.state for exp in self.experiences]
 
     @property
     def actions(self):
+        """
+        The list of actions associated actions.
+
+        Args:
+            self: (todo): write your description
+        """
         return [exp.action for exp in self.experiences]
 
     @property
     def rewards(self):
+        """
+        Returns the reward reward.
+
+        Args:
+            self: (todo): write your description
+        """
         return [exp.reward for exp in self.experiences]
 
     @property
     def values(self):
+        """
+        Return a list of all the values.
+
+        Args:
+            self: (todo): write your description
+        """
         return [exp.value for exp in self.experiences]
 
     @property
     def features(self):
+        """
+        A list of experiment features.
+
+        Args:
+            self: (todo): write your description
+        """
         return[exp.features for exp in self.experiences]
 
     @property
@@ -52,11 +88,30 @@ class ExperiencesMemory(object):
 
     @property
     def terminals(self):
+        """
+        List of all terminal symbols.
+
+        Args:
+            self: (todo): write your description
+        """
         return [exp.terminal for exp in self.experiences]
 
     @property
     def next_states(self):
+        """
+        Returns the next state.
+
+        Args:
+            self: (todo): write your description
+        """
         return [exp.next_state for exp in self.experiences]
 
     def __getitem__(self, i):
+        """
+        Return the item at the given index.
+
+        Args:
+            self: (todo): write your description
+            i: (todo): write your description
+        """
         return self.experiences[i]

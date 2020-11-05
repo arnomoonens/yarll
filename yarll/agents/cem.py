@@ -92,12 +92,29 @@ class DeterministicContinuousActionLinearPolicy(Policy):
         self.b = theta[dim_ob * dim_ac:None]
 
     def act(self, ob):
+        """
+        Return a copy of the space.
+
+        Args:
+            self: (todo): write your description
+            ob: (array): write your description
+        """
         a = np.clip(ob.dot(self.W) + self.b, self.ac_space.low, self.ac_space.high)
         return a
 
 class CEM(Agent):
     """Cross-Entropy Method learner"""
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(CEM, self).__init__(**usercfg)
         self.monitor_path = Path(monitor_path)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
@@ -126,6 +143,13 @@ class CEM(Agent):
         self.writer = tf.summary.create_file_writer(str(monitor_path)) # pylint: disable=no-member
 
     def make_policy(self, theta) -> Policy:
+        """
+        Return an instance of this environment.
+
+        Args:
+            self: (todo): write your description
+            theta: (float): write your description
+        """
         if isinstance(self.env.action_space, Discrete):
             return DeterministicDiscreteActionLinearPolicy(theta, self.env.observation_space, self.env.action_space)
         elif isinstance(self.env.action_space, Box):
@@ -136,11 +160,26 @@ class CEM(Agent):
             raise NotImplementedError
 
     def noisy_evaluation(self, theta) -> float:
+        """
+        Eisy policy for the given theta.
+
+        Args:
+            self: (todo): write your description
+            theta: (float): write your description
+        """
         policy: Policy = self.make_policy(theta)
         rew = self.do_episode(policy)
         return rew
 
     def do_episode(self, policy: Policy, render=False):
+        """
+        Perform an episode summary.
+
+        Args:
+            self: (todo): write your description
+            policy: (todo): write your description
+            render: (todo): write your description
+        """
         total_rew = 0
         ob = self.env.reset()
         done = False
@@ -157,6 +196,12 @@ class CEM(Agent):
         return total_rew
 
     def learn(self):
+        """
+        Evaluate the policy.
+
+        Args:
+            self: (todo): write your description
+        """
         with self.writer.as_default(): # pylint: disable=not-context-manager
             for iteration in range(self.config["n_iter"]):
                 # Sample parameter vectors

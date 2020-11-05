@@ -11,4 +11,11 @@ class ContinuousActionSelection(ActionSelection):
 
     # Without sigma
     def select_action(self, mu):
+        """
+        Select a single action.
+
+        Args:
+            self: (todo): write your description
+            mu: (todo): write your description
+        """
         return np.random.normal(mu)

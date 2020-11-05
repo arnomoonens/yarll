@@ -26,6 +26,17 @@ class A3C(Agent):
     """Asynchronous Advantage Actor Critic learner."""
 
     def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = True, **usercfg) -> None:
+        """
+        Initialize the video.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            monitor: (todo): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(A3C, self).__init__(**usercfg)
         self.env = env
         self.env_name = env.spec.id
@@ -56,10 +67,24 @@ class A3C(Agent):
         self.ps_process: Optional[subprocess.Popen] = None
 
     def signal_handler(self, received_signal: int, frame):
+        """
+        Signal signal handler.
+
+        Args:
+            self: (todo): write your description
+            received_signal: (str): write your description
+            frame: (todo): write your description
+        """
         logging.info("SIGINT signal received: Requesting a stop...")
         sys.exit(128 + received_signal)
 
     def start_parameter_server(self):
+        """
+        Start server starts server.
+
+        Args:
+            self: (todo): write your description
+        """
         cmd = [
             sys.executable,
             os.path.join(self.current_folder, "parameter_server.py"),
@@ -68,14 +93,32 @@ class A3C(Agent):
         self.ps_process = subprocess.Popen(processed_cmd, shell=True)
 
     def stop_parameter_server(self):
+        """
+        Stop the server.
+
+        Args:
+            self: (todo): write your description
+        """
         self.ps_process.terminate()
 
     def start_signal_handler(self):
+        """
+        Starts the signal.
+
+        Args:
+            self: (todo): write your description
+        """
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGHUP, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
 
     def learn(self):
+        """
+        Starts the worker.
+
+        Args:
+            self: (todo): write your description
+        """
         self.start_signal_handler()
         self.start_parameter_server()
         worker_processes = []
@@ -101,18 +144,48 @@ class A3C(Agent):
 class A3CDiscrete(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
+        """
+        Initialize the monitor.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            monitor: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(A3CDiscrete, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskDiscrete"
 
 class A3CDiscreteCNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
+        """
+        Initialize the monitor.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            monitor: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(A3CDiscreteCNN, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskDiscreteCNN"
 
 class A3CDiscreteCNNRNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
+        """
+        Initialize the monitor.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            monitor: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(A3CDiscreteCNNRNN, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskDiscreteCNNRNN"
         self.config["RNN"] = True
@@ -120,5 +193,15 @@ class A3CDiscreteCNNRNN(A3C):
 class A3CContinuous(A3C):
     """A3C for a continuous action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
+        """
+        Initialize the monitor.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            monitor: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(A3CContinuous, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskContinuous"

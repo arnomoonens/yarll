@@ -16,6 +16,15 @@ from yarll.agents.env_runner import EnvRunner
 
 
 def ppo_loss(old_logprob, new_logprob, epsilon, advantage):
+    """
+    Ppo loss.
+
+    Args:
+        old_logprob: (todo): write your description
+        new_logprob: (todo): write your description
+        epsilon: (float): write your description
+        advantage: (todo): write your description
+    """
     ratio = tf.exp(new_logprob - old_logprob)
     ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
     return tf.minimum(ratio * advantage, ratio_clipped * advantage)
@@ -26,6 +35,17 @@ class PPO(Agent):
     RNN = False
 
     def __init__(self, env, monitor_path: Path, monitor: bool = False, video: bool = False, **usercfg) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            monitor: (todo): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(PPO, self).__init__(**usercfg)
         self.monitor_path = Path(monitor_path)
         self.env = env
@@ -105,16 +125,45 @@ class PPO(Agent):
         return
 
     def _actor_loss(self, old_logprob, new_logprob, advantage):
+        """
+        Evaluate loss.
+
+        Args:
+            self: (todo): write your description
+            old_logprob: (todo): write your description
+            new_logprob: (todo): write your description
+            advantage: (todo): write your description
+        """
         return ppo_loss(old_logprob, new_logprob, self.config["cso_epsilon"], advantage)
 
     def build_networks(self):
+        """
+        Builds a list of networks networks.
+
+        Args:
+            self: (todo): write your description
+        """
         raise NotImplementedError
 
     def choose_action(self, state, features) -> dict:
+        """
+        Choose a new action for selected features.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         action, value = self.new_network.action_value(state[None, :])
         return {"action": action, "value": value[0]}
 
     def get_processed_trajectories(self):
+        """
+        Generate trajectory trajectory
+
+        Args:
+            self: (todo): write your description
+        """
         trajectory = self.env_runner.get_steps(
             int(self.config["n_local_steps"]), stop_at_trajectory_end=False)
         to_save = [exp.state.tolist() + exp.action.tolist() + [exp.reward] + exp.next_state.tolist() for exp in trajectory.experiences]
@@ -144,14 +193,39 @@ class PPO(Agent):
         return trajectory.states, trajectory.actions, advantages, rs, trajectory.values, trajectory.features
 
     def set_old_to_new(self):
+        """
+        Sets new variables to new variables.
+
+        Args:
+            self: (todo): write your description
+        """
         for old_var, new_var in zip(self.old_network.trainable_variables, self.new_network.trainable_variables):
             old_var.assign(new_var)
 
     def _critic_loss(self, returns, value):
+        """
+        : parameter loss : return :
+
+        Args:
+            self: (todo): write your description
+            returns: (todo): write your description
+            value: (str): write your description
+        """
         return critic_loss(returns, value)
 
     @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
+        """
+        Perform the model.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions_taken: (str): write your description
+            advantages: (todo): write your description
+            returns: (todo): write your description
+            features: (todo): write your description
+        """
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)
         returns = tf.cast(returns, dtype=tf.float32)
@@ -234,6 +308,12 @@ class PPO(Agent):
 
 class PPODiscrete(PPO):
     def build_networks(self) -> ActorCriticNetwork:
+        """
+        Build a network networks.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkDiscrete(
             self.env.action_space.n,
             int(self.config["n_hidden_units"]),
@@ -241,6 +321,12 @@ class PPODiscrete(PPO):
 
 class PPOMultiDiscrete(PPO):
     def build_networks(self) -> ActorCriticNetwork:
+        """
+        Create a network interface.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkMultiDiscrete(
             self.env.action_space.nvec,
             int(self.config["n_hidden_units"]),
@@ -248,6 +334,12 @@ class PPOMultiDiscrete(PPO):
 
 class PPOBernoulli(PPO):
     def build_networks(self) -> ActorCriticNetwork:
+        """
+        Return a network interface.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkBernoulli(
             self.env.action_space.n,
             int(self.config["n_hidden_units"]),
@@ -256,6 +348,12 @@ class PPOBernoulli(PPO):
 
 class PPODiscreteCNN(PPODiscrete):
     def build_networks(self) -> ActorCriticNetwork:
+        """
+        Return a network interface.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkDiscreteCNN(
             self.env.action_space.n,
             int(self.config["n_hidden_units"]))
@@ -263,6 +361,12 @@ class PPODiscreteCNN(PPODiscrete):
 
 class PPOContinuous(PPO):
     def build_networks(self) -> ActorCriticNetwork:
+        """
+        Builds a network interface.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkContinuous(
             self.env.action_space.shape,
             int(self.config["n_hidden_units"]),
@@ -270,6 +374,17 @@ class PPOContinuous(PPO):
 
     @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
+        """
+        Train the model.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions_taken: (str): write your description
+            advantages: (todo): write your description
+            returns: (todo): write your description
+            features: (todo): write your description
+        """
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)
         returns = tf.cast(returns, dtype=tf.float32)
@@ -293,13 +408,35 @@ class PPOContinuous(PPO):
         return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob, new_mean
 
     def _specific_summaries(self, n_updates: int) -> None:
+        """
+        Add summaries.
+
+        Args:
+            self: (todo): write your description
+            n_updates: (int): write your description
+        """
         tf.summary.scalar("model/std",
                           tf.reduce_mean(tf.exp(self.new_network.action_mean.log_std)),
                           n_updates)
 
     def choose_action(self, state, features) -> dict:
+        """
+        Chooses an action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         action, _, value = self.new_network.action_value(state[None, :])
         return {"action": action, "value": value[0]}
 
     def get_env_action(self, action):
+        """
+        Returns the action action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return action

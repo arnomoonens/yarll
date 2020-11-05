@@ -26,6 +26,15 @@ class DQN(Agent):
     """
 
     def __init__(self, env, monitor_path: Union[str, Path], **usercfg):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(DQN, self).__init__(**usercfg)
         self.env = env
         self.monitor_path = Path(monitor_path)
@@ -91,6 +100,12 @@ class DQN(Agent):
 
 
     def build_network(self):
+        """
+        Build a network
+
+        Args:
+            self: (todo): write your description
+        """
         network = Sequential()
         for _ in range(self.config["n_hidden_layers"]):
             network.add(Dense(self.config["n_hidden_units"],
@@ -99,12 +114,31 @@ class DQN(Agent):
         return network
 
     def choose_action(self, state, features):
+        """
+        Return the selected action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         q_values = self.q_network(state[None, :])[0]
         action, _ = self.policy(q_values)
         return {"action": action}
 
     @tf.function
     def train(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
+        """
+        Evaluate the network.
+
+        Args:
+            self: (todo): write your description
+            state0_batch: (todo): write your description
+            action_batch: (todo): write your description
+            reward_batch: (int): write your description
+            state1_batch: (todo): write your description
+            terminal1_batch: (int): write your description
+        """
         next_q_values = self.target_q_network(state1_batch)
         max_next_q_values = tf.reduce_max(next_q_values, axis=1)
         target_q_values = reward_batch + (1. - terminal1_batch) * self.config["gamma"] * max_next_q_values
@@ -119,6 +153,12 @@ class DQN(Agent):
         return q_mean, tf.sqrt(q_variance), tf.reduce_mean(target_q_values), loss
 
     def learn(self):
+        """
+        Perform the network.
+
+        Args:
+            self: (todo): write your description
+        """
         # Arrays to keep results from train function over different train steps in
         q_means = np.empty((self.config["n_train_steps"],), np.float32)
         q_stds = np.empty((self.config["n_train_steps"],), np.float32)

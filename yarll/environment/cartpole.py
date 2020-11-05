@@ -27,6 +27,15 @@ class CartPole(DescriptionWrapper):
     ]
 
     def __init__(self, length=None, masspole=None, masscart=None, ** kwargs):
+        """
+        Initialize the parameters.
+
+        Args:
+            self: (todo): write your description
+            length: (int): write your description
+            masspole: (float): write your description
+            masscart: (todo): write your description
+        """
         self.length = length
         self.masspole = masspole
         self.masscart = masscart

@@ -14,6 +14,12 @@ gym.logger.set_level(gym.logger.ERROR)
 
 # TODO: is this function still necessary?
 def make(env_id: str, **kwargs):
+    """
+    Return an instance of the environment.
+
+    Args:
+        env_id: (str): write your description
+    """
     spec = gym.envs.registry.spec(env_id)
     env = spec.make(**kwargs)
 

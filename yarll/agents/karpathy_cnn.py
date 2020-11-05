@@ -20,6 +20,16 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 class KarpathyCNN(Agent):
     """Karpathy policy gradient learner using a convolutional neural network"""
     def __init__(self, env, monitor_path, video=True, **usercfg):
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(KarpathyCNN, self).__init__(**usercfg)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.nA = env.action_space.n
@@ -46,6 +56,12 @@ class KarpathyCNN(Agent):
             self.saver = FastSaver()
 
     def build_network(self):
+        """
+        Builds the network.
+
+        Args:
+            self: (todo): write your description
+        """
         image_size = 80
         image_depth = 1  # aka nr. of feature maps. Eg 3 for RGB images. 1 here because we use grayscale images
 
@@ -112,6 +128,13 @@ class KarpathyCNN(Agent):
         self.session.run(init)
 
     def choose_action(self, state):
+        """
+        Chooses the selected session.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+        """
         return self.session.run([self.action], feed_dict={self.states: [state]})[0]
 
     def get_trajectory(self, render=False):
@@ -145,6 +168,12 @@ class KarpathyCNN(Agent):
         }
 
     def learn(self):
+        """
+        Evaluates the optimisation.
+
+        Args:
+            self: (todo): write your description
+        """
         reporter = Reporter()
 
         self.session.run([self.reset_accumulative_grads])

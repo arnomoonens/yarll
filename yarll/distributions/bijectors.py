@@ -78,15 +78,45 @@ class ConditionalShift(tfb.Bijector):
 
     @classmethod
     def _is_increasing(cls):
+        """
+        Return true if the given cls the current class.
+
+        Args:
+            cls: (callable): write your description
+        """
         return True
 
     def _forward(self, x, shift):
+        """
+        Forward forward forward forward.
+
+        Args:
+            self: (todo): write your description
+            x: (todo): write your description
+            shift: (todo): write your description
+        """
         return x + shift
 
     def _inverse(self, y, shift):
+        """
+        Inverse of the inverse function.
+
+        Args:
+            self: (todo): write your description
+            y: (int): write your description
+            shift: (int): write your description
+        """
         return y - shift
 
     def _forward_log_det_jacobian(self, x, shift):
+        """
+        Evaluates the log - likelihood.
+
+        Args:
+            self: (todo): write your description
+            x: (array): write your description
+            shift: (array): write your description
+        """
         # is_constant_jacobian = True for this bijector, hence the
         # `log_det_jacobian` need only be specified for a single input, as this will
         # be tiled to match `event_ndims`.
@@ -122,6 +152,13 @@ class ConditionalScale(tfb.Bijector):
                 name=name)
 
     def _maybe_assert_valid_scale(self, scale):
+        """
+        Checks if scale is valid.
+
+        Args:
+            self: (todo): write your description
+            scale: (float): write your description
+        """
         if not self.validate_args:
             return ()
         is_non_zero = assert_util.assert_none_equal(
@@ -131,13 +168,37 @@ class ConditionalScale(tfb.Bijector):
         return (is_non_zero, )
 
     def _forward(self, x, scale):
+        """
+        Forward computation.
+
+        Args:
+            self: (todo): write your description
+            x: (todo): write your description
+            scale: (float): write your description
+        """
         with tf.control_dependencies(self._maybe_assert_valid_scale(scale)):
             return x * scale
 
     def _inverse(self, y, scale):
+        """
+        Inverse of the graph.
+
+        Args:
+            self: (todo): write your description
+            y: (int): write your description
+            scale: (float): write your description
+        """
         with tf.control_dependencies(self._maybe_assert_valid_scale(scale)):
             return y / scale
 
     def _forward_log_det_jacobian(self, x, scale):
+        """
+        Evaluate the log - likelihood.
+
+        Args:
+            self: (todo): write your description
+            x: (array): write your description
+            scale: (float): write your description
+        """
         with tf.control_dependencies(self._maybe_assert_valid_scale(scale)):
             return tf.math.log(tf.abs(scale))

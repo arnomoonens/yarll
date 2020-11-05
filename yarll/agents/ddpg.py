@@ -11,6 +11,15 @@ from yarll.misc.network_ops import batch_norm_layer, fan_in_initializer, linear_
 
 class DDPG(Agent):
     def __init__(self, env, monitor_path: str, **usercfg) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(DDPG, self).__init__(**usercfg)
         self.env = env
         self.monitor_path: str = monitor_path
@@ -91,9 +100,21 @@ class DDPG(Agent):
             self.monitor_path, "summaries"), tf.get_default_graph())
 
     def _initalize(self):
+        """
+        Initalize the operation.
+
+        Args:
+            self: (todo): write your description
+        """
         self.session.run(self.init_op)
 
     def build_actor_network(self):
+        """
+        Builds the network of the network.
+
+        Args:
+            self: (todo): write your description
+        """
         layer1_size = 400
         layer2_size = 300
 
@@ -118,6 +139,13 @@ class DDPG(Agent):
         return action_output, l1_vars + l2_vars + l3_vars
 
     def build_target_actor_network(self, actor_vars: list):
+        """
+        Builds the core.
+
+        Args:
+            self: (todo): write your description
+            actor_vars: (str): write your description
+        """
         ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
         target_update = ema.apply(actor_vars)
         target_net = [ema.average(v) for v in actor_vars]
@@ -141,6 +169,12 @@ class DDPG(Agent):
         return action_output, target_update
 
     def build_critic_network(self):
+        """
+        Builds network.
+
+        Args:
+            self: (todo): write your description
+        """
         layer1_size = 400
         layer2_size = 300
 
@@ -167,6 +201,13 @@ class DDPG(Agent):
         return q_value_output, l1_vars + [W2, W2_action, b2, W3, b3]
 
     def build_target_critic_network(self, critic_vars: list):
+        """
+        Builds a tf.
+
+        Args:
+            self: (todo): write your description
+            critic_vars: (str): write your description
+        """
 
         ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
         target_update = ema.apply(critic_vars)
@@ -182,6 +223,18 @@ class DDPG(Agent):
         return q_value_output, target_update
 
     def actor_gradients(self, state_batch: np.ndarray, action_batch: np.ndarray):
+        """
+        Evaluates the gradients.
+
+        Args:
+            self: (todo): write your description
+            state_batch: (todo): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+            action_batch: (todo): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+        """
         q, grads = tf.get_default_session().run([self.q_value_output, self.action_gradients], feed_dict={
             self.states: state_batch,
             self.actions_taken: action_batch,
@@ -193,6 +246,18 @@ class DDPG(Agent):
         return grads[0]
 
     def target_q(self, states: np.ndarray, actions: np.ndarray):
+        """
+        Return q q q q.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+            actions: (todo): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+        """
         return tf.get_default_session().run(self.target_q_value_output, feed_dict={
             self.states: states,
             self.actions_taken: actions,
@@ -200,6 +265,18 @@ class DDPG(Agent):
         })
 
     def q_value(self, states: np.ndarray, actions: np.ndarray):
+        """
+        Return q q q q value of - qubits.
+
+        Args:
+            self: (todo): write your description
+            states: (list): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+            actions: (todo): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+        """
         return tf.get_default_session().run(self.q_value_output, feed_dict={
             self.states: states,
             self.actions_taken: actions,
@@ -228,6 +305,12 @@ class DDPG(Agent):
         })
 
     def train(self):
+        """
+        Trains the target.
+
+        Args:
+            self: (todo): write your description
+        """
         sample = self.replay_buffer.get_batch(int(self.config["batch_size"]))
 
         # for n_actions = 1
@@ -274,6 +357,12 @@ class DDPG(Agent):
         return action + self.action_noise()
 
     def learn(self):
+        """
+        Learn the model.
+
+        Args:
+            self: (todo): write your description
+        """
         max_action = self.env.action_space.high
         self._initalize()
         with self.session as sess, sess.as_default():

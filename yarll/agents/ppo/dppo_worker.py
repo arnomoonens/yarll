@@ -20,6 +20,20 @@ class DPPOWorker(object):
     """Distributed Proximal Policy Optimization Worker."""
 
     def __init__(self, env_id: str, task_id: int, comm: MPI.Intercomm, monitor_path: str, config: Dict[str, Any], seed=None) -> None:
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            env_id: (str): write your description
+            task_id: (str): write your description
+            comm: (todo): write your description
+            MPI: (int): write your description
+            Intercomm: (todo): write your description
+            monitor_path: (str): write your description
+            config: (todo): write your description
+            seed: (int): write your description
+        """
         super(DPPOWorker, self).__init__()
         self.comm = comm
         self.config = config
@@ -51,9 +65,21 @@ class DPPOWorker(object):
                 self.env, self, {})
 
     def build_networks(self):
+        """
+        Builds a list of networks networks.
+
+        Args:
+            self: (todo): write your description
+        """
         raise NotImplementedError
 
     def run(self):
+        """
+        Runs the model.
+
+        Args:
+            self: (todo): write your description
+        """
         with tf.Session() as sess, sess.as_default():
             var_receivers = [np.zeros(var.shape.as_list(), dtype=var.dtype.as_numpy_dtype) for var in self.global_vars]
             while True:
@@ -80,15 +106,37 @@ class DPPOWorker(object):
 
     @property
     def global_step(self):
+        """
+        Return the global step.
+
+        Args:
+            self: (todo): write your description
+        """
         return self._global_step.eval()
 
     def get_critic_value(self, state, *rest):
+        """
+        Gets the value of the network.
+
+        Args:
+            self: (todo): write your description
+            state: (str): write your description
+            rest: (str): write your description
+        """
         fetches = [self.global_network.value]
         feed_dict = {self.global_network.states: state}
         value = tf.get_default_session().run(fetches, feed_dict=feed_dict)[0].flatten()
         return value
 
     def choose_action(self, state, *rest):
+        """
+        Choose the selected action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            rest: (todo): write your description
+        """
         fetches = [self.global_network.action, self.global_network.value]
         feed_dict = {
             self.global_network.states: [state]
@@ -97,9 +145,22 @@ class DPPOWorker(object):
         return {"action": action, "value": value[0]}
 
     def get_env_action(self, action):
+        """
+        Get the action action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return np.argmax(action)
 
     def new_trajectory(self):
+        """
+        Return a new trajectory.
+
+        Args:
+            self: (todo): write your description
+        """
         pass
 
 
@@ -107,6 +168,18 @@ class DPPOWorkerDiscrete(DPPOWorker):
     """DPPOWorker for a discrete action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
+        """
+        Initialize the task.
+
+        Args:
+            self: (todo): write your description
+            env_id: (str): write your description
+            task_id: (str): write your description
+            comm: (todo): write your description
+            monitor_path: (str): write your description
+            config: (todo): write your description
+            seed: (int): write your description
+        """
         self.make_loss = actor_critic_discrete_loss
         super(DPPOWorkerDiscrete, self).__init__(
             env_id,
@@ -118,6 +191,12 @@ class DPPOWorkerDiscrete(DPPOWorker):
         )
 
     def build_networks(self):
+        """
+        Builds the network network
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -130,6 +209,18 @@ class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
     """DPPOWorker for a discrete action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
+        """
+        Initialize the simulation.
+
+        Args:
+            self: (todo): write your description
+            env_id: (str): write your description
+            task_id: (str): write your description
+            comm: (todo): write your description
+            monitor_path: (str): write your description
+            config: (todo): write your description
+            seed: (int): write your description
+        """
         self.make_loss = actor_critic_discrete_loss
         super(DPPOWorkerDiscreteCNN, self).__init__(
             env_id,
@@ -141,6 +232,12 @@ class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
         )
 
     def build_networks(self):
+        """
+        Builds a network from the network
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -153,6 +250,18 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
     """DPPOWorker for a discrete action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
+        """
+        Initialize the task.
+
+        Args:
+            self: (todo): write your description
+            env_id: (str): write your description
+            task_id: (str): write your description
+            comm: (todo): write your description
+            monitor_path: (str): write your description
+            config: (todo): write your description
+            seed: (int): write your description
+        """
         self.make_loss = actor_critic_discrete_loss
         super(DPPOWorkerDiscreteCNNRNN, self).__init__(
             env_id,
@@ -164,6 +273,12 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
         )
 
     def build_networks(self):
+        """
+        Builds the network
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -173,6 +288,14 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
         return ac_net
 
     def choose_action(self, state, features):
+        """
+        Chooses the action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         feed_dict = {
             self.states: [state]
         }
@@ -184,6 +307,14 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
         return {"action": action, "value": value, "features": rnn_state}
 
     def get_critic_value(self, states, features):
+        """
+        Gets the network value for a tf. tnn. tnn.
+
+        Args:
+            self: (todo): write your description
+            states: (str): write your description
+            features: (str): write your description
+        """
         feed_dict = {
             self.states: states
         }
@@ -195,6 +326,18 @@ class DPPOWorkerContinuous(DPPOWorker):
     """DPPOWorker for a continuous action space."""
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
+        """
+        Initialize the simulation.
+
+        Args:
+            self: (todo): write your description
+            env_id: (str): write your description
+            task_id: (str): write your description
+            comm: (todo): write your description
+            monitor_path: (str): write your description
+            config: (todo): write your description
+            seed: (int): write your description
+        """
         self.make_loss = actor_critic_continuous_loss
         super(DPPOWorkerContinuous, self).__init__(
             env_id,
@@ -206,6 +349,12 @@ class DPPOWorkerContinuous(DPPOWorker):
         )
 
     def build_networks(self):
+        """
+        Builds a new networks
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
@@ -214,6 +363,13 @@ class DPPOWorkerContinuous(DPPOWorker):
         return ac_net
 
     def get_env_action(self, action):
+        """
+        Returns the action action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return action
 
 
@@ -231,6 +387,11 @@ parser.add_argument("--seed", type=int, default=None, help="Seed to use for envi
 
 
 def main():
+    """
+    Main function.
+
+    Args:
+    """
     comm = MPI.Comm.Get_parent()
     task_id = comm.Get_rank()
     args = parser.parse_args()

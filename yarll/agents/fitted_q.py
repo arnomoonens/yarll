@@ -13,6 +13,15 @@ from yarll.memory.experiences_memory import ExperiencesMemory
 
 class FittedQIteration(Agent):
     def __init__(self, env: Environment, monitor_path: str, **usercfg) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(FittedQIteration, self).__init__()
 
         self.env = env
@@ -48,6 +57,12 @@ class FittedQIteration(Agent):
                                     scale_states=self.config["normalize_states"])
 
     def make_q_network(self):
+        """
+        Make the keras network.
+
+        Args:
+            self: (todo): write your description
+        """
         model = tf.keras.Sequential()
         for _ in range(self.config["n_hidden_layers"]):
             model.add(Dense(self.config["n_hidden_units"], activation="relu"))
@@ -55,6 +70,14 @@ class FittedQIteration(Agent):
         return model
 
     def choose_action(self, state, *rest) -> dict:
+        """
+        Return the selected action.
+
+        Args:
+            self: (todo): write your description
+            state: (array): write your description
+            rest: (todo): write your description
+        """
         if tf.random.uniform((1,))[0] < self.config["epsilon"]:
             action = np.random.randint(0, self.n_actions)
         else:
@@ -67,6 +90,13 @@ class FittedQIteration(Agent):
         return {"action": action}
 
     def get_processed_trajectories(self, trajectories: List[ExperiencesMemory]):
+        """
+        Return a list of directories.
+
+        Args:
+            self: (todo): write your description
+            trajectories: (todo): write your description
+        """
         states = tf.convert_to_tensor(flatten_list([t.states for t in trajectories]), dtype=tf.float32)
         actions = tf.convert_to_tensor(flatten_list([t.actions for t in trajectories]), dtype=tf.int32)
         rewards = tf.convert_to_tensor(flatten_list([t.rewards for t in trajectories]), dtype=tf.float32)
@@ -75,6 +105,21 @@ class FittedQIteration(Agent):
         return states, actions, rewards, next_states, terminals
 
     def calculate_target_q(self, rewards: tf.Tensor, next_states: tf.Tensor, terminals: tf.Tensor):
+        """
+        Calculate the target tensor.
+
+        Args:
+            self: (todo): write your description
+            rewards: (todo): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+            next_states: (str): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+            terminals: (str): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+        """
         n_states = len(rewards)
         # For every state, make a sample with the one-hot of every action concatenated to it
         oh = np.zeros([self.n_actions, self.n_actions], dtype=np.float32)
@@ -90,6 +135,12 @@ class FittedQIteration(Agent):
         return rewards + self.config["gamma"] * max_q * (1 - terminals)
 
     def learn(self):
+        """
+        Learn the network.
+
+        Args:
+            self: (todo): write your description
+        """
         with self.writer.as_default():
             for _ in range(self.config["n_iterations"]):
                 trajs = self.env_runner.get_trajectories()

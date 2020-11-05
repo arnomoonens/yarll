@@ -11,6 +11,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("envs_dir", type=Path, help="Directory with environment specification files")
 
 def main():
+    """
+    Main entry point.
+
+    Args:
+    """
     args = parser.parse_args()
 
     _, _, env_spec_files = next(os.walk(args.envs_dir))

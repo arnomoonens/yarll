@@ -13,6 +13,14 @@ from yarll.misc.network_ops import create_accumulative_gradients_op, add_accumul
 class TaskPolicy(object):
     """Policy for a specific class."""
     def __init__(self, action, master):
+        """
+        Initialize master
+
+        Args:
+            self: (todo): write your description
+            action: (todo): write your description
+            master: (todo): write your description
+        """
         super(TaskPolicy, self).__init__()
         self.action = action
         self.master = master
@@ -22,11 +30,26 @@ class TaskPolicy(object):
         return self.master.session.run([self.action], feed_dict={self.master.states: [state]})[0]
 
     def new_trajectory(self):
+        """
+        Return a new trajectory.
+
+        Args:
+            self: (todo): write your description
+        """
         pass
 
 class KnowledgeTransfer(Agent):
     """Learner for variations of a task."""
     def __init__(self, envs, monitor_path, **usercfg):
+        """
+        Initialize all environments.
+
+        Args:
+            self: (todo): write your description
+            envs: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(KnowledgeTransfer, self).__init__(**usercfg)
         self.envs = envs
         self.n_tasks = len(envs)
@@ -58,6 +81,12 @@ class KnowledgeTransfer(Agent):
             self.saver = FastSaver()
 
     def build_networks(self):
+        """
+        Builds the network.
+
+        Args:
+            self: (todo): write your description
+        """
         self.session = tf.Session()
 
         with tf.variable_scope("shared"):
@@ -138,6 +167,12 @@ class KnowledgeTransfer(Agent):
         self.init_op = tf.global_variables_initializer()
 
     def _initialize(self):
+        """
+        Initialize the session.
+
+        Args:
+            self: (todo): write your description
+        """
         self.session.run(self.init_op)
 
     def learn(self):

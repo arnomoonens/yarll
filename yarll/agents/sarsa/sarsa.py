@@ -5,6 +5,20 @@ import numpy as np
 class Sarsa(object):
     """Sarsa learner for function approximation"""
     def __init__(self, gamma: float, alpha: float, policy, traces, function_approximation, actions, start_state, start_action) -> None:
+        """
+        Initialize the consumer.
+
+        Args:
+            self: (todo): write your description
+            gamma: (float): write your description
+            alpha: (float): write your description
+            policy: (todo): write your description
+            traces: (list): write your description
+            function_approximation: (todo): write your description
+            actions: (todo): write your description
+            start_state: (todo): write your description
+            start_action: (todo): write your description
+        """
         super(Sarsa, self).__init__()
         self.gamma = gamma
         self.alpha = alpha

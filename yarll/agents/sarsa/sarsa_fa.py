@@ -17,6 +17,16 @@ from yarll.functionapproximation.tile_coding import TileCoding
 class SarsaFA(object):
     """Learner using Sarsa and function approximation"""
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
+        """
+        Initialize the video.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(SarsaFA, self).__init__()
         self.env = env
         self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
@@ -46,6 +56,12 @@ class SarsaFA(object):
                                                  self.nA)
 
     def learn(self):
+        """
+        Evaluates the model.
+
+        Args:
+            self: (todo): write your description
+        """
         for i in range(int(self.config["n_iter"])):
             traces = EligibilityTraces(self.function_approximation.features_shape,
                                        self.config["gamma"],

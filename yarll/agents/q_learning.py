@@ -8,6 +8,15 @@ from yarll.policies.e_greedy import EGreedy
 
 class QLearning(Agent):
     def __init__(self, env: Environment, monitor_path: str, **usercfg) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(QLearning, self).__init__()
         self.env = env
         self.monitor_path = Path(monitor_path)
@@ -26,6 +35,12 @@ class QLearning(Agent):
         self.writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def learn(self):
+        """
+        Learn the model.
+
+        Args:
+            self: (todo): write your description
+        """
         env = self.env
         total_steps = 0
         with self.writer.as_default():

@@ -27,6 +27,17 @@ class REINFORCE(Agent):
     """
 
     def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = True, **usercfg) -> None:
+        """
+        Initialize the video.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            monitor: (todo): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(REINFORCE, self).__init__(**usercfg)
         self.env = env
         if monitor:
@@ -54,6 +65,12 @@ class REINFORCE(Agent):
         self.writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def build_network(self) -> tf.keras.Model:
+        """
+        Build the keras.
+
+        Args:
+            self: (todo): write your description
+        """
         raise NotImplementedError()
 
     def choose_action(self, state, features) -> Dict[str, np.ndarray]:
@@ -62,6 +79,16 @@ class REINFORCE(Agent):
 
     @tf.function
     def train(self, states, actions_taken, advantages, features=None):
+        """
+        Train the model.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions_taken: (str): write your description
+            advantages: (todo): write your description
+            features: (todo): write your description
+        """
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
         advantages = tf.cast(advantages, dtype=tf.float32)
@@ -120,6 +147,16 @@ class REINFORCE(Agent):
 
 class ActorDiscrete(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, n_actions, activation="tanh"):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_hidden_layers: (int): write your description
+            n_hidden_units: (int): write your description
+            n_actions: (todo): write your description
+            activation: (str): write your description
+        """
         super(ActorDiscrete, self).__init__()
         self.logits = Sequential()
 
@@ -128,22 +165,64 @@ class ActorDiscrete(Model):
         self.logits.add(Dense(n_actions))
 
     def call(self, inp):
+        """
+        Parameters ---------- inp.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         return self.logits(inp)
 
     def action(self, states):
+        """
+        Return the state action.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+        """
         logits = self.predict(states)
         probs = tf.nn.softmax(logits)
         return tf.random.categorical(tf.math.log(probs), 1)
 
     def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        """
+        Evaluates the probability of actions.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+            logits: (todo): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+        """
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 
 class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
+        """
+        Return a superDisc network
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorDiscrete(self.config["n_hidden_layers"],
                              self.config["n_hidden_units"],
                              self.env.action_space.n)
@@ -156,6 +235,20 @@ class REINFORCEDiscrete(REINFORCE):
 
 class ActorDiscreteCNN(Model):
     def __init__(self, n_actions, n_hidden_units, n_conv_layers=4, n_filters=32, kernel_size=3, strides=2, padding="same", activation="elu"):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_actions: (todo): write your description
+            n_hidden_units: (int): write your description
+            n_conv_layers: (int): write your description
+            n_filters: (int): write your description
+            kernel_size: (int): write your description
+            strides: (int): write your description
+            padding: (str): write your description
+            activation: (str): write your description
+        """
         super(ActorDiscreteCNN, self).__init__()
         self.conv_layers = Sequential()
 
@@ -170,54 +263,146 @@ class ActorDiscreteCNN(Model):
         self.logits = Dense(n_actions)
 
     def call(self, state):
+        """
+        Compute the network.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+        """
         x = self.conv_layers(state)
         x = self.hidden(x)
         return self.logits(x)
 
     def action(self, states):
+        """
+        Return the state action.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+        """
         logits = self.predict(states)
         probs = tf.nn.softmax(logits)
         return tf.random.categorical(tf.math.log(probs), 1)
 
     def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        """
+        Evaluates the probability of actions.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+            logits: (todo): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+        """
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 class REINFORCEDiscreteCNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
+        """
+        Initialize video.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         usercfg["n_hidden_units"] = 200
         super(REINFORCEDiscreteCNN, self).__init__(env, monitor_path, video=video, **usercfg)
         self.config.update(usercfg)
 
     def build_network(self):
+        """
+        Build an instance of superDiscCNN.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorDiscreteCNN(self.env.action_space.n, self.config["n_hidden_units"])
 
 class ActorDiscreteRNN(Model):
     def __init__(self, rnn_size, n_actions):
+        """
+        Initialize rnn.
+
+        Args:
+            self: (todo): write your description
+            rnn_size: (int): write your description
+            n_actions: (todo): write your description
+        """
         super(ActorDiscreteRNN, self).__init__()
         self.expand = flatten_to_rnn
         self.rnn = GRU(rnn_size, return_state=True)
         self.logits = Dense(n_actions)
 
     def call(self, inp):
+        """
+        Return the hidden state.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         state, hidden = inp
         x = self.expand(state)
         x, new_hidden = self.rnn(x, hidden)
         return self.logits(x), new_hidden
 
     def action(self, inp):
+        """
+        Return the inverse of the model.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         logits, hidden = self.predict(inp)
         probs = tf.nn.softmax(logits)
         return tf.random.categorical(tf.math.log(probs), 1), hidden
 
     def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        """
+        Evaluates the probability of actions.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+            logits: (todo): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+        """
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
+        """
+        Initialize the video.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
         self.initial_features = tf.zeros((1, self.config["n_hidden_units"]))
 
     def build_network(self):
+        """
+        Create an instance of supernetwork.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorDiscreteRNN(self.config["n_hidden_units"], self.env.action_space.n)
 
     def choose_action(self, state, features) -> Dict[str, np.ndarray]:
@@ -230,6 +415,14 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
 
 class ActorDiscreteCNNRNN(Model):
     def __init__(self, rnn_size, n_actions):
+        """
+        Initialize rnn.
+
+        Args:
+            self: (todo): write your description
+            rnn_size: (int): write your description
+            n_actions: (todo): write your description
+        """
         super(ActorDiscreteCNNRNN, self).__init__()
         self.conv_layers = Sequential()
 
@@ -242,25 +435,67 @@ class ActorDiscreteCNNRNN(Model):
         self.logits = Dense(n_actions)
 
     def call(self, inp):
+        """
+        Call the network.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         state, hidden = inp
         x = self.conv_layers(state)
         x, new_hidden = self.rnn(x, hidden)
         return self.logits(x), new_hidden
 
     def action(self, inp):
+        """
+        Return the inverse of the model.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         logits, hidden = self.predict(inp)
         probs = tf.nn.softmax(logits)
         return tf.random.categorical(tf.math.log(probs), 1), hidden
 
     def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        """
+        Evaluates the probability of actions.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+            logits: (todo): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+        """
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
     def build_network(self):
+        """
+        Return an instance of supernetwork.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorDiscreteCNNRNN(self.config["n_hidden_units"], self.env.action_space.n)
 
 class ActorBernoulli(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, n_actions, activation="tanh"):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_hidden_layers: (int): write your description
+            n_hidden_units: (int): write your description
+            n_actions: (todo): write your description
+            activation: (str): write your description
+        """
         super(ActorBernoulli, self).__init__()
         self.logits = Sequential()
 
@@ -269,15 +504,41 @@ class ActorBernoulli(Model):
         self.logits.add(Dense(n_actions))
 
     def call(self, states):
+        """
+        See tf. _tensorflow graph.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+        """
         return self.logits(tf.convert_to_tensor(states, dtype=tf.float32))
 
     def action(self, inp):
+        """
+        Return the value of the model.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         logits = self.predict(inp)
         probs = tf.sigmoid(logits)
         samples_from_uniform = tf.random.uniform(probs.shape)
         return tf.cast(tf.less(samples_from_uniform, probs), tf.float32)
 
     def log_prob(self, actions: tf.Tensor, logits: tf.Tensor):
+        """
+        Computes the probability of all actions.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+            logits: (todo): write your description
+            tf: (todo): write your description
+            Tensor: (todo): write your description
+        """
         return -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(actions, tf.float32),
                                                                       logits=logits),
                               axis=-1)
@@ -285,6 +546,12 @@ class ActorBernoulli(Model):
 class REINFORCEBernoulli(REINFORCE):
 
     def build_network(self):
+        """
+        Create a superBernoullioulli
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorBernoulli(self.config["n_hidden_units"], self.config["n_hidden_layers"], self.env.action_space.n)
 
     def choose_action(self, state, features):
@@ -295,6 +562,16 @@ class REINFORCEBernoulli(REINFORCE):
 
 class ActorContinuous(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, action_space_shape, activation="tanh"):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_hidden_layers: (int): write your description
+            n_hidden_units: (int): write your description
+            action_space_shape: (todo): write your description
+            activation: (str): write your description
+        """
         super(ActorContinuous, self).__init__()
         self.hidden = Sequential()
 
@@ -303,12 +580,27 @@ class ActorContinuous(Model):
         self.action = NormalDistrLayer(action_space_shape[0])
 
     def call(self, inp):
+        """
+        Call the given action.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         x = self.hidden(inp)
         return self.action(x)
 
 
 class ActorContinuousRNN(Model):
     def __init__(self, rnn_size, action_space_shape):
+        """
+        Initialize state space.
+
+        Args:
+            self: (todo): write your description
+            rnn_size: (int): write your description
+            action_space_shape: (todo): write your description
+        """
         super(ActorContinuousRNN, self).__init__()
         # Change shape for RNN
         self.expand = flatten_to_rnn
@@ -317,6 +609,13 @@ class ActorContinuousRNN(Model):
         self.action = NormalDistrLayer(action_space_shape[0])
 
     def call(self, inp):
+        """
+        Return the state.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         state, hidden = inp
         x = self.expand(state)
         x, new_hidden = self.rnn(x, hidden)
@@ -326,11 +625,28 @@ class ActorContinuousRNN(Model):
 
 class REINFORCEContinuous(REINFORCE):
     def __init__(self, env, monitor_path, rnn=False, video=True, **usercfg):
+        """
+        Initialize the video.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            rnn: (int): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         self.rnn = rnn
         self.initial_features = tf.zeros((1, self.config["n_hidden_units"])) if rnn else None
         super(REINFORCEContinuous, self).__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
+        """
+        Builds the rnn network
+
+        Args:
+            self: (todo): write your description
+        """
         return self.build_network_rnn() if self.rnn else self.build_network_normal()
 
     def choose_action(self, state, features):
@@ -345,15 +661,37 @@ class REINFORCEContinuous(REINFORCE):
         return {"action": res[0][0], "features": res[2] if self.rnn else None}
 
     def build_network_normal(self):
+        """
+        Return an instance of supernormalizers.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorContinuous(self.config["n_hidden_layers"],
                                self.config["n_hidden_units"],
                                self.env.action_space.shape)
 
     def build_network_rnn(self):
+        """
+        Build an instance of rnnrnn.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorContinuousRNN(self.config["n_hidden_units"], self.env.action_space.shape)
 
     @tf.function
     def train(self, states, actions_taken, advantages, features=None):
+        """
+        Train the model.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions_taken: (str): write your description
+            advantages: (todo): write your description
+            features: (todo): write your description
+        """
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)
         inp = states if features is None else [states, tf.reshape(

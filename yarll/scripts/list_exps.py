@@ -11,6 +11,11 @@ parser.add_argument("directory", type=Path help="Path to the directory.")
 
 
 def main():
+    """
+    Main function.
+
+    Args:
+    """
     args = parser.parse_args()
     dirs = sorted([d for d in os.listdir(args.directory) if os.path.isdir(args.directory / d)], key=lambda x: int(x[3:]))
     header = ["RUN", "DESCR", "START", "BRANCH", "COMMITMSG"]

@@ -25,6 +25,14 @@ from yarll.misc.utils import hard_update, soft_update
 # TODO: put this in separate file
 class DeterministicPolicy:
     def __init__(self, env, policy_fn):
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            policy_fn: (todo): write your description
+        """
         self.env = env
         self.policy_fn = policy_fn
         self.initial_features = None
@@ -33,17 +41,47 @@ class DeterministicPolicy:
         self.action_high = env.action_space.high
 
     def choose_action(self, state, features):
+        """
+        Choose the selected action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         res = self.policy_fn(state[None, :])[0].numpy()[0]
         return {"action": res}
 
     def get_env_action(self, action):
+        """
+        Return the action of an action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return self.action_low + (action + 1.0) * 0.5 * (self.action_high - self.action_low)
 
     def new_trajectory(self):
+        """
+        Return a new trajectory.
+
+        Args:
+            self: (todo): write your description
+        """
         pass
 
 class SAC(Agent):
     def __init__(self, env, monitor_path: Union[Path, str], **usercfg) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(SAC, self).__init__(**usercfg)
         self.env = env
         self.monitor_path = Path(monitor_path)
@@ -184,6 +222,17 @@ class SAC(Agent):
 
     @tf.function(experimental_relax_shapes=True)
     def train_critic(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
+        """
+        Train the model0_critic network.
+
+        Args:
+            self: (todo): write your description
+            state0_batch: (todo): write your description
+            action_batch: (todo): write your description
+            reward_batch: (todo): write your description
+            state1_batch: (todo): write your description
+            terminal1_batch: (int): write your description
+        """
         # Calculate critic targets
         next_action_batch, next_logprob_batch = self.actor_network(state1_batch)
         next_qs_values = [net((state1_batch, next_action_batch)) for net in self.target_softq_networks]
@@ -208,6 +257,13 @@ class SAC(Agent):
 
     @tf.function(experimental_relax_shapes=True)
     def train_actor_alpha(self, state0_batch):
+        """
+        Evaluates the learning.
+
+        Args:
+            self: (todo): write your description
+            state0_batch: (todo): write your description
+        """
         # Update actor
         with tf.GradientTape() as tape:
             actions, action_logprob = self.actor_network(state0_batch)
@@ -228,6 +284,12 @@ class SAC(Agent):
         return tf.reduce_mean(actor_loss), alpha_loss, tf.reduce_mean(action_logprob)
 
     def learn(self):
+        """
+        Run the model
+
+        Args:
+            self: (todo): write your description
+        """
         # Arrays to keep results from train function over different train steps in
         softq_means = np.empty((self.config["n_train_steps"],), np.float32)
         softq_stds = np.empty((self.config["n_train_steps"],), np.float32)
@@ -301,14 +363,42 @@ class SAC(Agent):
             self.softq_networks[0].save_weights(str(self.monitor_path / "softq_weights"))
 
     def choose_action(self, state, features):
+        """
+        Choose an action. action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         return {"action": self.action(state)}
 
     def get_env_action(self, action):
+        """
+        Return the action of an action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return self.action_low + (action + 1.0) * 0.5 * (self.action_high - self.action_low)
 
 
 class ActorNetwork(Model):
     def __init__(self, input_dim, n_hidden_layers, n_hidden_units, n_actions, logprob_epsilon, hidden_layer_activation="relu", log_scale_bounds=(-5, 2)):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            input_dim: (int): write your description
+            n_hidden_layers: (int): write your description
+            n_hidden_units: (int): write your description
+            n_actions: (todo): write your description
+            logprob_epsilon: (todo): write your description
+            hidden_layer_activation: (todo): write your description
+            log_scale_bounds: (todo): write your description
+        """
         super(ActorNetwork, self).__init__()
         self.logprob_epsilon = logprob_epsilon
         inp = tf.keras.Input((input_dim,))
@@ -345,6 +435,15 @@ class ActorNetwork(Model):
         self.action_distribution = self.squash_bijector(self.raw_action_distribution)
 
     def call(self, inputs, training=None, mask=None):
+        """
+        Perform the model normalization.
+
+        Args:
+            self: (todo): write your description
+            inputs: (dict): write your description
+            training: (bool): write your description
+            mask: (array): write your description
+        """
         outputs = self.mean_log_scale_model(inputs)
         mean = outputs[0]
         log_scale = outputs[1]
@@ -360,12 +459,28 @@ class ActorNetwork(Model):
 
     @tf.function(experimental_relax_shapes=True)
     def deterministic_actions(self, inp):
+        """
+        Determine the actions of the model.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         outputs = self.mean_log_scale_model(inp)
         return self.squash_bijector(outputs[0])
 
 
 class SoftQNetwork(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, hidden_layer_activation="relu"):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_hidden_layers: (int): write your description
+            n_hidden_units: (int): write your description
+            hidden_layer_activation: (todo): write your description
+        """
         super(SoftQNetwork, self).__init__()
         self.softq = Sequential()
         for _ in range(n_hidden_layers):
@@ -373,6 +488,15 @@ class SoftQNetwork(Model):
         self.softq.add(Dense(1))
 
     def call(self, inputs, training=None, mask=None):
+        """
+        Perform the model.
+
+        Args:
+            self: (todo): write your description
+            inputs: (dict): write your description
+            training: (bool): write your description
+            mask: (array): write your description
+        """
         states, actions = inputs
         x = tf.concat([states, actions], 1)
         return self.softq(x)

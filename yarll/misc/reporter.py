@@ -16,6 +16,12 @@ for gui in gui_env:
 class Reporter(object):
     """Report iteration statistics using text and graphs."""
     def __init__(self):
+        """
+        Initialize the underlying logger
+
+        Args:
+            self: (todo): write your description
+        """
         super(Reporter, self).__init__()
         logging.getLogger().setLevel("INFO")
         self.fig = None

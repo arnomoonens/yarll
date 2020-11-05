@@ -14,6 +14,16 @@ class ModelRunner(object):
     Currently only supports one variation of an environment.
     """
     def __init__(self, env, model_directory: str, save_directory: str, **usercfg) -> None:
+        """
+        Initialize the graph.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            model_directory: (str): write your description
+            save_directory: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(ModelRunner, self).__init__()
         self.env = env
         self.model_directory = Path(model_directory)
@@ -54,6 +64,12 @@ class ModelRunner(object):
         return
 
     def run(self):
+        """
+        Run the trajectory.
+
+        Args:
+            self: (todo): write your description
+        """
         for _ in range(self.config["n_iter"]):
             self.get_trajectory()
 
@@ -65,6 +81,11 @@ parser.add_argument("save_directory", type=str, help="Directory where results of
 parser.add_argument("--iterations", default=100, type=int, help="Number of iterations to run the algorithm.")
 
 def main():
+    """
+    Main entry point.
+
+    Args:
+    """
     args = parser.parse_args()
     env = make(args.environment)
     runner = ModelRunner(env, args.model_directory, args.save_directory, n_iter=args.iterations)

@@ -16,6 +16,17 @@ from yarll.agents.knowledgetransfer import TaskPolicy
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
     def __init__(self, master, env, task_id, n_iter, start_at_iter=0):
+        """
+        Initialize the master.
+
+        Args:
+            self: (todo): write your description
+            master: (todo): write your description
+            env: (todo): write your description
+            task_id: (str): write your description
+            n_iter: (int): write your description
+            start_at_iter: (todo): write your description
+        """
         super(AKTThread, self).__init__()
         self.master = master
         self.config = self.master.config
@@ -36,6 +47,12 @@ class AKTThread(Thread):
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
     def build_networks(self):
+        """
+        Builds the graph of the network.
+
+        Args:
+            self: (todo): write your description
+        """
         with tf.variable_scope("task{}".format(self.task_id)):
             self.sparse_representation = tf.Variable(tf.truncated_normal([self.master.config["n_sparse_units"], self.nA], mean=0.0, stddev=0.02))
             self.probs = tf.nn.softmax(tf.matmul(self.master.L1, tf.matmul(self.master.knowledge_base, self.sparse_representation)))
@@ -126,6 +143,16 @@ class AKTThread(Thread):
 class AsyncKnowledgeTransfer(Agent):
     """Asynchronous learner for variations of a task."""
     def __init__(self, envs, monitor_path, learning_method="REINFORCE", **usercfg):
+        """
+        Initialize the examples.
+
+        Args:
+            self: (todo): write your description
+            envs: (todo): write your description
+            monitor_path: (str): write your description
+            learning_method: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(AsyncKnowledgeTransfer, self).__init__(**usercfg)
         self.envs = envs
         self.learning_method = learning_method
@@ -194,6 +221,12 @@ class AsyncKnowledgeTransfer(Agent):
             self.saver = FastSaver()
 
     def build_networks(self):
+        """
+        Builds the network.
+
+        Args:
+            self: (todo): write your description
+        """
         with tf.variable_scope("shared"):
             self.states = tf.placeholder(tf.float32, [None] + list(self.envs[0].observation_space.shape), name="states")
             self.action_taken = tf.placeholder(tf.float32, name="action_taken")
@@ -219,6 +252,12 @@ class AsyncKnowledgeTransfer(Agent):
         self.stop_requested = True
 
     def learn(self):
+        """
+        Sends the jobs to start the jobs.
+
+        Args:
+            self: (todo): write your description
+        """
         signal.signal(signal.SIGINT, self.signal_handler)
         if self.config["switch_at_iter"] is None:
             idx = None
@@ -238,4 +277,14 @@ class AsyncKnowledgeTransfer(Agent):
             self.saver.save(self.session, os.path.join(self.monitor_path, "model"))
 
     def make_thread(self, env, task_id, n_iter, start_at_iter=0):
+        """
+        Create a task object.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            task_id: (str): write your description
+            n_iter: (int): write your description
+            start_at_iter: (int): write your description
+        """
         return AKTThread(self, env, task_id, n_iter, start_at_iter=start_at_iter)

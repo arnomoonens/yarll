@@ -20,6 +20,15 @@ class DPPO(Agent):
     RNN = False
 
     def __init__(self, env, monitor_path, **usercfg):
+        """
+        Initialize the graph.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(DPPO, self).__init__()
         self.env = env
         self.env_name: str = env.spec.id
@@ -131,12 +140,38 @@ class DPPO(Agent):
         self.init_op = tf.variables_initializer(self.new_network_vars + optimizer_variables + [self._global_step])
 
     def make_actor_loss(self, old_network, new_network, advantage):
+        """
+        Create a new network loss.
+
+        Args:
+            self: (todo): write your description
+            old_network: (todo): write your description
+            new_network: (todo): write your description
+            advantage: (todo): write your description
+        """
         return ppo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["cso_epsilon"], advantage)
 
     def build_networks(self):
+        """
+        Builds a list of networks networks.
+
+        Args:
+            self: (todo): write your description
+        """
         raise NotImplementedError
 
     def update_network(self, states, actions, advs, returns, features=None):
+        """
+        Updates the network.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions: (todo): write your description
+            advs: (todo): write your description
+            returns: (todo): write your description
+            features: (todo): write your description
+        """
         fetches = [self.model_summary_op, self.train_op]
         feed_dict = {
             self.states: states,
@@ -154,6 +189,13 @@ class DPPO(Agent):
         self.n_updates += 1
 
     def learn_by_batches(self, trajectories):
+        """
+        Learn the given trajectories by the given batch.
+
+        Args:
+            self: (todo): write your description
+            trajectories: (todo): write your description
+        """
         all_states, all_actions, all_advs, all_returns = [], [], [], []
         for states, actions, advs, returns, _ in trajectories:
             all_states.extend(states)
@@ -177,6 +219,13 @@ class DPPO(Agent):
 
 
     def learn_by_trajectories(self, trajectories):
+        """
+        R generate the trajectories.
+
+        Args:
+            self: (todo): write your description
+            trajectories: (list): write your description
+        """
         for _ in range(int(self.config["n_epochs"])):
             for states, actions, advs, returns, features in trajectories:
                 self.update_network(states, actions, advs, returns, features)
@@ -222,10 +271,25 @@ class DPPO(Agent):
 class DPPODiscrete(DPPO):
 
     def __init__(self, env, monitor_path, **usercfg):
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(DPPODiscrete, self).__init__(env, monitor_path, **usercfg)
         self.task_type = "DPPOWorkerDiscrete"
 
     def build_networks(self):
+        """
+        Constructs the network interface.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -236,10 +300,25 @@ class DPPODiscrete(DPPO):
 class DPPODiscreteCNN(DPPODiscrete):
 
     def __init__(self, env, monitor_path, **usercfg):
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(DPPODiscreteCNN, self).__init__(env, monitor_path, **usercfg)
         self.task_type = "DPPOWorkerDiscreteCNN"
 
     def build_networks(self):
+        """
+        Builds an instance of the network.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -249,10 +328,25 @@ class DPPODiscreteCNN(DPPODiscrete):
 class DPPOContinuous(DPPO):
 
     def __init__(self, env, monitor_path, **usercfg):
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            usercfg: (todo): write your description
+        """
         super(DPPOContinuous, self).__init__(env, monitor_path, **usercfg)
         self.task_type = "DPPOWorkerContinuous"
 
     def build_networks(self):
+        """
+        Return a network networks object.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
@@ -260,4 +354,11 @@ class DPPOContinuous(DPPO):
             int(self.config["n_hidden_layers"]))
 
     def get_env_action(self, action):
+        """
+        Returns the action action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return action

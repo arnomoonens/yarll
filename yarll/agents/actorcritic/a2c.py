@@ -26,6 +26,16 @@ class A2C(Agent):
     """Advantage Actor Critic"""
 
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
+        """
+        Initialize a video.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            monitor_path: (str): write your description
+            video: (todo): write your description
+            usercfg: (todo): write your description
+        """
         super(A2C, self).__init__(**usercfg)
         self.monitor_path = Path(monitor_path)
 
@@ -59,18 +69,60 @@ class A2C(Agent):
         return
 
     def build_networks(self):
+        """
+        Returns a list of the networks.
+
+        Args:
+            self: (todo): write your description
+        """
         return NotImplementedError("Abstract method")
 
     def _actor_loss(self, actions, advantages, logits):
+        """
+        Evaluate the loss.
+
+        Args:
+            self: (todo): write your description
+            actions: (list): write your description
+            advantages: (todo): write your description
+            logits: (todo): write your description
+        """
         return NotImplementedError("Abstract method")
 
     def _critic_loss(self, returns, value):
+        """
+        Return loss loss.
+
+        Args:
+            self: (todo): write your description
+            returns: (todo): write your description
+            value: (str): write your description
+        """
         return self.config["vf_coef"] * critic_loss(returns, value)
 
     def train(self, states, actions_taken, advantages, returns, features=None):
+        """
+        Evaluate the model.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions_taken: (str): write your description
+            advantages: (todo): write your description
+            returns: (todo): write your description
+            features: (todo): write your description
+        """
         return NotImplementedError("Abstract method")
 
     def choose_action(self, state, features) -> dict:
+        """
+        Choose the selected action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         action, value = self.ac_net.action_value(state[None,:])
         return {"action": action, "value": value[0]}
 
@@ -113,6 +165,12 @@ class A2C(Agent):
 
 class A2CDiscrete(A2C):
     def build_networks(self):
+        """
+        Builds a list of networks. networks.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkDiscrete(
             self.env.action_space.n,
             int(self.config["n_hidden_units"]),
@@ -120,6 +178,17 @@ class A2CDiscrete(A2C):
 
     @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
+        """
+        Train the model.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions_taken: (str): write your description
+            advantages: (todo): write your description
+            returns: (todo): write your description
+            features: (todo): write your description
+        """
         states = tf.cast(states, dtype=tf.float32)
         actions_taken = tf.cast(actions_taken, dtype=tf.int32)
         advantages = tf.cast(advantages, dtype=tf.float32)
@@ -137,10 +206,25 @@ class A2CDiscrete(A2C):
         return mean_actor_loss, mean_critic_loss, loss
 
     def _actor_loss(self, actions, advantages, logits):
+        """
+        R computes the loss loss.
+
+        Args:
+            self: (todo): write your description
+            actions: (list): write your description
+            advantages: (todo): write your description
+            logits: (todo): write your description
+        """
         return actor_discrete_loss(actions, advantages, logits)
 
 class A2CDiscreteCNN(A2CDiscrete):
     def build_networks(self):
+        """
+        Return an instance of networks.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkDiscreteCNN(
             self.env.action_space.n,
             int(self.config["n_hidden_units"]))
@@ -148,10 +232,22 @@ class A2CDiscreteCNN(A2CDiscrete):
 
 class A2CDiscreteCNNRNN(A2CDiscrete):
     def __init__(self, *args, **kwargs):
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+        """
         super(A2CDiscreteCNNRNN, self).__init__(*args, **kwargs)
         self.initial_features = self.ac_net.initial_features
 
     def build_networks(self):
+        """
+        Return a list of network networks.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkDiscreteCNNRNN(self.env.action_space.n)
 
     def choose_action(self, state, features) -> dict:
@@ -161,9 +257,21 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
 
 class A2CContinuous(A2C):
     def __init__(self, *args, **kwargs):
+        """
+        Initialize the init method.
+
+        Args:
+            self: (todo): write your description
+        """
         super(A2CContinuous, self).__init__(*args, **kwargs)
 
     def build_networks(self):
+        """
+        Builds a network networks.
+
+        Args:
+            self: (todo): write your description
+        """
         return ActorCriticNetworkContinuous(
             self.env.action_space.shape,
             int(self.config["n_hidden_units"]),
@@ -171,6 +279,17 @@ class A2CContinuous(A2C):
 
     @tf.function
     def train(self, states, actions_taken, advantages, returns, features=None):
+        """
+        Evaluate the model.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+            actions_taken: (str): write your description
+            advantages: (todo): write your description
+            returns: (todo): write your description
+            features: (todo): write your description
+        """
         states = tf.cast(states, dtype=tf.float32)
         advantages = tf.cast(advantages, dtype=tf.float32)
         returns = tf.cast(returns, dtype=tf.float32)
@@ -189,11 +308,36 @@ class A2CContinuous(A2C):
         return mean_actor_loss, mean_critic_loss, loss
 
     def choose_action(self, state, features) -> dict:
+        """
+        Chooses an action. action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         action, _, value = self.ac_net.action_value(state[None, :])
         return {"action": action, "value": value[0]}
 
     def _actor_loss(self, actions_taken, mean, log_std, advantages):
+        """
+        Evaluate loss.
+
+        Args:
+            self: (todo): write your description
+            actions_taken: (str): write your description
+            mean: (todo): write your description
+            log_std: (todo): write your description
+            advantages: (todo): write your description
+        """
         return actor_continuous_loss(actions_taken, mean, log_std, advantages)
 
     def get_env_action(self, action):
+        """
+        Returns the action action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return action

@@ -2,6 +2,14 @@ import gym
 from gym.envs.registration import EnvSpec
 
 def register_env(name, entry_point: str, tags=None, **kwargs):
+    """
+    Register an environment.
+
+    Args:
+        name: (str): write your description
+        entry_point: (str): write your description
+        tags: (todo): write your description
+    """
     already_registered = name in gym.envs.registry.env_specs
     if already_registered:
         old_env_name = "Old" + name

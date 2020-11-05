@@ -17,6 +17,11 @@ parser.add_argument("--n_masters", type=int, default=0, help="Number of masters"
 parser.add_argument("--task_id", type=int, default=0, help="ID of this task.")
 
 def main():
+    """
+    Main function.
+
+    Args:
+    """
     args = parser.parse_args()
     spec = cluster_spec(args.n_tasks, 1, args.n_masters)
     cluster = tf.train.ClusterSpec(spec).as_cluster_def()

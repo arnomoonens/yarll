@@ -30,6 +30,13 @@ def moving_average(a, n):
 
 # Source: https://github.com/tensorflow/tensorflow/blob/d413f62fba038d820b775d95ddd518fb6f43d3ed/tensorflow/tensorboard/components/vz_line_chart/vz-line-chart.ts#L432
 def exponential_smoothing(a, weight):
+    """
+    Exponential weighted mean.
+
+    Args:
+        a: (todo): write your description
+        weight: (str): write your description
+    """
     factor = (pow(1000, weight) - 1) / 999
     length = len(a)
     kernelRadius = np.floor(length * factor / 2)
@@ -47,9 +54,27 @@ def exponential_smoothing(a, weight):
     return result
 
 def create_smoother(f, *args):
+    """
+    Create a function f ( f ( f f ). f ).
+
+    Args:
+        f: (todo): write your description
+    """
     return lambda x: f(x, *args)
 
 def plot(x, y, x_label: str, scalar, xmax=None, ymin=None, ymax=None):
+    """
+    Plot the data set of the projection.
+
+    Args:
+        x: (todo): write your description
+        y: (todo): write your description
+        x_label: (str): write your description
+        scalar: (todo): write your description
+        xmax: (todo): write your description
+        ymin: (float): write your description
+        ymax: (todo): write your description
+    """
     x_label_upper = x_label[0].upper() + x_label[1:]
     fig = plt.figure()
     plt.plot(x, y)
@@ -61,6 +86,20 @@ def plot(x, y, x_label: str, scalar, xmax=None, ymin=None, ymax=None):
     fig.canvas.set_window_title("{} per {}".format(scalar, x_label))
 
 def plot_tasks(data, x_label: str, smoothing_function=None, xmin=None, xmax=None, max_reward=None, legend=True, save_directory=None, show_plots=True):
+    """
+    Plots the mean and standard deviation.
+
+    Args:
+        data: (dict): write your description
+        x_label: (str): write your description
+        smoothing_function: (todo): write your description
+        xmin: (float): write your description
+        xmax: (int): write your description
+        max_reward: (int): write your description
+        legend: (bool): write your description
+        save_directory: (str): write your description
+        show_plots: (bool): write your description
+    """
     x_label_upper = x_label[0].upper() + x_label[1:]
     for scalar, tasks in data.items():
         fig = plt.figure()
@@ -95,6 +134,16 @@ def plot_tasks(data, x_label: str, smoothing_function=None, xmin=None, xmax=None
         plt.show()
 
 def plot_gym_monitor_stats(stats_path, xmax=None, smoothing_function=None, save_directory=None, show_plots=True):
+    """
+    Plots stats for a plot.
+
+    Args:
+        stats_path: (str): write your description
+        xmax: (float): write your description
+        smoothing_function: (todo): write your description
+        save_directory: (str): write your description
+        show_plots: (bool): write your description
+    """
     f = open(stats_path)
     contents = json.load(f)
     data = contents["episode_rewards"]

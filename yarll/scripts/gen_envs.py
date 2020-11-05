@@ -18,6 +18,11 @@ parser.add_argument("n", type=ge(1), help="Number of environments to generate")
 parser.add_argument("destination", type=str, help="Where to write the environment descriptions (in json)")
 
 def main():
+    """
+    Main entry point.
+
+    Args:
+    """
     args = parser.parse_args()
     envs = yarll.environment.registration.make_random_environments(args.env_id, args.n)
     dicts = [env.metadata["parameters"] for env in envs]

@@ -33,6 +33,14 @@ def rgb2gray(rgb: np.ndarray) -> np.ndarray:
     return np.dot(rgb[..., :3], [0.299, 0.587, 0.114])
 
 def _process_frame42(frame: np.ndarray) -> np.ndarray:
+    """
+    Process frames from frame
+
+    Args:
+        frame: (array): write your description
+        np: (array): write your description
+        ndarray: (array): write your description
+    """
     import cv2
     frame = frame[34:34 + 160, :160]
     # Resize by half, then down to 42x42 (essentially mipmapping). If
@@ -48,10 +56,26 @@ def _process_frame42(frame: np.ndarray) -> np.ndarray:
 
 class AtariRescale42x42(gym.ObservationWrapper):
     def __init__(self, env=None):
+        """
+        Initialize space.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+        """
         super(AtariRescale42x42, self).__init__(env)
         self.observation_space = Box(0.0, 1.0, [42, 42, 1])
 
     def observation(self, observation: np.ndarray) -> np.ndarray:
+        """
+        Compute the observation.
+
+        Args:
+            self: (todo): write your description
+            observation: (str): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+        """
         return _process_frame42(observation)
 
 
@@ -108,6 +132,12 @@ def json_to_dict(file: Union[str, Path]) -> dict:
 def ge(minimum: int) -> Callable[[Any], int]:
     """Require the value for an argparse argument to be an integer >= minimum."""
     def f(value):
+        """
+        Decorator toil. integer.
+
+        Args:
+            value: (todo): write your description
+        """
         ivalue = int(value)
         if ivalue < minimum:
             raise argparse.ArgumentTypeError("{} must be an integer of at least 1.".format(value))
@@ -115,9 +145,21 @@ def ge(minimum: int) -> Callable[[Any], int]:
     return f
 
 def flatten(x):
+    """
+    Flatten a tensor.
+
+    Args:
+        x: (todo): write your description
+    """
     return tf.reshape(x, [-1, np.prod(x.get_shape().as_list()[1:])])
 
 def set_seed(seed: int):
+    """
+    Set the seed.
+
+    Args:
+        seed: (int): write your description
+    """
     os.environ["PYTHONHASHSEED"] = str(seed)
     random.seed(seed)
     np.random.seed(seed)
@@ -181,6 +223,12 @@ def hard_update(source_vars: Sequence[tf.Variable], target_vars: Sequence[tf.Var
     soft_update(source_vars, target_vars, 1.0) # Tau of 1, so get everything from source and keep nothing from target
 
 def flatten_list(l: List[List]):
+    """
+    Flatten a list into a list.
+
+    Args:
+        l: (todo): write your description
+    """
     return list(itertools.chain.from_iterable(l))
 
 spaces_mapping = {

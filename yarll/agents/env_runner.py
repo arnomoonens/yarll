@@ -18,6 +18,21 @@ class EnvRunner(object):
                  summaries: bool = True, # Write tensorflow summaries
                  episode_rewards_file: Optional[Union[Path, str]] = None, # write each episode reward to the given file
                  ) -> None:
+        """
+        Initialize the environment.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            policy: (todo): write your description
+            config: (todo): write your description
+            scale_states: (todo): write your description
+            state_preprocessor: (todo): write your description
+            summaries: (list): write your description
+            episode_rewards_file: (str): write your description
+            Union: (todo): write your description
+            Path: (str): write your description
+        """
         super(EnvRunner, self).__init__()
         self.env = env
         self.policy = policy
@@ -55,6 +70,15 @@ class EnvRunner(object):
         return self.policy.choose_action(state, self.features)
 
     def scale_state(self, state: np.ndarray) -> np.ndarray:
+        """
+        Scale the given state.
+
+        Args:
+            self: (todo): write your description
+            state: (bool): write your description
+            np: (todo): write your description
+            ndarray: (array): write your description
+        """
         return self.state_scaler.scale(state)
 
     def reset_env(self) -> None:
@@ -69,6 +93,16 @@ class EnvRunner(object):
         return state, reward, done, info
 
     def get_steps(self, n_steps: int, reset: bool = False, stop_at_trajectory_end: bool = True, render: bool = False) -> ExperiencesMemory:
+        """
+        Get the steps for the given steps.
+
+        Args:
+            self: (todo): write your description
+            n_steps: (int): write your description
+            reset: (todo): write your description
+            stop_at_trajectory_end: (str): write your description
+            render: (str): write your description
+        """
         if reset:
             self.reset_env()
             self.policy.new_trajectory()
@@ -123,6 +157,14 @@ class EnvRunner(object):
         return memory
 
     def get_trajectory(self, stop_at_trajectory_end: bool = True, render: bool = False) -> ExperiencesMemory:
+        """
+        Get trajectory trajectory.
+
+        Args:
+            self: (todo): write your description
+            stop_at_trajectory_end: (todo): write your description
+            render: (str): write your description
+        """
         return self.get_steps(self.config["episode_max_length"],
                               stop_at_trajectory_end=stop_at_trajectory_end,
                               render=render)

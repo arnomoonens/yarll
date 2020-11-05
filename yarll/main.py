@@ -74,6 +74,11 @@ parser.add_argument("--only_last", default=False, action="store_true",
 parser.add_argument("--seed", default=None, type=int, help="Seed to use for the experiment.")
 
 def main():
+    """
+    Main entry point.
+
+    Args:
+    """
     args = parser.parse_args()
     run_experiment(
         json_to_dict(args.experiment),

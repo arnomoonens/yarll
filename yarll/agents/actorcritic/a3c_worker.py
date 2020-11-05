@@ -72,6 +72,16 @@ class RunnerThread(threading.Thread):
     """
 
     def __init__(self, env, policy, n_local_steps: int, render=False) -> None:
+        """
+        Initialize the queue.
+
+        Args:
+            self: (todo): write your description
+            env: (todo): write your description
+            policy: (todo): write your description
+            n_local_steps: (bool): write your description
+            render: (bool): write your description
+        """
         super(RunnerThread, self).__init__()
         self.env = env
         self.policy = policy
@@ -83,11 +93,25 @@ class RunnerThread(threading.Thread):
         self.queue: queue.Queue = queue.Queue(maxsize=5)
 
     def start_runner(self, sess, summary_writer):
+        """
+        Start the runner.
+
+        Args:
+            self: (todo): write your description
+            sess: (todo): write your description
+            summary_writer: (todo): write your description
+        """
         self.sess = sess
         self.summary_writer = summary_writer
         self.start()
 
     def run(self):
+        """
+        Starts the policy.
+
+        Args:
+            self: (todo): write your description
+        """
         trajectory_provider = env_runner(self.env, self.policy, self.n_local_steps, self.render, self.summary_writer)
         while True:
             # the timeout variable exists because apparently, if one worker dies, the other workers
@@ -108,6 +132,23 @@ class A3CTask(object):
                  clip_gradients: bool = True,
                  video: bool = False,
                  seed: Optional[int] = None) -> None:
+        """
+        Initialize the video.
+
+        Args:
+            self: (todo): write your description
+            env_id: (str): write your description
+            task_id: (str): write your description
+            cluster: (str): write your description
+            tf: (todo): write your description
+            train: (todo): write your description
+            ClusterDef: (todo): write your description
+            monitor_path: (str): write your description
+            config: (todo): write your description
+            clip_gradients: (todo): write your description
+            video: (todo): write your description
+            seed: (int): write your description
+        """
         super(A3CTask, self).__init__()
         self.task_id = task_id
         self.config = config
@@ -185,6 +226,13 @@ class A3CTask(object):
         )
 
         def init_fn(scaffold, sess):
+            """
+            Initialize the fn.
+
+            Args:
+                scaffold: (todo): write your description
+                sess: (todo): write your description
+            """
             sess.run(init_all_op)
 
         self.report_uninit_op = tf.report_uninitialized_variables(variables_to_save)
@@ -202,15 +250,42 @@ class A3CTask(object):
         self.session = None
 
     def build_networks(self):
+        """
+        Builds a list of the network.
+
+        Args:
+            self: (todo): write your description
+        """
         raise NotImplementedError()
 
     def make_loss(self):
+        """
+        : parameter loss.
+
+        Args:
+            self: (todo): write your description
+        """
         raise NotImplementedError()
 
     def get_critic_value(self, states, features):
+        """
+        Gets network value for states in network.
+
+        Args:
+            self: (todo): write your description
+            states: (str): write your description
+            features: (str): write your description
+        """
         return self.session.run(self.local_network.value, feed_dict={self.states: states})[0]
 
     def get_env_action(self, action):
+        """
+        Get the action action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return np.argmax(action)
 
     def choose_action(self, state, features):
@@ -223,6 +298,12 @@ class A3CTask(object):
         return {"action": action, "value": value}
 
     def make_trainer(self):
+        """
+        Initialize the tf.
+
+        Args:
+            self: (todo): write your description
+        """
         optimizer = tf.train.AdamOptimizer(self.config["learning_rate"], name="optim")
         grads = tf.gradients(self.loss, self.local_vars)
         grads, _ = tf.clip_by_global_norm(grads, self.config["gradient_clip_value"])
@@ -231,6 +312,12 @@ class A3CTask(object):
         return optimizer.apply_gradients(zip(grads, self.global_vars))
 
     def create_summary_losses(self):
+        """
+        Create summary summaries.
+
+        Args:
+            self: (todo): write your description
+        """
         n_steps = tf.to_float(self.n_steps)
         actor_loss_summary = tf.summary.scalar("model/actor_loss", tf.squeeze(self.actor_loss / n_steps))
         critic_loss_summary = tf.summary.scalar("model/critic_loss", tf.squeeze(self.critic_loss / n_steps))
@@ -253,9 +340,21 @@ class A3CTask(object):
 
     @property
     def global_step(self):
+        """
+        Run the current global step.
+
+        Args:
+            self: (todo): write your description
+        """
         return self._global_step.eval(session=self.session)
 
     def learn(self):
+        """
+        Evaluate the model.
+
+        Args:
+            self: (todo): write your description
+        """
         # Assume global shared parameter vectors θ and θv and global shared counter T = 0
         # Assume thread-specific parameter vectors θ' and θ'v
         with tf.train.MonitoredTrainingSession(
@@ -299,6 +398,12 @@ class A3CTaskDiscrete(A3CTask):
     """A3CTask for a discrete action space."""
 
     def build_networks(self):
+        """
+        Builds the network network
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkDiscrete(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -307,6 +412,12 @@ class A3CTaskDiscrete(A3CTask):
         return ac_net
 
     def make_loss(self):
+        """
+        Create the loss loss.
+
+        Args:
+            self: (todo): write your description
+        """
         return actor_critic_discrete_loss(
             self.local_network.logits,
             self.local_network.probs,
@@ -324,6 +435,12 @@ class A3CTaskDiscreteCNN(A3CTaskDiscrete):
     """A3CTask for a discrete action space."""
 
     def build_networks(self):
+        """
+        Builds a network from the network
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkDiscreteCNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -336,6 +453,12 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
     """A3CTask for a discrete action space."""
 
     def build_networks(self):
+        """
+        Builds the network
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkDiscreteCNNRNN(
             list(self.env.observation_space.shape),
             self.env.action_space.n,
@@ -345,6 +468,14 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         return ac_net
 
     def choose_action(self, state, features):
+        """
+        Choose action.
+
+        Args:
+            self: (todo): write your description
+            state: (todo): write your description
+            features: (todo): write your description
+        """
         feed_dict = {
             self.local_network.states: [state],
             self.local_network.rnn_state_in: features
@@ -355,6 +486,14 @@ class A3CTaskDiscreteCNNRNN(A3CTaskDiscreteCNN):
         return {"action": action, "value": value, "features": rnn_state}
 
     def get_critic_value(self, states, features):
+        """
+        Gets network value of a network.
+
+        Args:
+            self: (todo): write your description
+            states: (str): write your description
+            features: (str): write your description
+        """
         feed_dict = {
             self.local_network.states: states,
             self.local_network.rnn_state_in: features
@@ -366,6 +505,12 @@ class A3CTaskContinuous(A3CTask):
     """A3CTask for a continuous action space."""
 
     def build_networks(self):
+        """
+        Builds a new networks
+
+        Args:
+            self: (todo): write your description
+        """
         ac_net = ActorCriticNetworkContinuous(
             list(self.env.observation_space.shape),
             self.env.action_space,
@@ -374,6 +519,12 @@ class A3CTaskContinuous(A3CTask):
         return ac_net
 
     def make_loss(self):
+        """
+        Creates a loss loss.
+
+        Args:
+            self: (todo): write your description
+        """
         return actor_critic_continuous_loss(
             self.local_network.action_log_prob,
             self.local_network.entropy,
@@ -386,6 +537,13 @@ class A3CTaskContinuous(A3CTask):
         )
 
     def get_env_action(self, action):
+        """
+        Returns the action action.
+
+        Args:
+            self: (todo): write your description
+            action: (str): write your description
+        """
         return action
 
 
@@ -401,6 +559,11 @@ parser.add_argument("--monitor_path", type=str, help="Path where to save monitor
 parser.add_argument("--video", default=False, action="store_true", help="Generate video.")
 
 def main():
+    """
+    Main entry point.
+
+    Args:
+    """
     args = parser.parse_args()
     spec = cluster_spec(args.n_tasks, 1)
     cluster = tf.train.ClusterSpec(spec).as_cluster_def()

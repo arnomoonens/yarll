@@ -17,13 +17,35 @@ from yarll.misc.network_ops import CategoricalProbabilityDistribution, MultiCate
 class ActorCriticNetwork(Model):
 
     def entropy(self, *args):
+        """
+        Calculate entropy.
+
+        Args:
+            self: (todo): write your description
+        """
         raise NotImplementedError()
 
     def action_value(self, states):
+        """
+        Set the action value.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+        """
         raise NotImplementedError()
 
 class ActorCriticNetworkLatent(ActorCriticNetwork):
     def __init__(self, n_latent: int, n_hidden_units: int, n_hidden_layers: int) -> None:
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_latent: (todo): write your description
+            n_hidden_units: (int): write your description
+            n_hidden_layers: (int): write your description
+        """
         super(ActorCriticNetworkLatent, self).__init__()
 
         self.logits = Sequential()
@@ -37,11 +59,27 @@ class ActorCriticNetworkLatent(ActorCriticNetwork):
         self.value.add(Dense(1, kernel_initializer=Orthogonal(gain=0.01)))
 
     def call(self, states):
+        """
+        Returns the tensorfluent for the given state.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+        """
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
         return self.logits(x), self.value(x)
 
 class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
     def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_actions: (todo): write your description
+            n_hidden_units: (int): write your description
+            n_hidden_layers: (int): write your description
+        """
         super(ActorCriticNetworkDiscrete, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
         self.dist = CategoricalProbabilityDistribution()
 
@@ -54,15 +92,38 @@ class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
         return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1)
 
     def entropy(self, *args):
+        """
+        Compute the entropy of the distribution.
+
+        Args:
+            self: (todo): write your description
+        """
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
     def log_prob(self, actions, logits):
+        """
+        Compute logits.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            logits: (todo): write your description
+        """
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(labels=tf.cast(actions, dtype=tf.int32), logits=logits)
 
 
 class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
     def __init__(self, n_actions_per_dim: List[int], n_hidden_units: int, n_hidden_layers: int) -> None:
+        """
+        Initialize the actions.
+
+        Args:
+            self: (todo): write your description
+            n_actions_per_dim: (int): write your description
+            n_hidden_units: (int): write your description
+            n_hidden_layers: (int): write your description
+        """
         self.n_actions_per_dim = tf.cast(n_actions_per_dim, tf.int32)
         super(ActorCriticNetworkMultiDiscrete, self).__init__(sum(n_actions_per_dim), n_hidden_units, n_hidden_layers)
         self.dist = MultiCategoricalProbabilityDistribution()
@@ -77,11 +138,25 @@ class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
         return np.squeeze(action), np.squeeze(value, axis=-1)
 
     def entropy(self, *args):
+        """
+        Compute the entropy of the logits.
+
+        Args:
+            self: (todo): write your description
+        """
         logits, *_ = args
         reshaped_logits = tf.split(logits, self.n_actions_per_dim, axis=-1)
         return tf.add_n([categorical_dist_entropy(l) for l in reshaped_logits])
 
     def log_prob(self, actions, logits):
+        """
+        Evaluates the probability.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            logits: (todo): write your description
+        """
         map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
                                (tf.transpose(tf.cast(actions, dtype=tf.int32)),
                                 tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
@@ -91,6 +166,15 @@ class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
 
 class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
     def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_actions: (todo): write your description
+            n_hidden_units: (int): write your description
+            n_hidden_layers: (int): write your description
+        """
         super(ActorCriticNetworkBernoulli, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
 
     def action_value(self, states):
@@ -105,10 +189,24 @@ class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
         return np.reshape(action.numpy(), (-1,)), np.squeeze(value, axis=-1)
 
     def entropy(self, *args):
+        """
+        Calculate the entropy of the distribution.
+
+        Args:
+            self: (todo): write your description
+        """
         logits, *_ = args
         return bernoulli_dist_entropy(logits)
 
     def log_prob(self, actions, logits):
+        """
+        Logits the probability.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            logits: (todo): write your description
+        """
         return -tf.reduce_sum(tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.cast(actions, tf.float32),
                                                                       logits=logits),
                               axis=-1)
@@ -117,6 +215,14 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
     def __init__(self, n_actions: int, n_hidden: int) -> None:
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_actions: (todo): write your description
+            n_hidden: (int): write your description
+        """
         super(ActorCriticNetworkDiscreteCNN, self).__init__()
 
         self.shared_layers = Sequential()
@@ -134,6 +240,13 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
         self.value = Dense(1)
 
     def call(self, states):
+        """
+        Eval.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+        """
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
         x = self.shared_layers(x)
         return self.logits(x), self.value(x)
@@ -148,10 +261,24 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
         return np.squeeze(action.numpy(), axis=-1), np.squeeze(value, axis=-1)
 
     def entropy(self, *args):
+        """
+        Compute the entropy of the distribution.
+
+        Args:
+            self: (todo): write your description
+        """
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
     def log_prob(self, actions, logits):
+        """
+        Evaluates the probability.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            logits: (todo): write your description
+        """
         map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
                                (tf.transpose(tf.cast(actions, dtype=tf.int32)),
                                 tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
@@ -162,6 +289,14 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
     def __init__(self, n_actions: int, rnn_size: int = 256) -> None:
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            n_actions: (todo): write your description
+            rnn_size: (int): write your description
+        """
         super(ActorCriticNetworkDiscreteCNNRNN, self).__init__()
 
         self.shared_layers = Sequential()
@@ -181,6 +316,13 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
         self.value = Dense(1)
 
     def call(self, state_hidden):
+        """
+        Perform the rnn.
+
+        Args:
+            self: (todo): write your description
+            state_hidden: (bool): write your description
+        """
         states, hiddens = state_hidden
         x = tf.convert_to_tensor(states, dtype=tf.float32)  # convert from Numpy array to Tensor
         x = self.shared_layers(x)
@@ -198,10 +340,24 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
         return np.squeeze(action, axis=-1), np.squeeze(value, axis=-1), None if not features else features[0]
 
     def entropy(self, *args):
+        """
+        Compute the entropy of the distribution.
+
+        Args:
+            self: (todo): write your description
+        """
         logits, *_ = args
         return categorical_dist_entropy(logits)
 
     def log_prob(self, actions, logits):
+        """
+        Evaluates the probability.
+
+        Args:
+            self: (todo): write your description
+            actions: (str): write your description
+            logits: (todo): write your description
+        """
         map_result = tf.map_fn(lambda x: -tf.nn.sparse_softmax_cross_entropy_with_logits(x[0], x[1]),
                                (tf.transpose(tf.cast(actions, dtype=tf.int32)),
                                 tf.transpose(tf.reshape(logits, (logits.shape[0], actions.shape[1], -1)), perm=(1, 0, 2))),
@@ -227,6 +383,13 @@ def actor_discrete_loss(actions, advantages, logits):
     return policy_loss
 
 def critic_loss(returns, value):
+    """
+    Return the loss.
+
+    Args:
+        returns: (todo): write your description
+        value: (str): write your description
+    """
     return tf.square(value - returns)
 
 
@@ -234,6 +397,15 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
 
     def __init__(self, action_space_shape, n_hidden_units: int, n_hidden_layers: int = 1) -> None:
+        """
+        Initialize the network.
+
+        Args:
+            self: (todo): write your description
+            action_space_shape: (todo): write your description
+            n_hidden_units: (int): write your description
+            n_hidden_layers: (int): write your description
+        """
         super(ActorCriticNetworkContinuous, self).__init__()
 
         self.policy_hidden = Sequential(name="policy_hidden")
@@ -247,18 +419,47 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
         self.critic.add(Dense(1))
 
     def call(self, inp):
+        """
+        Eval onpace.
+
+        Args:
+            self: (todo): write your description
+            inp: (todo): write your description
+        """
         x = self.policy_hidden(inp)
         action, mean = self.action_mean(x)
         return action, mean, self.critic(inp)
 
     def action_value(self, states):
+        """
+        Return the value of the given state.
+
+        Args:
+            self: (todo): write your description
+            states: (todo): write your description
+        """
         action, mean, value = self.predict(states)
         return np.squeeze(action, axis=0), np.squeeze(mean, axis=0), np.squeeze(value, axis=-1)
 
     def entropy(self, *args):
+        """
+        Return the entropy of the given action.
+
+        Args:
+            self: (todo): write your description
+        """
         return self.action_mean.entropy()
 
 def actor_continuous_loss(actions_taken, mean, log_std, advantage):
+    """
+    Return the loss loss loss.
+
+    Args:
+        actions_taken: (str): write your description
+        mean: (todo): write your description
+        log_std: (todo): write your description
+        advantage: (todo): write your description
+    """
     action_log_prob = normal_dist_log_prob(actions_taken, mean, log_std)
     loss = action_log_prob * advantage
     return loss

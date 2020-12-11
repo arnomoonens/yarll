@@ -3,8 +3,17 @@
 
 import argparse
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+import tensorflow as tf
 from yarll.misc.utils import json_to_dict, save_config, set_seed, spaces_mapping
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+gpus = tf.config.experimental.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+    except RuntimeError as e:
+        print(e)
 
 def run_experiment(spec, monitor_path=None, only_last=False, description=None, seed=None):
     """Run an experiment using a specification dictionary."""
@@ -34,6 +43,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
         monitor_path.mkdir(parents=True)
     print(f"Logging to {monitor_path}")
     envs_type = spec["environments"]["type"]
+    envs = []
     if envs_type == "single":
         envs = [make(spec["environments"]["source"])]
     elif envs_type == "json":
@@ -59,7 +69,7 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     save_config(monitor_path,
                 config,
                 agent.__class__,
-                [env.metadata["parameters"] for env in envs],
+                [str(env) for env in envs],
                 repo_path=(Path(__file__) / "../../").resolve())
     agent.learn()
 

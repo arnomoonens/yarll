@@ -28,6 +28,11 @@ class DescriptionWrapper(gym.Wrapper):
             params[p["name"]] = self.unwrapped.__getattribute__(p["name"])
         return params
 
+    def __str__(self):
+        env_params = self.changeable_parameters_values()
+        env_params_str = str(env_params) if env_params else ""
+        return f"<{type(self).__name__}{env_params_str}{self.env}>"
+
 
 class DiscreteObservationWrapper(gym.ObservationWrapper):
     """

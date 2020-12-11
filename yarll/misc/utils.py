@@ -71,7 +71,7 @@ def execute_command(cmd: List[str]) -> str:
 def save_config(directory: Union[str, Path],
                 config: Dict,
                 agent_class: type,
-                envs: list,
+                envs: Sequence[Union[str, Dict[str, Any]]],
                 repo_path: Union[str, Path] = Path(__file__).parent / "../../") -> None:
     """Save the configuration of an agent to a file."""
     filtered_config = {k: v for k, v in config.items() if not k.startswith("env")}
@@ -92,6 +92,8 @@ def save_config(directory: Union[str, Path],
     # save pip freeze output
     pipfreeze = execute_command([sys.executable, "-m", "pip", "freeze"])
     filtered_config["packages"] = pipfreeze.split("\n")
+    # Python version
+    filtered_config["python_version"] = sys.version
     # Save command used to run program
     filtered_config["program_command"] = " ".join(sys.argv)
     # Save agent class

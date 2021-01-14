@@ -27,7 +27,7 @@ class REINFORCE(Agent):
     """
 
     def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = True, **usercfg) -> None:
-        super(REINFORCE, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.env = env
         if monitor:
             self.env = wrappers.Monitor(self.env,
@@ -120,7 +120,7 @@ class REINFORCE(Agent):
 
 class ActorDiscrete(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, n_actions, activation="tanh"):
-        super(ActorDiscrete, self).__init__()
+        super().__init__()
         self.logits = Sequential()
 
         for _ in range(n_hidden_layers):
@@ -141,7 +141,7 @@ class ActorDiscrete(Model):
 
 class REINFORCEDiscrete(REINFORCE):
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
-        super(REINFORCEDiscrete, self).__init__(env, monitor_path, video=video, **usercfg)
+        super().__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
         return ActorDiscrete(self.config["n_hidden_layers"],
@@ -156,7 +156,7 @@ class REINFORCEDiscrete(REINFORCE):
 
 class ActorDiscreteCNN(Model):
     def __init__(self, n_actions, n_hidden_units, n_conv_layers=4, n_filters=32, kernel_size=3, strides=2, padding="same", activation="elu"):
-        super(ActorDiscreteCNN, self).__init__()
+        super().__init__()
         self.conv_layers = Sequential()
 
         for _ in range(n_conv_layers):
@@ -185,7 +185,7 @@ class ActorDiscreteCNN(Model):
 class REINFORCEDiscreteCNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
         usercfg["n_hidden_units"] = 200
-        super(REINFORCEDiscreteCNN, self).__init__(env, monitor_path, video=video, **usercfg)
+        super().__init__(env, monitor_path, video=video, **usercfg)
         self.config.update(usercfg)
 
     def build_network(self):
@@ -193,7 +193,7 @@ class REINFORCEDiscreteCNN(REINFORCEDiscrete):
 
 class ActorDiscreteRNN(Model):
     def __init__(self, rnn_size, n_actions):
-        super(ActorDiscreteRNN, self).__init__()
+        super().__init__()
         self.expand = flatten_to_rnn
         self.rnn = GRU(rnn_size, return_state=True)
         self.logits = Dense(n_actions)
@@ -214,7 +214,7 @@ class ActorDiscreteRNN(Model):
 
 class REINFORCEDiscreteRNN(REINFORCEDiscrete):
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        super(REINFORCEDiscreteRNN, self).__init__(env, monitor_path, video=video, **usercfg)
+        super().__init__(env, monitor_path, video=video, **usercfg)
         self.initial_features = tf.zeros((1, self.config["n_hidden_units"]))
 
     def build_network(self):
@@ -230,7 +230,7 @@ class REINFORCEDiscreteRNN(REINFORCEDiscrete):
 
 class ActorDiscreteCNNRNN(Model):
     def __init__(self, rnn_size, n_actions):
-        super(ActorDiscreteCNNRNN, self).__init__()
+        super().__init__()
         self.conv_layers = Sequential()
 
         for _ in range(4):
@@ -261,7 +261,7 @@ class REINFORCEDiscreteCNNRNN(REINFORCEDiscreteRNN):
 
 class ActorBernoulli(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, n_actions, activation="tanh"):
-        super(ActorBernoulli, self).__init__()
+        super().__init__()
         self.logits = Sequential()
 
         for _ in range(int(n_hidden_layers)):
@@ -295,7 +295,7 @@ class REINFORCEBernoulli(REINFORCE):
 
 class ActorContinuous(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, action_space_shape, activation="tanh"):
-        super(ActorContinuous, self).__init__()
+        super().__init__()
         self.hidden = Sequential()
 
         for _ in range(int(n_hidden_layers)):
@@ -309,7 +309,7 @@ class ActorContinuous(Model):
 
 class ActorContinuousRNN(Model):
     def __init__(self, rnn_size, action_space_shape):
-        super(ActorContinuousRNN, self).__init__()
+        super().__init__()
         # Change shape for RNN
         self.expand = flatten_to_rnn
 
@@ -328,7 +328,7 @@ class REINFORCEContinuous(REINFORCE):
     def __init__(self, env, monitor_path, rnn=False, video=True, **usercfg):
         self.rnn = rnn
         self.initial_features = tf.zeros((1, self.config["n_hidden_units"])) if rnn else None
-        super(REINFORCEContinuous, self).__init__(env, monitor_path, video=video, **usercfg)
+        super().__init__(env, monitor_path, video=video, **usercfg)
 
     def build_network(self):
         return self.build_network_rnn() if self.rnn else self.build_network_normal()

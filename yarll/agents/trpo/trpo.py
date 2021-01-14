@@ -12,7 +12,7 @@ class TRPO(PPO):
 
     def __init__(self, env, monitor_path: str, video=False, **usercfg) -> None:
         usercfg["kl_coef"] = 1.0  # beta
-        super(TRPO, self).__init__(env, monitor_path, video=video, **usercfg)
+        super().__init__(env, monitor_path, video=video, **usercfg)
 
     def _actor_loss(self, old_logprob, new_logprob, advantage):
         return trpo_loss(old_logprob, new_logprob, self.config["kl_coef"], advantage)

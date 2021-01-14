@@ -8,7 +8,7 @@ class OrnsteinUhlenbeckActionNoise(object):
     """
 
     def __init__(self, n_actions: int, sigma: float, theta: float = .15, dt: float = 1e-2, x0=None) -> None:
-        super(OrnsteinUhlenbeckActionNoise, self).__init__()
+        super().__init__()
         self.theta: float = theta
         self.mu: np.ndarray = np.zeros(n_actions)
         self.sigma: float = sigma

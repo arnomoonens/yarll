@@ -13,7 +13,7 @@ from yarll.misc.network_ops import create_accumulative_gradients_op, add_accumul
 class TaskPolicy(object):
     """Policy for a specific class."""
     def __init__(self, action, master):
-        super(TaskPolicy, self).__init__()
+        super().__init__()
         self.action = action
         self.master = master
 
@@ -27,7 +27,7 @@ class TaskPolicy(object):
 class KnowledgeTransfer(Agent):
     """Learner for variations of a task."""
     def __init__(self, envs, monitor_path, **usercfg):
-        super(KnowledgeTransfer, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.envs = envs
         self.n_tasks = len(envs)
         self.monitor_path = monitor_path

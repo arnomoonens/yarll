@@ -20,7 +20,7 @@ np.set_printoptions(suppress=True)  # Don't use the scientific notation to print
 class KarpathyCNN(Agent):
     """Karpathy policy gradient learner using a convolutional neural network"""
     def __init__(self, env, monitor_path, video=True, **usercfg):
-        super(KarpathyCNN, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.env = wrappers.Monitor(env, monitor_path, force=True, video_callable=(None if video else False))
         self.nA = env.action_space.n
         self.monitor_path = monitor_path

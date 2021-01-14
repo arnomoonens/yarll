@@ -10,7 +10,7 @@ class DTRPO(DPPO):
 
     def __init__(self, env, monitor_path: str, **usercfg) -> None:
         usercfg["kl_coef"] = 1.0  # beta
-        super(DTRPO, self).__init__(env, monitor_path, **usercfg)
+        super().__init__(env, monitor_path, **usercfg)
 
     def make_actor_loss(self, old_network, new_network, advantage):
         return trpo_loss(old_network.action_log_prob, new_network.action_log_prob, self.config["kl_coef"], advantage)

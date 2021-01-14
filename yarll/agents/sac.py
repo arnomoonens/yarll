@@ -44,7 +44,7 @@ class DeterministicPolicy:
 
 class SAC(Agent):
     def __init__(self, env, monitor_path: Union[Path, str], **usercfg) -> None:
-        super(SAC, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.env = env
         self.monitor_path = Path(monitor_path)
         self.monitor_path.mkdir(parents=True, exist_ok=True)
@@ -309,7 +309,7 @@ class SAC(Agent):
 
 class ActorNetwork(Model):
     def __init__(self, input_dim, n_hidden_layers, n_hidden_units, n_actions, logprob_epsilon, hidden_layer_activation="relu", log_scale_bounds=(-5, 2)):
-        super(ActorNetwork, self).__init__()
+        super().__init__()
         self.logprob_epsilon = logprob_epsilon
         inp = tf.keras.Input((input_dim,))
         mean_log_scale_net = Sequential()
@@ -366,7 +366,7 @@ class ActorNetwork(Model):
 
 class SoftQNetwork(Model):
     def __init__(self, n_hidden_layers, n_hidden_units, hidden_layer_activation="relu"):
-        super(SoftQNetwork, self).__init__()
+        super().__init__()
         self.softq = Sequential()
         for _ in range(n_hidden_layers):
             self.softq.add(Dense(n_hidden_units, activation=hidden_layer_activation))

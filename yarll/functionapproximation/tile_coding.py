@@ -8,7 +8,7 @@ from yarll.functionapproximation.function_approximator import FunctionApproximat
 class TileCoding(FunctionApproximator):
     """Map states to tiles"""
     def __init__(self, x_low, x_high, y_low, y_high, n_tilings: int, n_y_tiles: int, n_x_tiles: int, n_actions: int) -> None:
-        super(TileCoding, self).__init__(n_actions)
+        super().__init__(n_actions)
         self.x_low = x_low
         self.x_high = x_high
         self.y_low = y_low

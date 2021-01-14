@@ -5,7 +5,7 @@ import numpy as np
 class EligibilityTraces(object):
     """Eligibility traces"""
     def __init__(self, features_shape, gamma: float, Lambda: float) -> None:
-        super(EligibilityTraces, self).__init__()
+        super().__init__()
         self.features_shape = features_shape
         self.traces = np.zeros(self.features_shape)
         self.gamma: float = gamma

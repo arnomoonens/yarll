@@ -72,7 +72,7 @@ class RunnerThread(threading.Thread):
     """
 
     def __init__(self, env, policy, n_local_steps: int, render=False) -> None:
-        super(RunnerThread, self).__init__()
+        super().__init__()
         self.env = env
         self.policy = policy
         self.n_local_steps = n_local_steps
@@ -108,7 +108,7 @@ class A3CTask(object):
                  clip_gradients: bool = True,
                  video: bool = False,
                  seed: Optional[int] = None) -> None:
-        super(A3CTask, self).__init__()
+        super().__init__()
         self.task_id = task_id
         self.config = config
         self.clip_gradients = clip_gradients

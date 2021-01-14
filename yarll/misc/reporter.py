@@ -16,7 +16,7 @@ for gui in gui_env:
 class Reporter(object):
     """Report iteration statistics using text and graphs."""
     def __init__(self):
-        super(Reporter, self).__init__()
+        super().__init__()
         logging.getLogger().setLevel("INFO")
         self.fig = None
         self.ax1 = None

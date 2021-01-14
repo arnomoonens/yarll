@@ -17,7 +17,7 @@ from yarll.functionapproximation.tile_coding import TileCoding
 class SarsaFA(object):
     """Learner using Sarsa and function approximation"""
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
-        super(SarsaFA, self).__init__()
+        super().__init__()
         self.env = env
         self.env = wrappers.Monitor(self.env, monitor_path, force=True, video_callable=(None if video else False))
         m = usercfg.get("m", 10)  # Number of tilings

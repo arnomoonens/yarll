@@ -16,7 +16,7 @@ from yarll.agents.knowledgetransfer import TaskPolicy
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""
     def __init__(self, master, env, task_id, n_iter, start_at_iter=0):
-        super(AKTThread, self).__init__()
+        super().__init__()
         self.master = master
         self.config = self.master.config
         self.task_id = task_id
@@ -126,7 +126,7 @@ class AKTThread(Thread):
 class AsyncKnowledgeTransfer(Agent):
     """Asynchronous learner for variations of a task."""
     def __init__(self, envs, monitor_path, learning_method="REINFORCE", **usercfg):
-        super(AsyncKnowledgeTransfer, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.envs = envs
         self.learning_method = learning_method
         self.monitor_path = monitor_path

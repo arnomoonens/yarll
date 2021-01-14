@@ -8,7 +8,7 @@ class ExperiencesMemory(object):
     """Experience gathered from an environment."""
 
     def __init__(self):
-        super(ExperiencesMemory, self).__init__()
+        super().__init__()
         self.experiences = []
         self.steps = 0
 

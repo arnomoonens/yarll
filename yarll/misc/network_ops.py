@@ -19,7 +19,7 @@ class MultiCategoricalProbabilityDistribution(tf.keras.Model):
 
 class NormalDistrLayer(tf.keras.layers.Layer):
     def __init__(self, n_outputs):
-        super(NormalDistrLayer, self).__init__()
+        super().__init__()
         self.n_outputs = n_outputs
         self.mean = Dense(n_outputs)
         self.log_std = None # instantiated in build phase

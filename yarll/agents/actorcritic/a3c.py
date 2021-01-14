@@ -26,7 +26,7 @@ class A3C(Agent):
     """Asynchronous Advantage Actor Critic learner."""
 
     def __init__(self, env, monitor_path: str, monitor: bool = False, video: bool = True, **usercfg) -> None:
-        super(A3C, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.env = env
         self.env_name = env.spec.id
         self.monitor = monitor
@@ -101,24 +101,24 @@ class A3C(Agent):
 class A3CDiscrete(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
-        super(A3CDiscrete, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
+        super().__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskDiscrete"
 
 class A3CDiscreteCNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
-        super(A3CDiscreteCNN, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
+        super().__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskDiscreteCNN"
 
 class A3CDiscreteCNNRNN(A3C):
     """A3C for a discrete action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
-        super(A3CDiscreteCNNRNN, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
+        super().__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskDiscreteCNNRNN"
         self.config["RNN"] = True
 
 class A3CContinuous(A3C):
     """A3C for a continuous action space"""
     def __init__(self, env, monitor_path: str, monitor: bool = False, **usercfg) -> None:
-        super(A3CContinuous, self).__init__(env, monitor_path, monitor=monitor, **usercfg)
+        super().__init__(env, monitor_path, monitor=monitor, **usercfg)
         self.task_type = "A3CTaskContinuous"

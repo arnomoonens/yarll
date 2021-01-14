@@ -20,7 +20,7 @@ class DPPOWorker(object):
     """Distributed Proximal Policy Optimization Worker."""
 
     def __init__(self, env_id: str, task_id: int, comm: MPI.Intercomm, monitor_path: str, config: Dict[str, Any], seed=None) -> None:
-        super(DPPOWorker, self).__init__()
+        super().__init__()
         self.comm = comm
         self.config = config
         self.env = make(env_id)
@@ -108,7 +108,7 @@ class DPPOWorkerDiscrete(DPPOWorker):
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = actor_critic_discrete_loss
-        super(DPPOWorkerDiscrete, self).__init__(
+        super().__init__(
             env_id,
             task_id,
             comm,
@@ -131,7 +131,7 @@ class DPPOWorkerDiscreteCNN(DPPOWorkerDiscrete):
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = actor_critic_discrete_loss
-        super(DPPOWorkerDiscreteCNN, self).__init__(
+        super().__init__(
             env_id,
             task_id,
             comm,
@@ -154,7 +154,7 @@ class DPPOWorkerDiscreteCNNRNN(DPPOWorkerDiscreteCNN):
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = actor_critic_discrete_loss
-        super(DPPOWorkerDiscreteCNNRNN, self).__init__(
+        super().__init__(
             env_id,
             task_id,
             comm,
@@ -196,7 +196,7 @@ class DPPOWorkerContinuous(DPPOWorker):
 
     def __init__(self, env_id, task_id, comm, monitor_path, config, seed=None):
         self.make_loss = actor_critic_continuous_loss
-        super(DPPOWorkerContinuous, self).__init__(
+        super().__init__(
             env_id,
             task_id,
             comm,

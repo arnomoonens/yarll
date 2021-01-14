@@ -3,7 +3,7 @@
 class FunctionApproximator(object):
     """Map states and actions using a function."""
     def __init__(self, n_actions: int) -> None:
-        super(FunctionApproximator, self).__init__()
+        super().__init__()
         self.n_actions = n_actions
         self.thetas = []
         self.features_shape = (0)

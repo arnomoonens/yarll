@@ -41,7 +41,7 @@ class RunningMeanStdScaler(Scaler):
     """
 
     def __init__(self, shape, epsilon=1e-2):
-        super(RunningMeanStdScaler, self).__init__()
+        super().__init__()
         self.count = epsilon
         self._sum = np.zeros(shape, dtype="float64")
         self._sumsq = np.full(shape, epsilon, dtype="float64")

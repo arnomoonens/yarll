@@ -13,7 +13,7 @@ from yarll.memory.experiences_memory import ExperiencesMemory
 
 class FittedQIteration(Agent):
     def __init__(self, env: Environment, monitor_path: str, **usercfg) -> None:
-        super(FittedQIteration, self).__init__()
+        super().__init__()
 
         self.env = env
         self.monitor_path = Path(monitor_path)

@@ -5,7 +5,7 @@ import numpy as np
 class Sarsa(object):
     """Sarsa learner for function approximation"""
     def __init__(self, gamma: float, alpha: float, policy, traces, function_approximation, actions, start_state, start_action) -> None:
-        super(Sarsa, self).__init__()
+        super().__init__()
         self.gamma = gamma
         self.alpha = alpha
         self.policy = policy

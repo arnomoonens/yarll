@@ -11,7 +11,7 @@ from yarll.misc.network_ops import batch_norm_layer, fan_in_initializer, linear_
 
 class DDPG(Agent):
     def __init__(self, env, monitor_path: str, **usercfg) -> None:
-        super(DDPG, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.env = env
         self.monitor_path: str = monitor_path
 

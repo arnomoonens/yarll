@@ -20,7 +20,7 @@ class DPPO(Agent):
     RNN = False
 
     def __init__(self, env, monitor_path, **usercfg):
-        super(DPPO, self).__init__()
+        super().__init__()
         self.env = env
         self.env_name: str = env.spec.id
         self.monitor_path: str = monitor_path
@@ -222,7 +222,7 @@ class DPPO(Agent):
 class DPPODiscrete(DPPO):
 
     def __init__(self, env, monitor_path, **usercfg):
-        super(DPPODiscrete, self).__init__(env, monitor_path, **usercfg)
+        super().__init__(env, monitor_path, **usercfg)
         self.task_type = "DPPOWorkerDiscrete"
 
     def build_networks(self):
@@ -236,7 +236,7 @@ class DPPODiscrete(DPPO):
 class DPPODiscreteCNN(DPPODiscrete):
 
     def __init__(self, env, monitor_path, **usercfg):
-        super(DPPODiscreteCNN, self).__init__(env, monitor_path, **usercfg)
+        super().__init__(env, monitor_path, **usercfg)
         self.task_type = "DPPOWorkerDiscreteCNN"
 
     def build_networks(self):
@@ -249,7 +249,7 @@ class DPPODiscreteCNN(DPPODiscrete):
 class DPPOContinuous(DPPO):
 
     def __init__(self, env, monitor_path, **usercfg):
-        super(DPPOContinuous, self).__init__(env, monitor_path, **usercfg)
+        super().__init__(env, monitor_path, **usercfg)
         self.task_type = "DPPOWorkerContinuous"
 
     def build_networks(self):

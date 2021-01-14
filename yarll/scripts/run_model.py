@@ -14,7 +14,7 @@ class ModelRunner(object):
     Currently only supports one variation of an environment.
     """
     def __init__(self, env, model_directory: str, save_directory: str, **usercfg) -> None:
-        super(ModelRunner, self).__init__()
+        super().__init__()
         self.env = env
         self.model_directory = Path(model_directory)
         self.save_directory = Path(save_directory)

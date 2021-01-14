@@ -26,7 +26,7 @@ class DQN(Agent):
     """
 
     def __init__(self, env, monitor_path: Union[str, Path], **usercfg):
-        super(DQN, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.env = env
         self.monitor_path = Path(monitor_path)
         self.monitor_path.mkdir(parents=True, exist_ok=True)

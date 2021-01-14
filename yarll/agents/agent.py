@@ -1,9 +1,9 @@
 # -*- coding: utf8 -*-
 
-class Agent(object):
+class Agent:
     """Reinforcement learning agent"""
     def __init__(self, **usercfg):
-        super(Agent, self).__init__()
+        super().__init__()
         self.config = usercfg
         # Only used (and overwritten) by agents that use an RNN
         self.initial_features = None

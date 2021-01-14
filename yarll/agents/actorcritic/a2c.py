@@ -26,7 +26,7 @@ class A2C(Agent):
     """Advantage Actor Critic"""
 
     def __init__(self, env, monitor_path: str, video: bool = True, **usercfg) -> None:
-        super(A2C, self).__init__(**usercfg)
+        super().__init__(**usercfg)
         self.monitor_path = Path(monitor_path)
 
         self.env = wrappers.Monitor(
@@ -148,7 +148,7 @@ class A2CDiscreteCNN(A2CDiscrete):
 
 class A2CDiscreteCNNRNN(A2CDiscrete):
     def __init__(self, *args, **kwargs):
-        super(A2CDiscreteCNNRNN, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         self.initial_features = self.ac_net.initial_features
 
     def build_networks(self):
@@ -161,7 +161,7 @@ class A2CDiscreteCNNRNN(A2CDiscrete):
 
 class A2CContinuous(A2C):
     def __init__(self, *args, **kwargs):
-        super(A2CContinuous, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def build_networks(self):
         return ActorCriticNetworkContinuous(

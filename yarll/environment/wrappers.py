@@ -13,7 +13,7 @@ class DescriptionWrapper(gym.Wrapper):
     changeable_parameters: list = []
 
     def __init__(self, env, **kwargs):
-        super(DescriptionWrapper, self).__init__(env)
+        super().__init__(env)
 
         self.args: dict = kwargs
         self.metadata = self.metadata.copy()
@@ -41,7 +41,7 @@ class DiscreteObservationWrapper(gym.ObservationWrapper):
     """
 
     def __init__(self, env):
-        super(DiscreteObservationWrapper, self).__init__(env)
+        super().__init__(env)
 
         if not isinstance(self.env.observation_space, gym.spaces.Discrete):
             raise AssertionError(
@@ -65,7 +65,7 @@ class NormalizedObservationWrapper(gym.ObservationWrapper):
     """
 
     def __init__(self, env):
-        super(NormalizedObservationWrapper, self).__init__(env)
+        super().__init__(env)
         if not isinstance(self.env.observation_space, gym.spaces.Box):
             raise AssertionError(
                 "This wrapper can only be applied to environments with a continuous observation space.")
@@ -88,7 +88,7 @@ class NormalizedRewardWrapper(gym.RewardWrapper):
     """
 
     def __init__(self, env, low=None, high=None):
-        super(NormalizedRewardWrapper, self).__init__(env)
+        super().__init__(env)
         self.low = low if low is not None else self.env.reward_range[0]
         self.high = high if high is not None else self.env.reward_range[1]
         self.reward_range = (0.0, 1.0)
@@ -104,7 +104,7 @@ class CenteredScaledActionWrapper(gym.ActionWrapper):
     def __init__(self, env):
         if not isinstance(env.action_space, gym.spaces.Box):
             raise AssertionError("The action space must be a Box.")
-        super(CenteredScaledActionWrapper, self).__init__(env)
+        super().__init__(env)
 
         self._low = self.env.action_space.low
         self._high = self.env.action_space.high

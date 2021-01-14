@@ -8,7 +8,7 @@ from yarll.policies.e_greedy import EGreedy
 
 class QLearning(Agent):
     def __init__(self, env: Environment, monitor_path: str, **usercfg) -> None:
-        super(QLearning, self).__init__()
+        super().__init__()
         self.env = env
         self.monitor_path = Path(monitor_path)
 

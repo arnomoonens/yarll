@@ -48,7 +48,7 @@ def _process_frame42(frame: np.ndarray) -> np.ndarray:
 
 class AtariRescale42x42(gym.ObservationWrapper):
     def __init__(self, env=None):
-        super(AtariRescale42x42, self).__init__(env)
+        super().__init__(env)
         self.observation_space = Box(0.0, 1.0, [42, 42, 1])
 
     def observation(self, observation: np.ndarray) -> np.ndarray:

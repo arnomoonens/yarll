@@ -18,7 +18,7 @@ class EnvRunner(object):
                  summaries: bool = True, # Write tensorflow summaries
                  episode_rewards_file: Optional[Union[Path, str]] = None, # write each episode reward to the given file
                  ) -> None:
-        super(EnvRunner, self).__init__()
+        super().__init__()
         self.env = env
         self.policy = policy
         self.state: Optional[np.ndarray] = None
@@ -80,7 +80,8 @@ class EnvRunner(object):
             action = results["action"]
             value = results.get("value", None)
             new_features = results.get("features", None)
-            new_state, rew, done, _ = self.step_env(action)
+            env_action = self.policy.get_env_action(action) # e.g., unnormalized action
+            new_state, rew, done, _ = self.env.step(env_action)
             memory.add(self.state, action, rew, value, terminal=done, features=self.features, next_state=new_state)
             self.state = new_state
             self.features = new_features
@@ -91,9 +92,9 @@ class EnvRunner(object):
                 self.total_episodes += 1
                 # summaries won't be written if there is no writer.as_default around it somewhere (e.g. in algorithm itself)
                 if self.summaries:
-                    tf.summary.scalar("env/Episode_length", self.episode_steps, step=self.total_steps)
-                    tf.summary.scalar("episode_reward", self.episode_reward, step=self.total_steps)
-                    tf.summary.scalar("env/N_episodes", self.total_episodes, step=self.total_steps)
+                    tf.summary.scalar("env/episode_length", self.episode_steps, step=self.total_steps)
+                    tf.summary.scalar("env/episode_reward", self.episode_reward, step=self.total_steps)
+                    tf.summary.scalar("env/total_episodes", self.total_episodes, step=self.total_steps)
                 if self.episode_rewards_file is not None:
                     with open(self.episode_rewards_file, "a") as f:
                         f.write(f"{self.episode_reward}\n")

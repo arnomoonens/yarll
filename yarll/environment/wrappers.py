@@ -89,12 +89,24 @@ class NormalizedRewardWrapper(gym.RewardWrapper):
 
     def __init__(self, env, low=None, high=None):
         super().__init__(env)
-        self.low = low if low is not None else self.env.reward_range[0]
-        self.high = high if high is not None else self.env.reward_range[1]
+        if low is not None:
+            self.low = low
+        elif np.isfinite(self.env.reward_range[0]):
+            self.low = self.env.reward_range[0]
+        else:
+            raise ValueError("No low argument given and low of env.reward_range is infinite.")
+
+        if high is not None:
+            self.high = high
+        elif np.isfinite(self.env.reward_range[1]):
+            self.high = self.env.reward_range[1]
+        else:
+            raise ValueError("No high argument given and high of env.reward_range is infinite.")
+
         self.reward_range = (0.0, 1.0)
 
-    def reward(self, rew):
-        return (rew - self.low) / (self.high - self.low)
+    def reward(self, reward):
+        return (reward - self.low) / (self.high - self.low)
 
 class CenteredScaledActionWrapper(gym.ActionWrapper):
     """

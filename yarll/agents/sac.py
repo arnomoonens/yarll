@@ -70,6 +70,7 @@ class SAC(Agent):
             n_train_steps=1,  # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
             replay_start_size=1024,  # Required number of replay buffer entries to start training
+            gradient_clip_value=1.0,
             hidden_layer_activation="relu",
             normalize_inputs=False,
             summaries=True,
@@ -119,10 +120,13 @@ class SAC(Agent):
 
 
         # Make train ops
-        self.actor_optimizer = tf.optimizers.Adam(learning_rate=self.config["actor_learning_rate"])
-        self.softq_optimizers = [tf.optimizers.Adam(learning_rate=self.config["softq_learning_rate"])
+        self.actor_optimizer = tf.optimizers.Adam(learning_rate=self.config["actor_learning_rate"],
+                                                  clipnorm=self.config["gradient_clip_value"])
+        self.softq_optimizers = [tf.optimizers.Adam(learning_rate=self.config["softq_learning_rate"],
+                                                    clipnorm=self.config["gradient_clip_value"])
                                  for _ in self.softq_networks]
-        self.alpha_optimizer = tf.optimizers.Adam(learning_rate=self.config["alpha_learning_rate"])
+        self.alpha_optimizer = tf.optimizers.Adam(learning_rate=self.config["alpha_learning_rate"],
+                                                  clipnorm=self.config["gradient_clip_value"])
 
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
         self.n_updates = 0
@@ -151,6 +155,8 @@ class SAC(Agent):
             unw = test_env.unwrapped
             if hasattr(unw, "summaries"):
                 unw.summaries = False
+            if hasattr(unw, "log_data"):
+                unw.log_data = False
             deterministic_policy = DeterministicPolicy(test_env, self.actor_network.deterministic_actions)
             self.test_env_runner = EnvRunner(test_env,
                                              deterministic_policy,
@@ -213,7 +219,14 @@ class SAC(Agent):
             actions, action_logprob = self.actor_network(state0_batch)
             softqs_pred = [net((state0_batch, actions)) for net in self.softq_networks]
             min_softq_pred = tf.reduce_min(softqs_pred, axis=0)
-            actor_loss = tf.reduce_mean(self._alpha * action_logprob - min_softq_pred)
+            actor_losses = self._alpha * action_logprob - min_softq_pred
+            actor_loss = tf.reduce_mean(actor_losses)
+        tf.debugging.assert_shapes((
+            (actions, ("B", "nA")),
+            (action_logprob, ("B", 1)),
+            (actor_losses, ("B", 1))
+        )
+        )
         actor_gradients = tape.gradient(actor_loss, self.actor_network.trainable_weights)
         self.actor_optimizer.apply_gradients(zip(actor_gradients, self.actor_network.trainable_weights))
 
@@ -293,9 +306,6 @@ class SAC(Agent):
                     if self.config["checkpoints"] and (total_episodes % self.config["checkpoint_every_episodes"]) == 0:
                         self.ckpt_manager.save(total_episodes)
                     total_episodes += 1
-        with open(self.monitor_path / "experiences.csv", "w") as f:
-            writer = csv.writer(f)
-            writer.writerows(to_save)
         if self.config["save_model"]:
             self.actor_network.save_weights(str(self.monitor_path / "actor_weights"))
             self.softq_networks[0].save_weights(str(self.monitor_path / "softq_weights"))

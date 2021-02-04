@@ -24,7 +24,7 @@ class ActorCriticNetwork(Model):
 
 class ActorCriticNetworkLatent(ActorCriticNetwork):
     def __init__(self, n_latent: int, n_hidden_units: int, n_hidden_layers: int) -> None:
-        super(ActorCriticNetworkLatent, self).__init__()
+        super().__init__()
 
         self.logits = Sequential()
         for _ in range(n_hidden_layers):
@@ -42,7 +42,7 @@ class ActorCriticNetworkLatent(ActorCriticNetwork):
 
 class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
     def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
-        super(ActorCriticNetworkDiscrete, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
+        super().__init__(n_actions, n_hidden_units, n_hidden_layers)
         self.dist = CategoricalProbabilityDistribution()
 
     def action_value(self, states):
@@ -64,7 +64,7 @@ class ActorCriticNetworkDiscrete(ActorCriticNetworkLatent):
 class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
     def __init__(self, n_actions_per_dim: List[int], n_hidden_units: int, n_hidden_layers: int) -> None:
         self.n_actions_per_dim = tf.cast(n_actions_per_dim, tf.int32)
-        super(ActorCriticNetworkMultiDiscrete, self).__init__(sum(n_actions_per_dim), n_hidden_units, n_hidden_layers)
+        super().__init__(sum(n_actions_per_dim), n_hidden_units, n_hidden_layers)
         self.dist = MultiCategoricalProbabilityDistribution()
 
     def action_value(self, states):
@@ -91,7 +91,7 @@ class ActorCriticNetworkMultiDiscrete(ActorCriticNetworkLatent):
 
 class ActorCriticNetworkBernoulli(ActorCriticNetworkLatent):
     def __init__(self, n_actions: int, n_hidden_units: int, n_hidden_layers: int) -> None:
-        super(ActorCriticNetworkBernoulli, self).__init__(n_actions, n_hidden_units, n_hidden_layers)
+        super().__init__(n_actions, n_hidden_units, n_hidden_layers)
 
     def action_value(self, states):
         """
@@ -117,7 +117,7 @@ class ActorCriticNetworkDiscreteCNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
     def __init__(self, n_actions: int, n_hidden: int) -> None:
-        super(ActorCriticNetworkDiscreteCNN, self).__init__()
+        super().__init__()
 
         self.shared_layers = Sequential()
 
@@ -162,7 +162,7 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
     """docstring for ActorCriticNetworkDiscreteCNNRNN"""
 
     def __init__(self, n_actions: int, rnn_size: int = 256) -> None:
-        super(ActorCriticNetworkDiscreteCNNRNN, self).__init__()
+        super().__init__()
 
         self.shared_layers = Sequential()
 
@@ -234,7 +234,7 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
     """Neural network for an Actor of an Actor-Critic algorithm using a continuous action space."""
 
     def __init__(self, action_space_shape, n_hidden_units: int, n_hidden_layers: int = 1) -> None:
-        super(ActorCriticNetworkContinuous, self).__init__()
+        super().__init__()
 
         self.policy_hidden = Sequential(name="policy_hidden")
         for _ in range(n_hidden_layers):
@@ -257,6 +257,10 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
 
     def entropy(self, *args):
         return self.action_mean.entropy()
+
+    @tf.function
+    def deterministic_actions(self, inp):
+        return self.action_mean(self.policy_hidden(inp))[1]
 
 def actor_continuous_loss(actions_taken, mean, log_std, advantage):
     action_log_prob = normal_dist_log_prob(actions_taken, mean, log_std)

@@ -47,6 +47,7 @@ class EnvRunner(object):
             if all(np.isfinite(np.append(env.observation_space.low, env.observation_space.high))):
                 self.state_scaler = LowsHighsScaler(env.observation_space.low, env.observation_space.high)
             else:
+                print("Warning: No observation space bounds, scaling with RunningMeanStdScaler.")
                 self.state_scaler = RunningMeanStdScaler(self.env.observation_space.shape)
         self.reset_env()
 
@@ -63,7 +64,10 @@ class EnvRunner(object):
         self.state = self.state if self.state_preprocessor is None else self.state_preprocessor(self.state)
 
     def step_env(self, action):
-        """Execute an action in the current environment."""
+        """
+        Execute an action in the current environment.
+        ! Not used in get_steps right now.
+        """
         state, reward, done, info = self.env.step(self.policy.get_env_action(action))
         state = state if self.state_preprocessor is None else self.state_preprocessor(state)
         return state, reward, done, info

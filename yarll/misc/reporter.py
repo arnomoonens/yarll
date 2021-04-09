@@ -7,7 +7,7 @@ import numpy as np
 gui_env = ['TKAgg', 'GTKAgg', 'Qt4Agg', 'WXAgg', 'agg']
 for gui in gui_env:
     try:
-        matplotlib.use(gui, warn=False, force=True)
+        matplotlib.use(gui, force=True)
         from matplotlib import pyplot as plt
         break
     except ImportError:

@@ -14,6 +14,7 @@ from tensorflow.keras import Model, Sequential
 import tensorflow_addons as tfa
 from gym import wrappers
 
+from yarll.agents.actorcritic.actor_critic import actor_continuous_loss
 from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards
@@ -45,12 +46,14 @@ class REINFORCE(Agent):
             entropy_coef=1e-3,
             n_hidden_layers=2,
             n_hidden_units=20,
+            gradient_clip_value=1.0,
             save_model=False
         ))
         self.config.update(usercfg)
 
         self.network = self.build_network()
-        self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"])
+        self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"],
+                                                      clipnorm=self.config["gradient_clip_value"])
         self.writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def build_network(self) -> tf.keras.Model:
@@ -74,8 +77,8 @@ class REINFORCE(Agent):
                 logits = res[0]
             log_probs = self.network.log_prob(actions_taken, logits)
             eligibility = log_probs * advantages
-            loss = -tf.reduce_sum(eligibility)
-            gradients = tape.gradient(loss, self.network.trainable_weights)
+            loss = -tf.reduce_mean(eligibility)
+        gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
         return float(loss)
 
@@ -300,11 +303,11 @@ class ActorContinuous(Model):
 
         for _ in range(int(n_hidden_layers)):
             self.hidden.add(Dense(n_hidden_units, activation=activation))
-        self.action = NormalDistrLayer(action_space_shape[0])
+        self.action_mean = NormalDistrLayer(action_space_shape[0])
 
     def call(self, inp):
         x = self.hidden(inp)
-        return self.action(x)
+        return self.action_mean(x)
 
 
 class ActorContinuousRNN(Model):
@@ -314,13 +317,13 @@ class ActorContinuousRNN(Model):
         self.expand = flatten_to_rnn
 
         self.rnn = GRU(rnn_size, return_state=True)
-        self.action = NormalDistrLayer(action_space_shape[0])
+        self.action_mean = NormalDistrLayer(action_space_shape[0])
 
     def call(self, inp):
         state, hidden = inp
         x = self.expand(state)
         x, new_hidden = self.rnn(x, hidden)
-        action, mean = self.action(x)
+        action, mean = self.action_mean(x)
         return action, mean, new_hidden
 
 
@@ -342,7 +345,9 @@ class REINFORCEContinuous(REINFORCE):
         else:
             inp = state
         res = self.network(inp)
-        return {"action": res[0][0], "features": res[2] if self.rnn else None}
+        action = res[0][0]
+        action = np.clip(action, self.env.action_space.low, self.env.action_space.high)
+        return {"action": action, "features": res[2] if self.rnn else None}
 
     def build_network_normal(self):
         return ActorContinuous(self.config["n_hidden_layers"],
@@ -361,14 +366,8 @@ class REINFORCEContinuous(REINFORCE):
         with tf.GradientTape() as tape:
             res = self.network(inp)
             mean = res[1]
-            log_std = self.network.layers[-1].log_std
-            std = tf.exp(log_std)
-            neglogprob = 0.5 * tf.reduce_sum(tf.square((actions_taken - mean) / std), axis=-1) \
-                + 0.5 * tf.math.log(2.0 * np.pi) * std \
-                + tf.reduce_sum(log_std, axis=-1)
-            action_log_prob = -neglogprob
-            eligibility = action_log_prob * advantages
-            loss = -tf.reduce_sum(eligibility)
-            gradients = tape.gradient(loss, self.network.trainable_weights)
+            log_std = self.network.action_mean.log_std
+            loss = -tf.reduce_mean(actor_continuous_loss(actions_taken, mean, log_std, advantages))
+        gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
         return loss

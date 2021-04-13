@@ -1,13 +1,15 @@
 # -*- coding: utf8 -*-
 
-import os
+from itertools import count
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras.layers import Dense
 
 from yarll.agents.agent import Agent
 from yarll.memory.memory import Memory
 from yarll.misc.noise import OrnsteinUhlenbeckActionNoise
-from yarll.misc.network_ops import batch_norm_layer, fan_in_initializer, linear_fan_in
+from yarll.misc.network_ops import CustomKaimingUniformKernelInitializer, CustomKaimingUniformBiasInitializer
+from yarll.misc.utils import hard_update, soft_update
 
 class DDPG(Agent):
     def __init__(self, env, monitor_path: str, **usercfg) -> None:
@@ -17,7 +19,6 @@ class DDPG(Agent):
 
         self.config.update(
             n_episodes=100000,
-            n_timesteps=env.spec.tags.get("wrapper_config.TimeLimit.max_episode_steps"),
             actor_learning_rate=1e-4,
             critic_learning_rate=1e-3,
             ou_theta=0.15,
@@ -26,53 +27,38 @@ class DDPG(Agent):
             batch_size=64,
             tau=0.001,
             l2_loss_coef=1e-2,
-            n_actor_layers=2,
-            n_hidden_units=64,
             actor_layer_norm=True,
-            critic_layer_norm=False,  # Batch norm for critic does not seem to work
+            critic_layer_norm=True,  # Batch norm for critic does not seem to work
             replay_buffer_size=1e6,
-            replay_start_size=10000  # Required number of replay buffer entries to start training
+            replay_start_size=10000,  # Required number of replay buffer entries to start training
+            summaries=True
         )
         self.config.update(usercfg)
 
         self.state_shape: list = list(env.observation_space.shape)
         self.n_actions: int = env.action_space.shape[0]
-        self.states = tf.placeholder(tf.float32, [None] + self.state_shape, name="states")
-        self.actions_taken = tf.placeholder(tf.float32, [None, self.n_actions], name="actions_taken")
-        self.critic_target = tf.placeholder(tf.float32, [None, 1], name="critic_target")
-        self.is_training = tf.placeholder(tf.bool, name="is_training")
+        self.states = tf.keras.Input(self.state_shape, name="states")
+        self.actions_taken = tf.keras.Input((self.n_actions,), name="actions_taken")
 
-        with tf.variable_scope("actor"):
-            self.action_output, self.actor_vars = self.build_actor_network()
+        # Make actor and critic
+        self.actor = self.build_actor_network()
+        self.critic = self.build_critic_network()
 
-        self.target_action_output, actor_target_update = self.build_target_actor_network(self.actor_vars)
+        # Make target networks
+        custom_objects = {"CustomKaimingUniformBiasInitializer": CustomKaimingUniformBiasInitializer}
+        with tf.keras.utils.custom_object_scope(custom_objects):
+            self.target_actor = tf.keras.models.clone_model(self.actor)
+            self.target_critic = tf.keras.models.clone_model(self.critic)
 
-        self.q_gradient_input = tf.placeholder("float", [None, self.n_actions], name="q_grad_input")
-        self.actor_policy_gradients = tf.gradients(
-            self.action_output, self.actor_vars, -self.q_gradient_input, name="actor_gradients")
-        self.actor_train_op = tf.train.AdamOptimizer(
-            self.config["actor_learning_rate"],
-            name="actor_optimizer").apply_gradients(list(zip(self.actor_policy_gradients, self.actor_vars)))
+        dummy_input_states = tf.random.uniform((1, *self.state_shape))
+        dummy_input_actions = tf.random.uniform((1, self.n_actions))
+        self.actor(dummy_input_states)
+        hard_update(self.actor.variables, self.target_actor.variables)
+        self.critic((dummy_input_states, dummy_input_actions))
+        hard_update(self.critic.variables, self.target_critic.variables)
 
-        with tf.variable_scope("critic"):
-            self.q_value_output, self.critic_vars = self.build_critic_network()
-
-        self.target_q_value_output, critic_target_update = self.build_target_critic_network(self.critic_vars)
-
-        l2_loss = tf.add_n([self.config["l2_loss_coef"] * tf.nn.l2_loss(var) for var in self.critic_vars])
-        self.critic_loss = tf.reduce_mean(tf.square(self.critic_target - self.q_value_output)) + l2_loss
-        self.critic_train_op = tf.train.AdamOptimizer(
-            self.config["critic_learning_rate"],
-            name="critic_optimizer").minimize(self.critic_loss)
-        self.action_gradients = tf.gradients(self.q_value_output, self.actions_taken, name="action_gradients")
-
-        summaries = []
-        for v in self.actor_vars + self.critic_vars:
-            summaries.append(tf.summary.histogram(v.name, v))
-        self.model_summary_op = tf.summary.merge(summaries)
-
-        self.update_targets_op = tf.group(actor_target_update, critic_target_update, name="update_targets")
-
+        self.actor_optimizer = tf.optimizers.Adam(learning_rate=self.config["actor_learning_rate"])
+        self.critic_optimizer = tf.optimizers.Adam(learning_rate=self.config["critic_learning_rate"])
 
         self.action_noise = OrnsteinUhlenbeckActionNoise(
             self.n_actions,
@@ -82,16 +68,9 @@ class DDPG(Agent):
 
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
 
-        self.session = tf.Session()
-        self.init_op = tf.global_variables_initializer()
-
         self.n_updates = 0
-
-        self.summary_writer = tf.summary.FileWriter(os.path.join(
-            self.monitor_path, "summaries"), tf.get_default_graph())
-
-    def _initalize(self):
-        self.session.run(self.init_op)
+        self.writer = tf.summary.create_file_writer(
+            str(self.monitor_path)) if self.config["summaries"] else tf.summary.create_noop_writer()
 
     def build_actor_network(self):
         layer1_size = 400
@@ -99,133 +78,128 @@ class DDPG(Agent):
 
         x = self.states
         if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
-        with tf.variable_scope("L1"):
-            x, l1_vars = linear_fan_in(x, layer1_size)
-            if self.config["actor_layer_norm"]:
-                x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_1", activation=tf.nn.relu)
-        with tf.variable_scope("L2"):
-            x, l2_vars = linear_fan_in(x, layer2_size)
-            if self.config["actor_layer_norm"]:
-                x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_2", activation=tf.nn.relu)
+            x = tf.keras.layers.BatchNormalization()(x)
 
-        with tf.variable_scope("L3"):
-            W3 = tf.Variable(tf.random_uniform([layer2_size, self.n_actions], -3e-3, 3e-3), name="w")
-            b3 = tf.Variable(tf.random_uniform([self.n_actions], -3e-3, 3e-3), name="b")
-            action_output = tf.tanh(tf.nn.xw_plus_b(x, W3, b3))
-            l3_vars = [W3, b3]
-
-        return action_output, l1_vars + l2_vars + l3_vars
-
-    def build_target_actor_network(self, actor_vars: list):
-        ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
-        target_update = ema.apply(actor_vars)
-        target_net = [ema.average(v) for v in actor_vars]
-
-        x = self.states
+        # Layer 1
+        fan_in = self.state_shape[-1]
+        x = Dense(layer1_size,
+                  activation="relu",
+                  kernel_initializer=CustomKaimingUniformKernelInitializer(),
+                  bias_initializer=CustomKaimingUniformBiasInitializer(fan_in),
+                 )(x)
         if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(
-                x, training_phase=self.is_training, scope_bn="target_batch_norm_0", activation=tf.identity)
+            x = tf.keras.layers.BatchNormalization()(x)
 
-        x = tf.nn.xw_plus_b(x, target_net[0], target_net[1])
+        # Layer 2
+        fan_in = layer1_size
+        x = Dense(layer2_size,
+                  activation="relu",
+                  kernel_initializer=CustomKaimingUniformKernelInitializer(),
+                  bias_initializer=CustomKaimingUniformBiasInitializer(fan_in),
+                  )(x)
         if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(
-                x, training_phase=self.is_training, scope_bn="target_batch_norm_1", activation=tf.nn.relu)
-        x = tf.nn.xw_plus_b(x, target_net[2], target_net[3])
-        if self.config["actor_layer_norm"]:
-            x = batch_norm_layer(
-                x, training_phase=self.is_training, scope_bn="target_batch_norm_2", activation=tf.nn.relu)
+            x = tf.keras.layers.BatchNormalization()(x)
 
-        action_output = tf.tanh(tf.nn.xw_plus_b(x, target_net[4], target_net[5]))
+        # Output
+        action_output = Dense(self.n_actions,
+                              activation="tanh",
+                              kernel_initializer=tf.keras.initializers.RandomUniform(-3e-3, 3e-3),
+                              bias_initializer=tf.keras.initializers.RandomUniform(-3e-3, 3e-3),
+                             )(x)
 
-        return action_output, target_update
+        return tf.keras.Model(self.states, action_output, name="actor")
 
     def build_critic_network(self):
         layer1_size = 400
         layer2_size = 300
 
         x = self.states
-        with tf.variable_scope("L1"):
-            if self.config["critic_layer_norm"]:  # Defaults to False (= don't use it)
-                x = batch_norm_layer(x, training_phase=self.is_training,
-                                     scope_bn="batch_norm_0", activation=tf.identity)
-            x, l1_vars = linear_fan_in(x, layer1_size)
-            x = tf.nn.relu(x)
-        with tf.variable_scope("L2"):
-            W2 = tf.get_variable(
-                "w", [layer1_size, layer2_size], initializer=fan_in_initializer(layer1_size + self.n_actions))
-            W2_action = tf.get_variable(
-                "w_action", [self.n_actions, layer2_size], initializer=fan_in_initializer(layer1_size + self.n_actions))
-            b2 = tf.get_variable(
-                "b", [layer2_size], initializer=fan_in_initializer(layer1_size + self.n_actions))
-            x = tf.nn.relu(tf.matmul(x, W2) + tf.matmul(self.actions_taken, W2_action) + b2)
-        with tf.variable_scope("L3"):
-            W3 = tf.Variable(tf.random_uniform([layer2_size, 1], -3e-3, 3e-3), name="w")
-            b3 = tf.Variable(tf.random_uniform([1], -3e-3, 3e-3), name="b")
-            q_value_output = tf.nn.xw_plus_b(x, W3, b3, name="q_value")
+        if self.config["critic_layer_norm"]:  # Defaults to False (= don't use it)
+            x = tf.keras.layers.BatchNormalization()(x)
 
-        return q_value_output, l1_vars + [W2, W2_action, b2, W3, b3]
+        fan_in = self.state_shape[-1]
+        x = Dense(layer1_size,
+                  activation="relu",
+                  kernel_initializer=CustomKaimingUniformKernelInitializer(),
+                  bias_initializer=CustomKaimingUniformBiasInitializer(fan_in),
+                  kernel_regularizer=tf.keras.regularizers.L2(self.config["l2_loss_coef"]),
+                  bias_regularizer=tf.keras.regularizers.L2(self.config["l2_loss_coef"])
+                  )(x)
+        if self.config["critic_layer_norm"]:  # Defaults to False (= don't use it)
+            x = tf.keras.layers.BatchNormalization()(x)
 
-    def build_target_critic_network(self, critic_vars: list):
+        # Layer 2
+        x = tf.concat([x, self.actions_taken], axis=-1)
+        fan_in = layer1_size + self.n_actions
+        x = Dense(layer2_size,
+                  activation="relu",
+                  kernel_initializer=CustomKaimingUniformKernelInitializer(),
+                  bias_initializer=CustomKaimingUniformBiasInitializer(fan_in),
+                  kernel_regularizer=tf.keras.regularizers.L2(self.config["l2_loss_coef"]),
+                  bias_regularizer=tf.keras.regularizers.L2(self.config["l2_loss_coef"])
+                  )(x)
 
-        ema = tf.train.ExponentialMovingAverage(decay=1 - self.config["tau"])
-        target_update = ema.apply(critic_vars)
-        target_net = [ema.average(v) for v in critic_vars]
+       # Output
+        output = Dense(1,
+                       kernel_initializer=tf.keras.initializers.RandomUniform(-3e-3, 3e-3),
+                       bias_initializer=tf.keras.initializers.RandomUniform(-3e-3, 3e-3),
+                       kernel_regularizer=tf.keras.regularizers.L2(self.config["l2_loss_coef"]),
+                       bias_regularizer=tf.keras.regularizers.L2(self.config["l2_loss_coef"])
+                      )(x)
 
-        x = self.states
-        if self.config["critic_layer_norm"]:
-            x = batch_norm_layer(x, training_phase=self.is_training, scope_bn="batch_norm_0", activation=tf.identity)
-        x = tf.nn.relu(tf.nn.xw_plus_b(x, target_net[0], target_net[1]))
-        x = tf.nn.relu(tf.matmul(x, target_net[2]) + tf.matmul(self.actions_taken, target_net[3]) + target_net[4])
-        q_value_output = tf.nn.xw_plus_b(x, target_net[5], target_net[6])
-
-        return q_value_output, target_update
-
-    def actor_gradients(self, state_batch: np.ndarray, action_batch: np.ndarray):
-        q, grads = tf.get_default_session().run([self.q_value_output, self.action_gradients], feed_dict={
-            self.states: state_batch,
-            self.actions_taken: action_batch,
-            self.is_training: False
-        })
-        summary = tf.Summary()
-        summary.value.add(tag="model/actor_loss", simple_value=float(-np.mean(q)))
-        self.summary_writer.add_summary(summary, self.n_updates)
-        return grads[0]
-
-    def target_q(self, states: np.ndarray, actions: np.ndarray):
-        return tf.get_default_session().run(self.target_q_value_output, feed_dict={
-            self.states: states,
-            self.actions_taken: actions,
-            self.is_training: False
-        })
-
-    def q_value(self, states: np.ndarray, actions: np.ndarray):
-        return tf.get_default_session().run(self.q_value_output, feed_dict={
-            self.states: states,
-            self.actions_taken: actions,
-            self.is_training: False
-            })
-
-    def actions(self, states: np.ndarray) -> np.ndarray:
-        """Get the actions for a batch of states."""
-        return tf.get_default_session().run(self.action_output, feed_dict={
-            self.states: states,
-            self.is_training: True
-        })
+        return tf.keras.Model([self.states, self.actions_taken], output, name="critic")
 
     def action(self, state: np.ndarray) -> np.ndarray:
         """Get the action for a single state."""
-        return tf.get_default_session().run(self.action_output, feed_dict={
-            self.states: [state],
-            self.is_training: False
-        })[0]
+        return self.actor(np.expand_dims(state, 0), training=False)[0]
 
-    def target_actions(self, states: np.ndarray) -> np.ndarray:
-        """Get the actions for a batch of states using the target actor network."""
-        return tf.get_default_session().run(self.target_action_output, feed_dict={
-            self.states: states,
-            self.is_training: True
-        })
+    def noise_action(self, state: np.ndarray):
+        """Choose an action based on the actor and exploration noise."""
+        action = self.action(state)
+        return np.clip(action + self.action_noise(), -1., 1.)
+
+    @tf.function
+    def train_actor_critic(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
+        next_action_batch = self.target_actor(state1_batch, training=True)
+        q_value_batch = self.target_critic((state1_batch, next_action_batch), training=True) # ! in TF1 version, training was set to False
+        reward_batch = tf.expand_dims(reward_batch, 1)
+        critic_targets = reward_batch + tf.expand_dims(1.0 - terminal1_batch, 1) * self.config["gamma"] * q_value_batch
+        with tf.GradientTape() as tape:
+            predicted_q = self.critic((state0_batch, action_batch), training=True)
+            mse_losses = tf.losses.MSE(y_true=critic_targets, y_pred=predicted_q)
+            mse_loss = tf.nn.compute_average_loss(mse_losses)
+            l2_loss = sum(self.critic.losses)
+            q_loss = mse_loss + l2_loss
+        q_gradients = tape.gradient(q_loss, self.critic.trainable_weights)
+        self.critic_optimizer.apply_gradients(zip(q_gradients, self.critic.trainable_weights))
+
+        with tf.GradientTape() as tape:
+            predicted_action_batch = self.actor(state0_batch, training=True)
+            qs = self.critic((state0_batch, predicted_action_batch), training=True)
+            actor_loss = tf.nn.compute_average_loss(-qs)
+        actor_gradients = tape.gradient(actor_loss, self.actor.trainable_weights)
+        self.actor_optimizer.apply_gradients(zip(actor_gradients, self.actor.trainable_weights))
+
+        # Uncomment to check tensor shapes
+        # tf.debugging.assert_shapes((
+        #     (state0_batch, ("B", "nS")),
+        #     (state1_batch, ("B", "nS")),
+        #     (action_batch, ("B", "nA")),
+        #     (next_action_batch, ("B", "nA")),
+        #     (q_value_batch, ("B", 1)),
+        #     (reward_batch, ("B", 1)),
+        #     (critic_targets, ("B", 1)),
+        #     (predicted_q, ("B", 1)),
+        #     (mse_losses, ("B")),
+        #     (mse_loss, (1,)),
+        #     (l2_loss, (1,)),
+        #     (q_loss, (1,)),
+        #     (predicted_action_batch, ("B", "nA")),
+        #     (qs, ("B", 1)),
+        #     (actor_loss, (1,)),
+        # ))
+
+        return q_loss, predicted_q, mse_loss, l2_loss, actor_loss
 
     def train(self):
         sample = self.replay_buffer.get_batch(int(self.config["batch_size"]))
@@ -233,58 +207,37 @@ class DDPG(Agent):
         # for n_actions = 1
         action_batch = np.resize(sample["actions"], [int(self.config["batch_size"]), self.n_actions])
 
-        # Calculate critic targets
-        next_action_batch = self.target_actions(sample["states1"])
-        q_value_batch = self.target_q(sample["states1"], next_action_batch)
-        critic_targets = sample["rewards"] + (1 - sample["terminals1"]) * \
-            self.config["gamma"] * q_value_batch.squeeze()
-        critic_targets = np.resize(critic_targets, [int(self.config["batch_size"]), 1]).astype(np.float32)
-        # Update actor weights
-        fetches = [self.q_value_output, self.critic_loss, self.critic_train_op]
-        predicted_q, critic_loss, _ = tf.get_default_session().run(fetches, feed_dict={
-            self.critic_target: critic_targets,
-            self.states: sample["states0"],
-            self.actions_taken: action_batch,
-            self.is_training: True
-        })
+        q_loss, predicted_q, q_mse_loss, q_l2_loss, actor_loss = self.train_actor_critic(
+            sample["states0"],
+            action_batch,
+            sample["rewards"],
+            sample["states1"],
+            sample["terminals1"])
 
-        summary = tf.Summary()
-        summary.value.add(tag="model/critic_loss", simple_value=float(critic_loss))
-        summary.value.add(tag="model/predicted_q_mean", simple_value=np.mean(predicted_q))
-        summary.value.add(tag="model/predicted_q_std", simple_value=np.std(predicted_q))
-        self.summary_writer.add_summary(summary, self.n_updates)
-
-        # Update the actor using the sampled gradient:
-        action_batch_for_gradients = self.actions(sample["states0"])
-        q_gradient_batch = self.actor_gradients(sample["states0"], action_batch_for_gradients)
-
-        tf.get_default_session().run(self.actor_train_op, feed_dict={
-            self.q_gradient_input: q_gradient_batch,
-            self.states: sample["states0"],
-            self.is_training: True
-        })
+        tf.summary.scalar("model/critic_loss", float(q_loss), self.n_updates)
+        tf.summary.scalar("model/critic_mse_loss", float(q_mse_loss), self.n_updates)
+        tf.summary.scalar("model/critic_l2_loss", float(q_l2_loss), self.n_updates)
+        tf.summary.scalar("model/actor_loss", float(actor_loss), self.n_updates)
+        tf.summary.scalar("model/predicted_q_mean", np.mean(predicted_q), self.n_updates)
+        tf.summary.scalar("model/predicted_q_std", np.std(predicted_q), self.n_updates)
 
         # Update the target networks
-        tf.get_default_session().run([self.update_targets_op, self.model_summary_op])
+        soft_update(self.actor.variables, self.target_actor.variables, self.config["tau"])
+        soft_update(self.critic.variables, self.target_critic.variables, self.config["tau"])
         self.n_updates += 1
-
-    def noise_action(self, state: np.ndarray):
-        """Choose an action based on the actor and exploration noise."""
-        action = self.action(state)
-        return action + self.action_noise()
 
     def learn(self):
         max_action = self.env.action_space.high
-        self._initalize()
-        with self.session as sess, sess.as_default():
+        with self.writer.as_default():
             for episode in range(int(self.config["n_episodes"])):
                 state = self.env.reset()
                 episode_reward = 0
-                episode_length = 0
-                for _ in range(int(self.config["n_timesteps"])):
+                episode_actions = []
+                for episode_length in count(start=1):
                     action = self.noise_action(state)
+                    episode_actions.append(action)
+                    # ! Assumes action space between -max_action and max_action
                     new_state, reward, done, _ = self.env.step(action * max_action)
-                    episode_length += 1
                     episode_reward += reward
                     self.replay_buffer.add(state, action, reward, new_state, done)
                     if self.replay_buffer.n_entries > self.config["replay_start_size"]:
@@ -292,11 +245,7 @@ class DDPG(Agent):
                     state = new_state
                     if done:
                         self.action_noise.reset()
-                        summary = tf.Summary()
-                        summary.value.add(tag="global/Episode_length",
-                                          simple_value=float(episode_length))
-                        summary.value.add(tag="global/Reward",
-                                          simple_value=float(episode_reward))
-                        self.summary_writer.add_summary(summary, episode)
-                        self.summary_writer.flush()
+                        tf.summary.scalar("env/episode_length", float(episode_length), episode)
+                        tf.summary.scalar("env/episode_reward", float(episode_reward), episode)
+                        tf.summary.scalar("env/episode_mean_action", np.mean(episode_actions), episode)
                         break

@@ -1,5 +1,6 @@
 # -*- coding: utf8 -*-
 
+from functools import partial
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Lambda
 import numpy as np
@@ -122,33 +123,6 @@ def reset_accumulative_gradients_op(net_vars, accum_grads, identifier: int = 0):
 def create_sync_net_op(source_vars, target_vars):
     return tf.group(*[v1.assign(v2) for v1, v2 in zip(target_vars, source_vars)], name="sync_net")
 
-def batch_norm_layer(x, training_phase, scope_bn: str, activation=None):
-    return tf.cond(
-        training_phase,
-        lambda: tf.contrib.layers.batch_norm(
-            x,
-            activation_fn=activation,
-            center=True,
-            scale=True,
-            updates_collections=None,
-            is_training=True,
-            reuse=None,
-            scope=scope_bn,
-            decay=0.9,
-            epsilon=1e-5),
-        lambda: tf.contrib.layers.batch_norm(
-            x,
-            activation_fn=activation,
-            center=True,
-            scale=True,
-            updates_collections=None,
-            is_training=False,
-            reuse=True,
-            scope=scope_bn,
-            decay=0.9,
-            epsilon=1e-5))
-
-
 def kl_divergence(logits1, logits2):
     a0 = logits1 - tf.reduce_max(logits1, axis=-1, keepdims=True)
     a1 = logits2 - tf.reduce_max(logits2, axis=-1, keepdims=True)
@@ -158,3 +132,20 @@ def kl_divergence(logits1, logits2):
     z1 = tf.reduce_sum(ea1, axis=-1, keepdims=True)
     p0 = ea0 / z0
     return tf.reduce_sum(p0 * (a0 - tf.math.log(z0) - a1 + tf.math.log(z1)), axis=-1)
+
+# Custom Kaiming uniform initializer, the same as the one of the PyTorch linear layer.
+CustomKaimingUniformKernelInitializer = partial(tf.keras.initializers.VarianceScaling,
+                                                scale=(1 / 3),
+                                                distribution="uniform")
+
+class CustomKaimingUniformBiasInitializer(tf.keras.initializers.Initializer):
+    def __init__(self, fan_in: int):
+        self.fan_in = fan_in
+
+    def __call__(self, shape, dtype=None):
+        dtype = dtype if dtype is not None else tf.float32
+        bias_bound = 1 / tf.sqrt(tf.cast(self.fan_in, dtype))
+        return tf.random.uniform(shape, -bias_bound, bias_bound, dtype)
+
+    def get_config(self):
+        return dict(fan_in=self.fan_in)

@@ -137,11 +137,6 @@ register_agent(name="CEM",
                state_dimensions="continuous",
                action_space="continuous"
               )
-register_agent(name="Karpathy",
-               entry_point="yarll.agents.karpathy:Karpathy",
-               state_dimensions="continuous",
-               action_space="discrete"
-              )
 register_agent(name="KnowledgeTransfer",
                entry_point="yarll.agents.knowledge_transfer:KnowledgeTransfer",
                state_dimensions="continuous",

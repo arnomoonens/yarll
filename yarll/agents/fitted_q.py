@@ -71,7 +71,8 @@ class FittedQIteration(Agent):
             action = self.action(state.astype(np.float32)).numpy()
         return {"action": action}
 
-    def get_processed_trajectories(self, trajectories: List[ExperiencesMemory]):
+    @staticmethod
+    def get_processed_trajectories(trajectories: List[ExperiencesMemory]):
         states = tf.convert_to_tensor(flatten_list([t.states for t in trajectories]), dtype=tf.float32)
         actions = tf.convert_to_tensor(flatten_list([t.actions for t in trajectories]), dtype=tf.int32)
         rewards = tf.convert_to_tensor(flatten_list([t.rewards for t in trajectories]), dtype=tf.float32)
@@ -79,13 +80,12 @@ class FittedQIteration(Agent):
         terminals = tf.convert_to_tensor(flatten_list([t.terminals for t in trajectories]), dtype=tf.float32)
         return states, actions, rewards, next_states, terminals
 
+    @tf.function(experimental_relax_shapes=True)
     def calculate_target_q(self, rewards: tf.Tensor, next_states: tf.Tensor, terminals: tf.Tensor):
         n_states = len(rewards)
         # For every state, make a sample with the one-hot of every action concatenated to it
-        oh = np.zeros([self.n_actions, self.n_actions], dtype=np.float32)
-        actions_range = np.arange(self.n_actions)
-        oh[actions_range, actions_range] = 1
-        repeated_oh = np.repeat(oh, n_states, axis=0)
+        oh = tf.eye(self.n_actions)
+        repeated_oh = tf.repeat(oh, n_states, axis=0)
         repeated_next_states = tf.tile(next_states, [self.n_actions, 1])
         next_states_ohs = tf.concat([repeated_next_states, repeated_oh], axis=1)
         # Predict q values and calculate max for every state

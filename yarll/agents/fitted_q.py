@@ -23,6 +23,7 @@ class FittedQIteration(Agent):
             gamma=0.99,
             alpha=0.5,
             epsilon=0.1,
+            epsilon_decay=0.01,
             learning_rate=1e-3,
             n_hidden_layers=2,
             n_hidden_units=64,
@@ -35,6 +36,7 @@ class FittedQIteration(Agent):
         self.config.update(usercfg)
 
         self.n_actions = self.env.action_space.n
+        self.epsilon = self.config["epsilon"]
 
         self.q_network = self.make_q_network()
         self.q_network.compile(optimizer=tfa.optimizers.RectifiedAdam(self.config["learning_rate"]),
@@ -55,7 +57,7 @@ class FittedQIteration(Agent):
         return model
 
     def choose_action(self, state, *rest) -> dict:
-        if tf.random.uniform((1,))[0] < self.config["epsilon"]:
+        if tf.random.uniform((1,))[0] < self.epsilon:
             action = np.random.randint(0, self.n_actions)
         else:
             # make batch of state-actions for every action (as onehot), then pass through network, then do argmax
@@ -104,3 +106,7 @@ class FittedQIteration(Agent):
                 tf.summary.scalar("model/loss/mean",
                                   np.average(history.history["loss"]),
                                   step=self.env_runner.total_steps)
+                tf.summary.scalar("model/epsilon",
+                                  self.epsilon,
+                                  step=self.env_runner.total_steps)
+                self.epsilon = self.epsilon * (1.0 - self.config["epsilon_decay"])

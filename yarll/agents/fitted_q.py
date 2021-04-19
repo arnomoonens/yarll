@@ -56,16 +56,19 @@ class FittedQIteration(Agent):
         model.add(Dense(1))
         return model
 
+    @tf.function
+    def action(self, state):
+        tiled_state = tf.tile([state], [self.n_actions, 1])
+        actions_onehot = tf.one_hot(tf.range(self.n_actions), depth=self.n_actions, dtype=tf.float32)
+        inp = tf.concat([tiled_state, actions_onehot], axis=1)
+        q_values = self.q_network(inp)
+        return tf.argmax(q_values)[0]
+
     def choose_action(self, state, *rest) -> dict:
-        if tf.random.uniform((1,))[0] < self.epsilon:
+        if np.random.rand() < self.epsilon:
             action = np.random.randint(0, self.n_actions)
         else:
-            # make batch of state-actions for every action (as onehot), then pass through network, then do argmax
-            tiled_state = tf.tile([state.astype(np.float32)], [self.n_actions, 1])
-            actions_onehot = tf.one_hot(tf.range(self.n_actions), depth=self.n_actions, dtype=tf.float32)
-            inp = tf.concat([tiled_state, actions_onehot], axis=1)
-            q_values = self.q_network(inp)
-            action = tf.argmax(q_values).numpy()[0]
+            action = self.action(state.astype(np.float32)).numpy()
         return {"action": action}
 
     def get_processed_trajectories(self, trajectories: List[ExperiencesMemory]):

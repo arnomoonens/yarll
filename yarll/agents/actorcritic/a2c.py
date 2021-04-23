@@ -108,7 +108,7 @@ class A2C(Agent):
                 tf.summary.scalar("model/actor_loss", iter_actor_loss, step=iteration)
                 tf.summary.scalar("model/critic_loss", iter_critic_loss, step=iteration)
             if self.config["save_model"]:
-                tf.saved_model.save(self.ac_net, self.monitor_path / "model")
+                tf.saved_model.save(self.ac_net, str(self.monitor_path / "model"))
 
 
 class A2CDiscrete(A2C):

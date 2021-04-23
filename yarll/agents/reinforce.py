@@ -118,7 +118,7 @@ class REINFORCE(Agent):
 
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         if self.config["save_model"]:
-            tf.saved_model.save(self.network, self.monitor_path / "model")
+            tf.saved_model.save(self.network, str(self.monitor_path / "model"))
 
 
 class ActorDiscrete(Model):

@@ -15,6 +15,7 @@ from yarll.misc.network_ops import normal_dist_log_prob
 from yarll.agents.env_runner import EnvRunner
 
 
+@tf.function
 def ppo_loss(old_logprob, new_logprob, epsilon, advantage):
     ratio = tf.exp(new_logprob - old_logprob)
     ratio_clipped = tf.clip_by_value(ratio, 1.0 - epsilon, 1.0 + epsilon)
@@ -104,6 +105,7 @@ class PPO(Agent):
         """Summaries that are specific to the variant of the algorithm."""
         return
 
+    @tf.function
     def _actor_loss(self, old_logprob, new_logprob, advantage):
         return ppo_loss(old_logprob, new_logprob, self.config["cso_epsilon"], advantage)
 
@@ -147,6 +149,7 @@ class PPO(Agent):
         for old_var, new_var in zip(self.old_network.trainable_variables, self.new_network.trainable_variables):
             old_var.assign(new_var)
 
+    @tf.function
     def _critic_loss(self, returns, value):
         return critic_loss(returns, value)
 

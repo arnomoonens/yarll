@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Union
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense
@@ -12,14 +12,17 @@ from yarll.misc.utils import flatten_list
 from yarll.memory.experiences_memory import ExperiencesMemory
 
 class FittedQIteration(Agent):
-    def __init__(self, env: Environment, monitor_path: str, **usercfg) -> None:
+    def __init__(self,
+                 env: Environment,
+                 monitor_path: str,
+                 checkpoint_path: Optional[Union[Path, str]] = None,
+                 **usercfg) -> None:
         super().__init__()
 
         self.env = env
         self.monitor_path = Path(monitor_path)
 
         self.config.update(
-            n_episodes=1000,
             gamma=0.99,
             alpha=0.5,
             epsilon=0.1,
@@ -31,7 +34,11 @@ class FittedQIteration(Agent):
             batch_update="trajectories",
             trajectories_per_batch=1,
             n_epochs=5,
-            normalize_states=False
+            normalize_states=False,
+            checkpoints=True,
+            checkpoint_every_iterations=10,
+            checkpoints_max_to_keep=None,
+            save_model=True,
         )
         self.config.update(usercfg)
 
@@ -41,6 +48,17 @@ class FittedQIteration(Agent):
         self.q_network = self.make_q_network()
         self.q_network.compile(optimizer=tfa.optimizers.RectifiedAdam(self.config["learning_rate"]),
                                loss="mse")
+        self.q_network.build((None, env.observation_space.shape[0] + self.n_actions))
+        self.ckpt = tf.train.Checkpoint(net=self.q_network)
+
+        if self.config["checkpoints"]:
+            checkpoint_directory = self.monitor_path / "checkpoints"
+            self.ckpt_manager = tf.train.CheckpointManager(self.ckpt,
+                                                           checkpoint_directory,
+                                                           max_to_keep=self.config["checkpoints_max_to_keep"])
+
+        if checkpoint_path is not None:
+            self.ckpt.restore(str(checkpoint_path)).expect_partial() # With .assert_consumed() it gives errors...
 
         self.writer = tf.summary.create_file_writer(str(self.monitor_path))
         self.tensorboard_cbk = tf.keras.callbacks.TensorBoard(log_dir=self.monitor_path)
@@ -96,7 +114,7 @@ class FittedQIteration(Agent):
 
     def learn(self):
         with self.writer.as_default():
-            for _ in range(self.config["n_iterations"]):
+            for i in range(self.config["n_iterations"]):
                 trajs = self.env_runner.get_trajectories()
                 states, actions, rewards, next_states, terminals = self.get_processed_trajectories(trajs)
                 target_q = self.calculate_target_q(rewards, next_states, terminals)
@@ -113,3 +131,5 @@ class FittedQIteration(Agent):
                                   self.epsilon,
                                   step=self.env_runner.total_steps)
                 self.epsilon = self.epsilon * (1.0 - self.config["epsilon_decay"])
+                if self.config["checkpoints"] and (i % self.config["checkpoint_every_iterations"]) == 0:
+                    self.ckpt_manager.save(i)

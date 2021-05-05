@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import psutil
 import random
 import subprocess
 from typing import Any, Callable, Dict, List, Sequence, Union
@@ -16,6 +17,10 @@ import numpy as np
 
 import gym
 from gym.spaces import Discrete, Box, MultiBinary, MultiDiscrete
+
+PROCESS = psutil.Process(os.getpid())
+def memory_usage():
+    return PROCESS.memory_info()[0]
 
 def discount_rewards(x: Sequence, gamma: float) -> np.ndarray:
     """

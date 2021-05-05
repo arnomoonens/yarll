@@ -5,7 +5,7 @@ import tensorflow as tf
 import numpy as np
 from yarll.memory.experiences_memory import ExperiencesMemory, Experience
 from yarll.misc.scalers import LowsHighsScaler, RunningMeanStdScaler
-
+from yarll.misc.utils import memory_usage
 
 class EnvRunner(object):
     """Environment runner using a policy"""
@@ -16,6 +16,7 @@ class EnvRunner(object):
                  scale_states: bool = False,
                  state_preprocessor: Optional[Callable] = None,
                  summaries: bool = True, # Write tensorflow summaries
+                 memory_usage: bool = True, # Include memory usage in summaries
                  episode_rewards_file: Optional[Union[Path, str]] = None, # write each episode reward to the given file
                  ) -> None:
         super().__init__()
@@ -35,6 +36,7 @@ class EnvRunner(object):
         self.config.update(config)
         self.state_preprocessor = state_preprocessor
         self.summaries = summaries
+        self.memory_usage = memory_usage
         self.episode_rewards_file = episode_rewards_file
         self.total_steps = 0
         self.total_episodes = 0
@@ -99,6 +101,8 @@ class EnvRunner(object):
                     tf.summary.scalar("env/episode_length", self.episode_steps, step=self.total_steps)
                     tf.summary.scalar("env/episode_reward", self.episode_reward, step=self.total_steps)
                     tf.summary.scalar("env/total_episodes", self.total_episodes, step=self.total_steps)
+                    if self.memory_usage:
+                        tf.summary.scalar("diagnostics/memory_usage_mb", memory_usage() / 1e6, step=self.total_steps)
                 if self.episode_rewards_file is not None:
                     with open(self.episode_rewards_file, "a") as f:
                         f.write(f"{self.episode_reward}\n")

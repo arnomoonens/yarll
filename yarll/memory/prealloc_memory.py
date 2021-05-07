@@ -10,9 +10,9 @@ class PreAllocMemory:
         self._data = {
             "states0": np.empty((self.max_size, *observation_shape), dtype=states_dtype),
             "actions": np.empty((self.max_size, *action_shape), dtype=np.float32),
-            "rewards": np.empty((self.max_size), dtype=np.float32),
+            "rewards": np.empty((self.max_size, 1), dtype=np.float32),
             "states1": np.empty((self.max_size, *observation_shape), dtype=states_dtype),
-            "terminals1": np.empty((self.max_size), dtype=np.bool)
+            "terminals1": np.empty((self.max_size, 1), dtype=np.float32)
         }
         self._keys = list(self._data.keys())
 
@@ -51,11 +51,11 @@ class PreAllocMemory:
         self.n_entries = min(self.n_entries + n_samples, self.max_size)
 
     def add(self, state: np.ndarray, action: np.ndarray, reward: float, new_state: np.ndarray, terminal: bool) -> None:
-        self._data["states0"][self._pointer] = state
-        self._data["actions"][self._pointer] = action
-        self._data["rewards"][self._pointer] = reward
-        self._data["states1"][self._pointer] = new_state
-        self._data["terminals1"][self._pointer] = terminal
+        np.copyto(self._data["states0"][self._pointer], state)
+        np.copyto(self._data["actions"][self._pointer], action)
+        np.copyto(self._data["rewards"][self._pointer], reward)
+        np.copyto(self._data["states1"][self._pointer], new_state)
+        np.copyto(self._data["terminals1"][self._pointer], terminal)
         self._update(1)
 
     def add_by_experiences(self, experiences: List[Experience]) -> None:

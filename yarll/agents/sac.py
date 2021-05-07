@@ -5,21 +5,20 @@ Soft Actor-Critic
 
 Based on SAC implementation from https://github.com/rail-berkeley/softlearning
 """
-
 from copy import deepcopy
 import csv
 from pathlib import Path
 from typing import Union
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import Model, Sequential
+from tensorflow.keras import Model
 from tensorflow.keras.layers import Dense
 import tensorflow_probability as tfp
 
 from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
-from yarll.distributions.bijectors import ConditionalScale, ConditionalShift
-from yarll.memory.memory import Memory
+from yarll.memory.prealloc_memory import PreAllocMemory
+from yarll.misc.network_ops import Softplus, Split
 from yarll.misc.utils import hard_update, soft_update
 
 # TODO: put this in separate file
@@ -69,7 +68,7 @@ class SAC(Agent):
             logprob_epsilon=1e-6,  # For numerical stability when computing tf.log
             n_train_steps=1,  # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
-            replay_start_size=1024,  # Required number of replay buffer entries to start training
+            replay_start_size=1000,  # Required number of replay buffer entries to start training
             gradient_clip_value=1.0,
             hidden_layer_activation="relu",
             normalize_inputs=False,
@@ -95,18 +94,20 @@ class SAC(Agent):
 
         # Make networks
         # action_output are the squashed actions and action_original those straight from the normal distribution
-        self.actor_network = ActorNetwork(self.state_shape[0],
+        input_dim = self.state_shape[0]
+        self.actor_network = ActorNetwork(input_dim,
                                           self.config["n_hidden_layers"],
                                           self.config["n_hidden_units"],
                                           self.n_actions,
                                           self.config["logprob_epsilon"],
                                           self.config["hidden_layer_activation"],
                                           self.config["log_scale_bounds"])
-        self.softq_networks = [SoftQNetwork(self.config["n_hidden_layers"],
-                                            self.config["n_hidden_units"],
-                                            self.config["hidden_layer_activation"])
+        self.softq_networks = [make_softq_network((env.observation_space.shape, env.action_space.shape),
+                                                  self.config["n_hidden_layers"],
+                                                  self.config["n_hidden_units"],
+                                                  self.config["hidden_layer_activation"])
                                for _ in range(self.config["n_softqs"])]
-        self.target_softq_networks = [deepcopy(net) for net in self.softq_networks]
+        self.target_softq_networks = [tf.keras.models.clone_model(net) for net in self.softq_networks]
 
         dummy_input_states = tf.random.uniform((1, *self.state_shape))
         dummy_input_actions = tf.random.uniform((1, *self.env.action_space.shape))
@@ -128,11 +129,11 @@ class SAC(Agent):
         self.alpha_optimizer = tf.optimizers.Adam(learning_rate=self.config["alpha_learning_rate"],
                                                   clipnorm=self.config["gradient_clip_value"])
 
-        self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
+        self.replay_buffer = PreAllocMemory(int(self.config["replay_buffer_size"]), self.state_shape, env.action_space.shape)
         self.n_updates = 0
         self.total_steps = 0
         self.total_episodes = 0
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path)) if self.config["summaries"] else tf.summary.create_noop_writer()
+        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path)) if self.config["summaries"] else tf.summary.create_noop_writer()
 
         self.env_runner = EnvRunner(self.env,
                                     self,
@@ -176,61 +177,75 @@ class SAC(Agent):
 
             self.total_rewards = np.empty((self.config["n_test_episodes"],), dtype=np.float32)
 
-    def actions(self, states: np.ndarray) -> np.ndarray:
-        """Get the actions for a batch of states."""
-        return self.actor_network(tf.convert_to_tensor(states))[0]
-
     def deterministic_actions(self, states: np.ndarray) -> np.ndarray:
         """Get the actions for a batch of states."""
         return self.actor_network.deterministic_actions(tf.convert_to_tensor(states))
 
     def action(self, state: np.ndarray) -> np.ndarray:
         """Get the action for a single state."""
-        return self.actor_network(state[None, :])[0].numpy()[0]
+        return self.actor_network(tf.convert_to_tensor(state[None, :]))[0].numpy()[0]
 
-    @tf.function(experimental_relax_shapes=True)
-    def train_critic(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
+    @tf.function
+    def train_critics(self, state0_batch, action_batch, reward_batch, state1_batch, terminal1_batch):
         # Calculate critic targets
         next_action_batch, next_logprob_batch = self.actor_network(state1_batch)
         next_qs_values = [net((state1_batch, next_action_batch)) for net in self.target_softq_networks]
         next_q_values = tf.reduce_min(next_qs_values, axis=0)
         next_values = next_q_values - self._alpha * next_logprob_batch
-        next_values = tf.expand_dims(1.0 - terminal1_batch, 1) * next_values
-        softq_targets = self.config["reward_scale"] * tf.expand_dims(reward_batch, 1) + self.config["gamma"] * next_values
-        softq_targets = tf.squeeze(softq_targets)
+        next_values = (1.0 - terminal1_batch) * next_values
+        softq_targets = self.config["reward_scale"] * reward_batch + self.config["gamma"] * next_values
+        softq_targets = tf.stop_gradient(softq_targets)
 
         # Update critics
-        softq_losses = []
+        softqs_losses = []
+        softqs_values = []
         for net, optimizer in zip(self.softq_networks, self.softq_optimizers):
             with tf.GradientTape() as tape:
-                softq = net((state0_batch, action_batch))
-                softq_loss = 0.5 * tf.losses.MSE(y_true=softq_targets, y_pred=tf.squeeze(softq))
-                softq_losses.append(tf.stop_gradient(softq_loss))
+                softq_values = net((state0_batch, action_batch))
+                softq_losses = 0.5 * tf.losses.MSE(y_true=softq_targets,
+                                                   y_pred=softq_values)
+                softq_loss = tf.nn.compute_average_loss(softq_losses)
+                softqs_losses.append(tf.stop_gradient(softq_losses))
+                softqs_values.append(tf.stop_gradient(softq_values))
             softq_gradients = tape.gradient(softq_loss, net.trainable_weights)
             optimizer.apply_gradients(zip(softq_gradients, net.trainable_weights))
 
+        tf.debugging.assert_shapes((
+            (action_batch, ("B", "nA")),
+            (next_action_batch, ("B", "nA")),
+            (next_logprob_batch, ("B", 1)),
+            (reward_batch, ("B", 1)),
+            (next_q_values, ("B", 1)),
+            (next_values, ("B", 1)),
+            (softq_values, ("B", 1)),
+            (softq_losses, ("B")),
+            (softq_loss, (1,)),
+            (softq_targets, ("B", 1))
+        ))
+        softq = tf.concat(softqs_values, axis=0)
         softq_mean, softq_variance = tf.nn.moments(softq, axes=[0])
         return softq_mean[0], tf.sqrt(softq_variance[0]), softq_targets, tf.reduce_mean(softq_losses)
 
-    @tf.function(experimental_relax_shapes=True)
-    def train_actor_alpha(self, state0_batch):
-        # Update actor
+    @tf.function
+    def train_actor(self, state0_batch):
         with tf.GradientTape() as tape:
             actions, action_logprob = self.actor_network(state0_batch)
             softqs_pred = [net((state0_batch, actions)) for net in self.softq_networks]
             min_softq_pred = tf.reduce_min(softqs_pred, axis=0)
             actor_losses = self._alpha * action_logprob - min_softq_pred
-            actor_loss = tf.reduce_mean(actor_losses)
+            actor_loss = tf.nn.compute_average_loss(actor_losses)
         tf.debugging.assert_shapes((
             (actions, ("B", "nA")),
             (action_logprob, ("B", 1)),
+            (min_softq_pred, ("B", 1)),
             (actor_losses, ("B", 1))
-        )
-        )
+        ))
         actor_gradients = tape.gradient(actor_loss, self.actor_network.trainable_weights)
         self.actor_optimizer.apply_gradients(zip(actor_gradients, self.actor_network.trainable_weights))
+        return tf.reduce_mean(actor_loss), tf.reduce_mean(action_logprob)
 
-        # Update alpha
+    @tf.function
+    def train_alpha(self, state0_batch):
         _, action_logprob = self.actor_network(state0_batch)
         with tf.GradientTape() as tape:
             alpha_losses = -1.0 * self._alpha * tf.stop_gradient(action_logprob + self.target_entropy)  # For batch
@@ -238,7 +253,18 @@ class SAC(Agent):
         alpha_gradients = tape.gradient(alpha_loss, [self._log_alpha])
         self.alpha_optimizer.apply_gradients(zip(alpha_gradients, [self._log_alpha]))
 
-        return tf.reduce_mean(actor_loss), alpha_loss, tf.reduce_mean(action_logprob)
+        return alpha_loss
+
+    def do_test_episodes(self, step) -> None:
+        for i in range(self.config["n_test_episodes"]):
+            test_trajectory = self.test_env_runner.get_trajectory(stop_at_trajectory_end=True)
+            self.total_rewards[i] = np.sum(test_trajectory.rewards)
+        test_rewards_mean = np.mean(self.total_rewards)
+        test_rewards_std = np.std(self.total_rewards)
+        to_write = [step] + self.total_rewards.tolist() + [test_rewards_mean, test_rewards_std]
+        with open(self.test_results_file, "a") as f:
+            writer = csv.writer(f)
+            writer.writerow(to_write)
 
     def learn(self):
         # Arrays to keep results from train function over different train steps in
@@ -248,45 +274,37 @@ class SAC(Agent):
         actor_losses = np.empty((self.config["n_train_steps"],), np.float32)
         alpha_losses = np.empty((self.config["n_train_steps"],), np.float32)
         action_logprob_means = np.empty((self.config["n_train_steps"],), np.float32)
-        to_save = []
         total_episodes = 0
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             for step in range(self.config["max_steps"]):
                 if self.config["test_frequency"] > 0 and (step % self.config["test_frequency"]) == 0 and self.config["n_test_episodes"] > 0:
-                    for i in range(self.config["n_test_episodes"]):
-                        test_trajectory = self.test_env_runner.get_trajectory(stop_at_trajectory_end=True)
-                        self.total_rewards[i] = np.sum(test_trajectory.rewards)
-                    test_rewards_mean = np.mean(self.total_rewards)
-                    test_rewards_std = np.std(self.total_rewards)
-                    to_write = [step] + self.total_rewards.tolist() + [test_rewards_mean, test_rewards_std]
-                    with open(self.test_results_file, "a") as f:
-                        writer = csv.writer(f)
-                        writer.writerow(to_write)
+                    self.do_test_episodes(step)
                 experience = self.env_runner.get_steps(1)[0]
                 self.total_steps += 1
                 self.replay_buffer.add(experience.state, experience.action, experience.reward,
                                        experience.next_state, experience.terminal)
-                to_save.append(experience.state.tolist() + experience.action.tolist() +
-                               [experience.reward] + experience.next_state.tolist())
                 if self.replay_buffer.n_entries > self.config["replay_start_size"]:
                     for i in range(self.config["n_train_steps"]):
                         sample = self.replay_buffer.get_batch(self.config["batch_size"])
-                        softq_mean, softq_std, softq_targets, softq_loss = self.train_critic(
-                            sample["states0"],
+                        states0 = tf.convert_to_tensor(sample["states0"])
+                        softq_mean, softq_std, softq_targets, softq_loss = self.train_critics(
+                            states0,
                             np.resize(sample["actions"], [self.config["batch_size"],
                                                           self.n_actions]),  # for n_actions == 1
                             sample["rewards"],
                             sample["states1"],
                             sample["terminals1"])
                         if (step % self.config["actor_update_frequency"]) == 0:
-                            actor_loss, alpha_loss, action_logprob_mean = self.train_actor_alpha(
-                                sample["states0"])
+                            actor_loss, action_logprob_mean = self.train_actor(states0)
+                            alpha_loss = self.train_alpha(states0)
+                            actor_losses[i] = actor_loss
+                            alpha_losses[i] = alpha_loss
+                            action_logprob_means[i] = action_logprob_mean
+                        else:
+                            print("WARNING: ACTOR NOT UPDATED")
                         softq_means[i] = softq_mean
                         softq_stds[i] = softq_std
                         softq_losses[i] = softq_loss
-                        actor_losses[i] = actor_loss
-                        alpha_losses[i] = alpha_loss
-                        action_logprob_means[i] = action_logprob_mean
                         # Update the target networks
                         if (step % self.config["critic_target_update_frequency"]) == 0:
                             for net, target_net in zip(self.softq_networks, self.target_softq_networks):
@@ -297,92 +315,73 @@ class SAC(Agent):
                     tf.summary.scalar("model/predicted_softq_std", np.mean(softq_stds), self.total_steps)
                     tf.summary.scalar("model/softq_targets", np.mean(softq_targets), self.total_steps)
                     tf.summary.scalar("model/softq_loss", np.mean(softq_losses), self.total_steps)
-                    tf.summary.scalar("model/actor_loss", np.mean(actor_losses), self.total_steps)
-                    tf.summary.scalar("model/alpha_loss", np.mean(alpha_losses), self.total_steps)
-                    tf.summary.scalar("model/alpha", self._log_alpha, self.total_steps)
-                    tf.summary.scalar("model/action_logprob_mean", np.mean(action_logprob_means), self.total_steps)
+                    if (step % self.config["actor_update_frequency"]) == 0:
+                        tf.summary.scalar("model/actor_loss", np.mean(actor_losses), self.total_steps)
+                        tf.summary.scalar("model/alpha_loss", np.mean(alpha_losses), self.total_steps)
+                        tf.summary.scalar("model/alpha", tf.exp(self._log_alpha), self.total_steps)
+                        tf.summary.scalar("model/action_logprob_mean", np.mean(action_logprob_means), self.total_steps)
                     self.n_updates += 1
                 if experience.terminal:
                     if self.config["checkpoints"] and (total_episodes % self.config["checkpoint_every_episodes"]) == 0:
                         self.ckpt_manager.save(total_episodes)
                     total_episodes += 1
+                    self.summary_writer.flush()
+
         if self.config["save_model"]:
             self.actor_network.save_weights(str(self.monitor_path / "actor_weights"))
             self.softq_networks[0].save_weights(str(self.monitor_path / "softq_weights"))
 
     def choose_action(self, state, features):
-        return {"action": self.action(state)}
+        if self.total_steps < self.config["replay_start_size"]:
+            action = np.random.uniform(-1.0, 1.0, self.env.action_space.shape)
+        else:
+            action = self.action(state)
+        return {"action": action}
 
     def get_env_action(self, action):
+        """
+        Converts an action from self.choose_action to an action to be given to the environment.
+        """
         return self.action_low + (action + 1.0) * 0.5 * (self.action_high - self.action_low)
-
 
 class ActorNetwork(Model):
     def __init__(self, input_dim, n_hidden_layers, n_hidden_units, n_actions, logprob_epsilon, hidden_layer_activation="relu", log_scale_bounds=(-5, 2)):
         super().__init__()
+        self.n_actions = n_actions
         self.logprob_epsilon = logprob_epsilon
         inp = tf.keras.Input((input_dim,))
-        mean_log_scale_net = Sequential()
+        out = inp
         for i in range(n_hidden_layers):
-            mean_log_scale_net.add(Dense(n_hidden_units,
-                                          activation=hidden_layer_activation,
-                                          name=f"hidden_{i}"))
+            out = Dense(n_hidden_units,
+                        activation=hidden_layer_activation,
+                        name=f"hidden_{i}")(out)
+        out = Dense(n_actions * 2, name="mean_log_scale")(out)
+        mean, scale = Split(num_or_size_splits=2, axis=-1)(out)
 
-        mean_log_scale_net.add(Dense(n_actions * 2, name="mean_log_scale"))
-        mean_log_scale_net = mean_log_scale_net(inp)
-        mean, log_scale = tf.keras.layers.Lambda(
-            lambda x: tf.split(x, num_or_size_splits=2, axis=-1)
-        )(mean_log_scale_net)
+        scale = Softplus()(scale)
+        self.mean_scale_model = tf.keras.Model(inputs=inp, outputs=(mean, scale))
 
-        log_scale = tf.keras.layers.Lambda(
-            lambda log_scale: tf.clip_by_value(log_scale, *log_scale_bounds)
-        )(log_scale)
-
-        self.mean_log_scale_model = tf.keras.Model(inputs=inp, outputs=(mean, log_scale))
-
-        base_distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=tf.zeros((n_actions,)),
-            scale_diag=tf.ones((n_actions,)))
-
-        raw_action_distribution = tfp.bijectors.Chain((
-            ConditionalShift(name='shift'),
-            ConditionalScale(name='scale'),
-        ))(base_distribution)
-
-        self.base_distribution = base_distribution
-        self.raw_action_distribution = raw_action_distribution
-        self.squash_bijector = tfp.bijectors.Tanh()
-        self.action_distribution = self.squash_bijector(self.raw_action_distribution)
-
+    @tf.function
     def call(self, inputs, training=None, mask=None):
-        outputs = self.mean_log_scale_model(inputs)
-        mean = outputs[0]
-        log_scale = outputs[1]
-        squashed_actions = self.action_distribution.sample(
-            (tf.shape(inputs)[0],),
-            bijector_kwargs={'shift': {'shift': mean},
-                             'scale': {'scale': tf.exp(log_scale)}})
-        log_prob = self.action_distribution.log_prob(
-            squashed_actions,
-            bijector_kwargs={'shift': {'shift': mean},
-                             'scale': {'scale': tf.exp(log_scale)}})[..., tf.newaxis]
+        mean, scale = self.mean_scale_model(inputs)
+        dist = tfp.distributions.Normal(mean, scale)
+        actions = dist.sample()
+        log_prob = tf.reduce_sum(dist.log_prob(actions), axis=-1, keepdims=True)
+        log_prob = log_prob - tf.reduce_sum(2 * (tf.math.log(2.0) - actions - tf.math.softplus(-2 * actions)), axis=-1, keepdims=True)
+        squashed_actions = tf.tanh(actions)
         return squashed_actions, log_prob
 
-    @tf.function(experimental_relax_shapes=True)
+    @tf.function
     def deterministic_actions(self, inp):
-        outputs = self.mean_log_scale_model(inp)
-        return self.squash_bijector(outputs[0])
+        outputs = self.mean_scale_model(inp)
+        return tf.tanh(outputs[0])
 
+def make_softq_network(input_shapes, n_hidden_layers, n_hidden_units, hidden_layer_activation="relu"):
+    inputs = [tf.keras.layers.Input(x, dtype="float32") for x in input_shapes]
 
-class SoftQNetwork(Model):
-    def __init__(self, n_hidden_layers, n_hidden_units, hidden_layer_activation="relu"):
-        super().__init__()
-        self.softq = Sequential()
-        for _ in range(n_hidden_layers):
-            self.softq.add(Dense(n_hidden_units, activation=hidden_layer_activation))
-        self.softq.add(Dense(1))
+    out = tf.keras.layers.concatenate(inputs, axis=-1)
 
-    def call(self, inputs, training=None, mask=None):
-        states, actions = inputs
-        x = tf.concat([states, actions], 1)
-        return self.softq(x)
+    for _ in range(n_hidden_layers):
+        out = Dense(n_hidden_units, activation=hidden_layer_activation)(out)
+    out = Dense(1)(out)
+    return tf.keras.Model(inputs, out, name="SoftQ")

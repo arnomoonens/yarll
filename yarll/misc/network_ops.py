@@ -19,24 +19,28 @@ class MultiCategoricalProbabilityDistribution(tf.keras.Model):
         return tf.cast(tf.stack([tf.random.categorical(l, 1) for l in logits], axis=-1), tf.int32)
 
 class NormalDistrLayer(tf.keras.layers.Layer):
-    def __init__(self, n_outputs):
+    def __init__(self, n_outputs, log_std_init: float = 0.0):
         super().__init__()
         self.n_outputs = n_outputs
+        self.log_std_init = log_std_init
         self.mean = Dense(n_outputs)
         self.log_std = None # instantiated in build phase
 
     def build(self, _):
         self.log_std = self.add_weight("log_std",
                                        shape=(self.n_outputs,),
-                                       initializer=tf.initializers.zeros)
+                                       initializer=tf.initializers.constant(self.log_std_init))
 
+    @tf.function
     def call(self, inp):
         mean = self.mean(inp)
         return mean + tf.exp(self.log_std) * tf.random.normal(tf.shape(mean), dtype=mean.dtype), mean
 
+    @tf.function
     def entropy(self):
-        return tf.reduce_sum(self.log_std + .5 * np.log(2.0 * np.pi * np.e), axis=-1)
+        return tf.reduce_sum(self.log_std + .5 * tf.math.log(2.0 * np.pi * np.e), axis=-1)
 
+@tf.function
 def normal_dist_log_prob(actions_taken, mean, log_std):
     std = tf.exp(log_std)
     neglogprob = 0.5 * tf.reduce_sum(tf.square((actions_taken - mean) / std), axis=-1) \
@@ -149,3 +153,20 @@ class CustomKaimingUniformBiasInitializer(tf.keras.initializers.Initializer):
 
     def get_config(self):
         return dict(fan_in=self.fan_in)
+
+class Split(tf.keras.layers.Layer):
+    def __init__(self, num_or_size_splits, axis, **kwargs):
+        super().__init__(**kwargs)
+        self.num_or_size_splits = num_or_size_splits
+        self.axis = axis
+
+    def call(self, inputs):
+        return tf.split(inputs, num_or_size_splits=self.num_or_size_splits, axis=self.axis)
+
+class Softplus(tf.keras.layers.Layer):
+    def __init__(self, epsilon=1e-5, **kwargs):
+        super().__init__(**kwargs)
+        self.epsilon = epsilon
+
+    def call(self, x):
+        return tf.math.softplus(x) + self.epsilon

@@ -83,7 +83,7 @@ class PPO(Agent):
         #    if "new_network" in v.name:
         #        summaries.append(tf.summary.histogram(v.name, v))
 
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
@@ -183,7 +183,7 @@ class PPO(Agent):
         n_updates = 0
         n_steps = 0
         iteration = 0
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             while n_steps < int(config["max_steps"]):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 states, actions, advs, rs, values, _ = self.get_processed_trajectories()

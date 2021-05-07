@@ -31,7 +31,7 @@ class AKTThread(Thread):
         self.task_runner = EnvRunner(env, TaskPolicy(self.action, self), self.master.config)
 
         # Write the summary of each task in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task" + str(self.task_id)), self.master.session.graph)
+        self.summary_writer = tf.summary.FileWriter(os.path.join(self.master.monitor_path, "task" + str(self.task_id)), self.master.session.graph)
 
         self.optimizer = tf.train.RMSPropOptimizer(learning_rate=self.config["learning_rate"], decay=self.config["decay"], epsilon=self.config["epsilon"])
 
@@ -89,8 +89,8 @@ class AKTThread(Thread):
                 self.master.reward: np.mean(episode_rewards),
                 self.master.episode_length: np.mean(episode_lengths)
             })
-            self.writer.add_summary(summary[0], iteration)
-            self.writer.flush()
+            self.summary_writer.add_summary(summary[0], iteration)
+            self.summary_writer.flush()
 
     def learn_Karpathy(self):
         """Learn using updates like in the Karpathy algorithm."""
@@ -119,8 +119,8 @@ class AKTThread(Thread):
                 self.master.reward: reward,
                 self.master.episode_length: trajectory["steps"]
             })
-            self.writer.add_summary(results[0], iteration)
-            self.writer.flush()
+            self.summary_writer.add_summary(results[0], iteration)
+            self.summary_writer.flush()
 
 
 class AsyncKnowledgeTransfer(Agent):

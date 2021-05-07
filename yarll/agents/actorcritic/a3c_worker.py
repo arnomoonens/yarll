@@ -173,7 +173,7 @@ class A3CTask(object):
         init_all_op = tf.global_variables_initializer()
         saver = FastSaver(variables_to_save)
         # Write the summary of each task in a different directory
-        self.writer = tf.summary.FileWriter(os.path.join(monitor_path, "task{}".format(task_id)))
+        self.summary_writer = tf.summary.FileWriter(os.path.join(monitor_path, "task{}".format(task_id)))
 
         self.runner = RunnerThread(self.env, self, int(self.config["n_local_steps"]), task_id == 0 and video)
 
@@ -267,7 +267,7 @@ class A3CTask(object):
         ) as sess:
             self.session = sess
             sess.run(self.sync_net)
-            self.runner.start_runner(sess, self.writer)
+            self.runner.start_runner(sess, self.summary_writer)
             while not sess.should_stop() and self.global_step < self.config["T_max"]:
                 # Synchronize thread-specific parameters θ' = θ and θ'v = θv
                 sess.run(self.sync_net)
@@ -291,8 +291,8 @@ class A3CTask(object):
                 if feature != [] and feature is not None:
                     feed_dict[self.local_network.rnn_state_in] = feature
                 summary, _, global_step = sess.run(fetches, feed_dict)
-                self.writer.add_summary(summary, global_step)
-                self.writer.flush()
+                self.summary_writer.add_summary(summary, global_step)
+                self.summary_writer.flush()
 
 
 class A3CTaskDiscrete(A3CTask):

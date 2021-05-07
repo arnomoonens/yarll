@@ -60,7 +60,7 @@ class FittedQIteration(Agent):
         if checkpoint_path is not None:
             self.ckpt.restore(str(checkpoint_path)).expect_partial() # With .assert_consumed() it gives errors...
 
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
         self.tensorboard_cbk = tf.keras.callbacks.TensorBoard(log_dir=self.monitor_path)
         self.env_runner = EnvRunner(self.env,
                                     self,
@@ -113,7 +113,7 @@ class FittedQIteration(Agent):
         return rewards + self.config["gamma"] * max_q * (1 - terminals)
 
     def learn(self):
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             for i in range(self.config["n_iterations"]):
                 trajs = self.env_runner.get_trajectories()
                 states, actions, rewards, next_states, terminals = self.get_processed_trajectories(trajs)

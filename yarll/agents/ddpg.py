@@ -69,7 +69,7 @@ class DDPG(Agent):
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
 
         self.n_updates = 0
-        self.writer = tf.summary.create_file_writer(
+        self.summary_writer = tf.summary.create_file_writer(
             str(self.monitor_path)) if self.config["summaries"] else tf.summary.create_noop_writer()
 
     def build_actor_network(self):
@@ -228,7 +228,7 @@ class DDPG(Agent):
 
     def learn(self):
         max_action = self.env.action_space.high
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             for episode in range(int(self.config["n_episodes"])):
                 state = self.env.reset()
                 episode_reward = 0

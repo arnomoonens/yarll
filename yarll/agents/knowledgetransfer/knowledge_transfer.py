@@ -106,7 +106,7 @@ class KnowledgeTransfer(Agent):
         summary_episode_lengths = tf.summary.scalar("Length", self.episode_lengths)
         self.summary_op = tf.summary.merge([summary_loss, summary_rewards, summary_episode_lengths])
 
-        self.writers = []
+        self.summary_writers = []
         self.losses = []
 
         regularizer = tf.contrib.layers.l1_regularizer(.05)
@@ -117,7 +117,7 @@ class KnowledgeTransfer(Agent):
             loss = -tf.reduce_sum(eligibility) + regularizer(sparse_representations[i])
             self.losses.append(loss)
             writer = tf.summary.FileWriter(os.path.join(self.monitor_path, "task" + str(i)), self.session.graph)
-            self.writers.append(writer)
+            self.summary_writers.append(writer)
 
         # An add op for every task & its loss
         self.add_accum_grads = []
@@ -182,8 +182,8 @@ class KnowledgeTransfer(Agent):
                     self.episode_lengths: np.mean(episode_lengths)
                 })
 
-                self.writers[i].add_summary(summary[0], iteration)
-                self.writers[i].flush()
+                self.summary_writers[i].add_summary(summary[0], iteration)
+                self.summary_writers[i].flush()
                 print("Task:", i)
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories[i])
 

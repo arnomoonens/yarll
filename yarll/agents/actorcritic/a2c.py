@@ -55,7 +55,7 @@ class A2C(Agent):
 
         self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"],
                                                       clipnorm=self.config["gradient_clip_value"])
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
         return
 
     def build_networks(self):
@@ -78,7 +78,7 @@ class A2C(Agent):
         """Run learning algorithm"""
         env_runner = EnvRunner(self.env, self, self.config)
         config = self.config
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             for iteration in range(int(config["n_iter"])):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectory = env_runner.get_steps(int(self.config["n_local_steps"]))

@@ -112,7 +112,7 @@ class DPPO(Agent):
             summary_grad_norm,
             summary_var_norm
         ])
-        self.writer = tf.summary.FileWriter(os.path.join(
+        self.summary_writer = tf.summary.FileWriter(os.path.join(
             self.monitor_path, "master"))
 
         # grads before clipping were passed to the summary, now clip and apply them
@@ -150,7 +150,7 @@ class DPPO(Agent):
             feed_dict[self.old_network.rnn_state_in] = features
             feed_dict[self.new_network.rnn_state_in] = features
         summary, _ = tf.get_default_session().run(fetches, feed_dict)
-        self.writer.add_summary(summary, self.n_updates)
+        self.summary_writer.add_summary(summary, self.n_updates)
         self.n_updates += 1
 
     def learn_by_batches(self, trajectories):
@@ -173,14 +173,14 @@ class DPPO(Agent):
                 batch_advs = np.array(all_advs)[batch_indices]
                 batch_rs = np.array(all_returns)[batch_indices]
                 self.update_network(batch_states, batch_actions, batch_advs, batch_rs)
-            self.writer.flush()
+            self.summary_writer.flush()
 
 
     def learn_by_trajectories(self, trajectories):
         for _ in range(int(self.config["n_epochs"])):
             for states, actions, advs, returns, features in trajectories:
                 self.update_network(states, actions, advs, returns, features)
-            self.writer.flush()
+            self.summary_writer.flush()
 
     def learn(self):
         """Run learning algorithm"""

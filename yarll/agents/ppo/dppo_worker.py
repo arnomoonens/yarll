@@ -27,7 +27,7 @@ class DPPOWorker(object):
         self.task_id = task_id
         if seed is not None:
             self.env.seed(seed)
-        self.writer = tf.summary.FileWriter(os.path.join(
+        self.summary_writer = tf.summary.FileWriter(os.path.join(
             monitor_path,
             "task{}".format(task_id)))
 

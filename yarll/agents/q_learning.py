@@ -23,12 +23,12 @@ class QLearning(Agent):
         self.Q_values = np.zeros((self.env.observation_space.n, self.env.action_space.n), dtype=np.float32)
         self.policy = EGreedy(self.config["epsilon"])
 
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def learn(self):
         env = self.env
         total_steps = 0
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             for episode in range(self.config["n_episodes"]):
                 done = False
                 state = env.reset()

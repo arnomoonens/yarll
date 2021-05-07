@@ -85,7 +85,7 @@ class DQN(Agent):
             self.cktp_manager = tf.train.CheckpointManager(self.ckpt, checkpoint_directory, 10)
             self.checkpoint_every_episodes = 10
 
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
         self.total_steps = 0
         self.n_updates = 0
 
@@ -125,7 +125,7 @@ class DQN(Agent):
         target_qs = np.empty((self.config["n_train_steps"],), np.float32)
         losses = np.empty((self.config["n_train_steps"],), np.float32)
         total_episodes = 0
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             for _ in range(self.config["max_steps"]):
 
                 experience = self.env_runner.get_steps(1)[0]

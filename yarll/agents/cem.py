@@ -123,7 +123,7 @@ class CEM(Agent):
 
         self.total_steps = 0
         self.total_episodes = 0
-        self.writer = tf.summary.create_file_writer(str(monitor_path)) # pylint: disable=no-member
+        self.summary_writer = tf.summary.create_file_writer(str(monitor_path)) # pylint: disable=no-member
 
     def make_policy(self, theta) -> Policy:
         if isinstance(self.env.action_space, Discrete):
@@ -157,7 +157,7 @@ class CEM(Agent):
         return total_rew
 
     def learn(self):
-        with self.writer.as_default(): # pylint: disable=not-context-manager
+        with self.summary_writer.as_default(): # pylint: disable=not-context-manager
             for iteration in range(self.config["n_iter"]):
                 # Sample parameter vectors
                 thetas = [np.random.normal(self.theta_mean, self.theta_std, self.dim_theta)

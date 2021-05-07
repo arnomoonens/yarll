@@ -18,7 +18,7 @@ from yarll.agents.actorcritic.actor_critic import actor_continuous_loss
 from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards
-from yarll.misc.network_ops import NormalDistrLayer, flatten_to_rnn
+from yarll.misc.network_ops import NormalDistrLayer, flatten_to_rnn, normal_dist_log_prob
 from yarll.misc.reporter import Reporter
 
 
@@ -54,7 +54,7 @@ class REINFORCE(Agent):
         self.network = self.build_network()
         self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"],
                                                       clipnorm=self.config["gradient_clip_value"])
-        self.writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
 
     def build_network(self) -> tf.keras.Model:
         raise NotImplementedError()
@@ -80,7 +80,7 @@ class REINFORCE(Agent):
             loss = -tf.reduce_mean(eligibility)
         gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
-        return float(loss)
+        return float(loss), log_probs
 
     def learn(self):
         """Run learning algorithm"""
@@ -88,7 +88,7 @@ class REINFORCE(Agent):
         reporter = Reporter()
         config = self.config
         total_n_trajectories = 0
-        with self.writer.as_default():
+        with self.summary_writer.as_default():
             for iteration in range(config["n_iter"]):
                 # Collect trajectories until we get timesteps_per_batch total timesteps
                 trajectories = env_runner.get_trajectories()
@@ -110,11 +110,13 @@ class REINFORCE(Agent):
                 episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
                 if self.initial_features is not None:
                     features = np.concatenate([trajectory.features for trajectory in trajectories])
-                loss = self.train(all_state,
-                                  all_action,
-                                  all_adv,
-                                  features=tf.squeeze(features) if self.initial_features is not None else None)
+                loss, log_probs = self.train(all_state,
+                                             all_action,
+                                             all_adv,
+                                             features=tf.squeeze(features) if self.initial_features is not None else None)
                 tf.summary.scalar("model/loss", loss, step=iteration)
+                tf.summary.scalar("model/mean_advantage", np.mean(all_adv), step=iteration)
+                tf.summary.scalar("model/mean_log_prob", tf.reduce_mean(log_probs), step=iteration)
 
                 reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         if self.config["save_model"]:
@@ -297,13 +299,13 @@ class REINFORCEBernoulli(REINFORCE):
         return {"action": action}
 
 class ActorContinuous(Model):
-    def __init__(self, n_hidden_layers, n_hidden_units, action_space_shape, activation="tanh"):
+    def __init__(self, n_hidden_layers, n_hidden_units, action_space_shape, activation="relu", log_std_init: float = 0.0):
         super().__init__()
         self.hidden = Sequential()
 
         for _ in range(int(n_hidden_layers)):
             self.hidden.add(Dense(n_hidden_units, activation=activation))
-        self.action_mean = NormalDistrLayer(action_space_shape[0])
+        self.action_mean = NormalDistrLayer(action_space_shape[0], log_std_init=log_std_init)
 
     def call(self, inp):
         x = self.hidden(inp)
@@ -328,10 +330,10 @@ class ActorContinuousRNN(Model):
 
 
 class REINFORCEContinuous(REINFORCE):
-    def __init__(self, env, monitor_path, rnn=False, video=True, **usercfg):
+    def __init__(self, env, monitor_path, rnn=False, log_std_init: float = 0.0, video: bool = True, **usercfg):
         self.rnn = rnn
         self.initial_features = tf.zeros((1, self.config["n_hidden_units"])) if rnn else None
-        super().__init__(env, monitor_path, video=video, **usercfg)
+        super().__init__(env, monitor_path, log_std_init=log_std_init, video=video, **usercfg)
 
     def build_network(self):
         return self.build_network_rnn() if self.rnn else self.build_network_normal()
@@ -346,7 +348,8 @@ class REINFORCEContinuous(REINFORCE):
             inp = state
         res = self.network(inp)
         action = res[0][0]
-        action = np.clip(action, self.env.action_space.low, self.env.action_space.high)
+        action = np.clip(action, -1, 1)
+        action = (action + 1) / 2 * self.env.action_space.high
         return {"action": action, "features": res[2] if self.rnn else None}
 
     def build_network_normal(self):
@@ -367,7 +370,8 @@ class REINFORCEContinuous(REINFORCE):
             res = self.network(inp)
             mean = res[1]
             log_std = self.network.action_mean.log_std
-            loss = -tf.reduce_mean(actor_continuous_loss(actions_taken, mean, log_std, advantages))
+            log_probs = normal_dist_log_prob(actions_taken, mean, log_std)
+            loss = -tf.reduce_mean(log_probs * advantages)
         gradients = tape.gradient(loss, self.network.trainable_weights)
         self.optimizer.apply_gradients(zip(gradients, self.network.trainable_weights))
-        return loss
+        return loss, log_probs

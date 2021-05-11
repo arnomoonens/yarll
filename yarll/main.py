@@ -54,14 +54,20 @@ def run_experiment(spec, monitor_path=None, only_last=False, description=None, s
     args["envs"] = envs
     if len(envs) == 1 or only_last:
         args["env"] = envs[-1]
-    action_space_type = spaces_mapping.get(type(envs[0].action_space), None)
+    action_space_type = spaces_mapping[type(envs[0].action_space)]
     if len(envs[0].observation_space.shape) > 1:
         state_dimensions = "multi"
     else:
-        state_dimensions = spaces_mapping.get(type(envs[0].observation_space), None)
+        state_dimensions = spaces_mapping[type(envs[0].observation_space)]
 
-    agent = make_agent(spec["agent"]["name"], state_dimensions, action_space_type, **args)
+    backend = spec["agent"].get("backend", "tensorflow")
+    agent = make_agent(spec["agent"]["name"],
+                       state_dimensions,
+                       action_space_type,
+                       backend=backend,
+                       **args)
     config = agent.config.copy()
+    config["backend"] = backend
     if description is not None:
         config["description"] = description
     config["seed"] = str(seed)

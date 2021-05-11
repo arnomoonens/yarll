@@ -18,6 +18,7 @@ from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
 from yarll.memory.memory import Memory
 from yarll.misc.utils import hard_update, soft_update
+from yarll.misc import summary_writer
 from yarll.policies.e_greedy import EGreedy
 
 class DQN(Agent):
@@ -86,6 +87,7 @@ class DQN(Agent):
             self.checkpoint_every_episodes = 10
 
         self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
+        summary_writer.set(self.summary_writer)
         self.total_steps = 0
         self.n_updates = 0
 
@@ -125,42 +127,42 @@ class DQN(Agent):
         target_qs = np.empty((self.config["n_train_steps"],), np.float32)
         losses = np.empty((self.config["n_train_steps"],), np.float32)
         total_episodes = 0
-        with self.summary_writer.as_default():
-            for _ in range(self.config["max_steps"]):
+        summary_writer.start()
+        for _ in range(self.config["max_steps"]):
+            experience = self.env_runner.get_steps(1)[0]
 
-                experience = self.env_runner.get_steps(1)[0]
+            # Update epsilon
+            self.policy.epsilon = max(self.config["epsilon_min"], self.policy.epsilon * self.config["epsilon_decay"])
 
-                # Update epsilon
-                self.policy.epsilon = max(self.config["epsilon_min"], self.policy.epsilon * self.config["epsilon_decay"])
-
-                self.total_steps += 1
-                self.replay_buffer.add(experience.state, experience.action, experience.reward,
-                                       experience.next_state, experience.terminal)
-                if self.replay_buffer.n_entries > self.config["replay_start_size"]:
-                    for i in range(self.config["n_train_steps"]):
-                        sample = self.replay_buffer.get_batch(self.config["batch_size"])
-                        q_mean, q_std, target_q, loss = self.train(
-                            sample["states0"],
-                            sample["actions"].astype(np.int),
-                            sample["rewards"],
-                            sample["states1"],
-                            sample["terminals1"])
-                        q_means[i] = q_mean
-                        q_stds[i] = q_std
-                        target_qs[i] = target_q
-                        losses[i] = loss
-                    tf.summary.scalar("model/predicted_q_mean", np.mean(q_means), self.total_steps)
-                    tf.summary.scalar("model/predicted_q_std", np.mean(q_stds), self.total_steps)
-                    tf.summary.scalar("model/target_q_mean", np.mean(target_qs), self.total_steps)
-                    tf.summary.scalar("model/loss", np.mean(losses), self.total_steps)
-                    # Update the target network
-                    soft_update(self.q_network.variables,
-                                self.target_q_network.variables,
-                                self.config["tau"])
-                    self.n_updates += 1
-                if experience.terminal:
-                    total_episodes += 1
-                    if self.config["checkpoints"] and (total_episodes % self.checkpoint_every_episodes) == 0:
-                        self.cktp_manager.save()
+            self.total_steps += 1
+            self.replay_buffer.add(experience.state, experience.action, experience.reward,
+                                    experience.next_state, experience.terminal)
+            if self.replay_buffer.n_entries > self.config["replay_start_size"]:
+                for i in range(self.config["n_train_steps"]):
+                    sample = self.replay_buffer.get_batch(self.config["batch_size"])
+                    q_mean, q_std, target_q, loss = self.train(
+                        sample["states0"],
+                        sample["actions"].astype(np.int),
+                        sample["rewards"],
+                        sample["states1"],
+                        sample["terminals1"])
+                    q_means[i] = q_mean
+                    q_stds[i] = q_std
+                    target_qs[i] = target_q
+                    losses[i] = loss
+                summary_writer.add_scalar("model/predicted_q_mean", np.mean(q_means), self.total_steps)
+                summary_writer.add_scalar("model/predicted_q_std", np.mean(q_stds), self.total_steps)
+                summary_writer.add_scalar("model/target_q_mean", np.mean(target_qs), self.total_steps)
+                summary_writer.add_scalar("model/loss", np.mean(losses), self.total_steps)
+                # Update the target network
+                soft_update(self.q_network.variables,
+                            self.target_q_network.variables,
+                            self.config["tau"])
+                self.n_updates += 1
+            if experience.terminal:
+                total_episodes += 1
+                if self.config["checkpoints"] and (total_episodes % self.checkpoint_every_episodes) == 0:
+                    self.cktp_manager.save()
+        summary_writer.stop()
         if self.config["save_model"]:
             self.q_network.save_weights(str(self.monitor_path / "q_weights"))

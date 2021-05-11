@@ -15,6 +15,7 @@ from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
     critic_loss, ActorCriticNetworkContinuous, actor_continuous_loss
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards
+from yarll.misc import summary_writer
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -56,7 +57,7 @@ class A2C(Agent):
         self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"],
                                                       clipnorm=self.config["gradient_clip_value"])
         self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
-        return
+        summary_writer.set(self.summary_writer)
 
     def build_networks(self):
         return NotImplementedError("Abstract method")
@@ -78,37 +79,38 @@ class A2C(Agent):
         """Run learning algorithm"""
         env_runner = EnvRunner(self.env, self, self.config)
         config = self.config
-        with self.summary_writer.as_default():
-            for iteration in range(int(config["n_iter"])):
-                # Collect trajectories until we get timesteps_per_batch total timesteps
-                trajectory = env_runner.get_steps(int(self.config["n_local_steps"]))
-                features = trajectory.features
-                features = np.concatenate(trajectory.features) if features[-1] is not None else np.array([None])
-                if trajectory.experiences[-1].terminal:
-                    v = 0
-                else:
-                    inp = [np.asarray(trajectory.states)[None, -1]]
-                    if features[-1] is not None:
-                        inp.append(features[None, -1])
-                    v = self.ac_net.action_value(*inp)[-2 if features[-1] is not None else -1][0]
-                rewards_plus_v = np.asarray(trajectory.rewards + [v])
-                vpred_t = np.asarray(trajectory.values + [v])
-                delta_t = trajectory.rewards + \
-                    self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
-                batch_r = discount_rewards(
-                    rewards_plus_v, self.config["gamma"])[:-1]
-                batch_adv = discount_rewards(delta_t, self.config["gamma"])
-                states = np.asarray(trajectory.states)
-                iter_actor_loss, iter_critic_loss, iter_loss = self.train(states,
-                                                                          np.asarray(trajectory.actions),
-                                                                          batch_adv,
-                                                                          batch_r,
-                                                                          features=features if features[-1] is not None else None)
-                tf.summary.scalar("model/loss", iter_loss, step=iteration)
-                tf.summary.scalar("model/actor_loss", iter_actor_loss, step=iteration)
-                tf.summary.scalar("model/critic_loss", iter_critic_loss, step=iteration)
-            if self.config["save_model"]:
-                tf.saved_model.save(self.ac_net, str(self.monitor_path / "model"))
+        summary_writer.start()
+        for iteration in range(int(config["n_iter"])):
+            # Collect trajectories until we get timesteps_per_batch total timesteps
+            trajectory = env_runner.get_steps(int(self.config["n_local_steps"]))
+            features = trajectory.features
+            features = np.concatenate(trajectory.features) if features[-1] is not None else np.array([None])
+            if trajectory.experiences[-1].terminal:
+                v = 0
+            else:
+                inp = [np.asarray(trajectory.states)[None, -1]]
+                if features[-1] is not None:
+                    inp.append(features[None, -1])
+                v = self.ac_net.action_value(*inp)[-2 if features[-1] is not None else -1][0]
+            rewards_plus_v = np.asarray(trajectory.rewards + [v])
+            vpred_t = np.asarray(trajectory.values + [v])
+            delta_t = trajectory.rewards + \
+                self.config["gamma"] * vpred_t[1:] - vpred_t[:-1]
+            batch_r = discount_rewards(
+                rewards_plus_v, self.config["gamma"])[:-1]
+            batch_adv = discount_rewards(delta_t, self.config["gamma"])
+            states = np.asarray(trajectory.states)
+            iter_actor_loss, iter_critic_loss, iter_loss = self.train(states,
+                                                                      np.asarray(trajectory.actions),
+                                                                      batch_adv,
+                                                                      batch_r,
+                                                                      features=features if features[-1] is not None else None)
+            summary_writer.add_scalar("model/loss", iter_loss, step=iteration)
+            summary_writer.add_scalar("model/actor_loss", iter_actor_loss, step=iteration)
+            summary_writer.add_scalar("model/critic_loss", iter_critic_loss, step=iteration)
+        summary_writer.stop()
+        if self.config["save_model"]:
+            tf.saved_model.save(self.ac_net, str(self.monitor_path / "model"))
 
 
 class A2CDiscrete(A2C):

@@ -10,6 +10,7 @@ from yarll.environment.environment import Environment
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import flatten_list
 from yarll.memory.experiences_memory import ExperiencesMemory
+from yarll.misc import summary_writer
 
 class FittedQIteration(Agent):
     def __init__(self,
@@ -61,6 +62,7 @@ class FittedQIteration(Agent):
             self.ckpt.restore(str(checkpoint_path)).expect_partial() # With .assert_consumed() it gives errors...
 
         self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
+        summary_writer.set(self.summary_writer)
         self.tensorboard_cbk = tf.keras.callbacks.TensorBoard(log_dir=self.monitor_path)
         self.env_runner = EnvRunner(self.env,
                                     self,
@@ -113,23 +115,24 @@ class FittedQIteration(Agent):
         return rewards + self.config["gamma"] * max_q * (1 - terminals)
 
     def learn(self):
-        with self.summary_writer.as_default():
-            for i in range(self.config["n_iterations"]):
-                trajs = self.env_runner.get_trajectories()
-                states, actions, rewards, next_states, terminals = self.get_processed_trajectories(trajs)
-                target_q = self.calculate_target_q(rewards, next_states, terminals)
-                actions_oh = tf.one_hot(actions, depth=self.n_actions, dtype=tf.float32)
-                states_actions_oh = tf.concat([states, actions_oh], axis=1)
-                history = self.q_network.fit(states_actions_oh,
-                                             target_q,
-                                             epochs=self.config["n_epochs"],
-                                             verbose=0)
-                tf.summary.scalar("model/loss/mean",
-                                  np.average(history.history["loss"]),
-                                  step=self.env_runner.total_steps)
-                tf.summary.scalar("model/epsilon",
-                                  self.epsilon,
-                                  step=self.env_runner.total_steps)
-                self.epsilon = self.epsilon * (1.0 - self.config["epsilon_decay"])
-                if self.config["checkpoints"] and (i % self.config["checkpoint_every_iterations"]) == 0:
-                    self.ckpt_manager.save(i)
+        summary_writer.start()
+        for i in range(self.config["n_iterations"]):
+            trajs = self.env_runner.get_trajectories()
+            states, actions, rewards, next_states, terminals = self.get_processed_trajectories(trajs)
+            target_q = self.calculate_target_q(rewards, next_states, terminals)
+            actions_oh = tf.one_hot(actions, depth=self.n_actions, dtype=tf.float32)
+            states_actions_oh = tf.concat([states, actions_oh], axis=1)
+            history = self.q_network.fit(states_actions_oh,
+                                            target_q,
+                                            epochs=self.config["n_epochs"],
+                                            verbose=0)
+            summary_writer.add_scalar("model/loss/mean",
+                                np.average(history.history["loss"]),
+                                step=self.env_runner.total_steps)
+            summary_writer.add_scalar("model/epsilon",
+                                self.epsilon,
+                                step=self.env_runner.total_steps)
+            self.epsilon = self.epsilon * (1.0 - self.config["epsilon_decay"])
+            if self.config["checkpoints"] and (i % self.config["checkpoint_every_iterations"]) == 0:
+                self.ckpt_manager.save(i)
+        summary_writer.stop()

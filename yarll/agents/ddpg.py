@@ -10,6 +10,7 @@ from yarll.memory.memory import Memory
 from yarll.misc.noise import OrnsteinUhlenbeckActionNoise
 from yarll.misc.network_ops import CustomKaimingUniformKernelInitializer, CustomKaimingUniformBiasInitializer
 from yarll.misc.utils import hard_update, soft_update
+from yarll.misc import summary_writer
 
 class DDPG(Agent):
     def __init__(self, env, monitor_path: str, **usercfg) -> None:
@@ -69,8 +70,12 @@ class DDPG(Agent):
         self.replay_buffer = Memory(int(self.config["replay_buffer_size"]))
 
         self.n_updates = 0
-        self.summary_writer = tf.summary.create_file_writer(
-            str(self.monitor_path)) if self.config["summaries"] else tf.summary.create_noop_writer()
+        if self.config["summaries"]:
+            self.summary_writer = tf.summary.create_file_writer(
+                str(self.monitor_path))
+            summary_writer.set(self.summary_writer)
+        else:
+            self.summary_writer = tf.summary.create_noop_writer()
 
     def build_actor_network(self):
         layer1_size = 400
@@ -214,12 +219,12 @@ class DDPG(Agent):
             sample["states1"],
             sample["terminals1"])
 
-        tf.summary.scalar("model/critic_loss", float(q_loss), self.n_updates)
-        tf.summary.scalar("model/critic_mse_loss", float(q_mse_loss), self.n_updates)
-        tf.summary.scalar("model/critic_l2_loss", float(q_l2_loss), self.n_updates)
-        tf.summary.scalar("model/actor_loss", float(actor_loss), self.n_updates)
-        tf.summary.scalar("model/predicted_q_mean", np.mean(predicted_q), self.n_updates)
-        tf.summary.scalar("model/predicted_q_std", np.std(predicted_q), self.n_updates)
+        summary_writer.add_scalar("model/critic_loss", float(q_loss), self.n_updates)
+        summary_writer.add_scalar("model/critic_mse_loss", float(q_mse_loss), self.n_updates)
+        summary_writer.add_scalar("model/critic_l2_loss", float(q_l2_loss), self.n_updates)
+        summary_writer.add_scalar("model/actor_loss", float(actor_loss), self.n_updates)
+        summary_writer.add_scalar("model/predicted_q_mean", np.mean(predicted_q), self.n_updates)
+        summary_writer.add_scalar("model/predicted_q_std", np.std(predicted_q), self.n_updates)
 
         # Update the target networks
         soft_update(self.actor.variables, self.target_actor.variables, self.config["tau"])
@@ -228,24 +233,25 @@ class DDPG(Agent):
 
     def learn(self):
         max_action = self.env.action_space.high
-        with self.summary_writer.as_default():
-            for episode in range(int(self.config["n_episodes"])):
-                state = self.env.reset()
-                episode_reward = 0
-                episode_actions = []
-                for episode_length in count(start=1):
-                    action = self.noise_action(state)
-                    episode_actions.append(action)
-                    # ! Assumes action space between -max_action and max_action
-                    new_state, reward, done, _ = self.env.step(action * max_action)
-                    episode_reward += reward
-                    self.replay_buffer.add(state, action, reward, new_state, done)
-                    if self.replay_buffer.n_entries > self.config["replay_start_size"]:
-                        self.train()
-                    state = new_state
-                    if done:
-                        self.action_noise.reset()
-                        tf.summary.scalar("env/episode_length", float(episode_length), episode)
-                        tf.summary.scalar("env/episode_reward", float(episode_reward), episode)
-                        tf.summary.scalar("env/episode_mean_action", np.mean(episode_actions), episode)
-                        break
+        summary_writer.start()
+        for episode in range(int(self.config["n_episodes"])):
+            state = self.env.reset()
+            episode_reward = 0
+            episode_actions = []
+            for episode_length in count(start=1):
+                action = self.noise_action(state)
+                episode_actions.append(action)
+                # ! Assumes action space between -max_action and max_action
+                new_state, reward, done, _ = self.env.step(action * max_action)
+                episode_reward += reward
+                self.replay_buffer.add(state, action, reward, new_state, done)
+                if self.replay_buffer.n_entries > self.config["replay_start_size"]:
+                    self.train()
+                state = new_state
+                if done:
+                    self.action_noise.reset()
+                    summary_writer.add_scalar("env/episode_length", float(episode_length), episode)
+                    summary_writer.add_scalar("env/episode_reward", float(episode_reward), episode)
+                    summary_writer.add_scalar("env/episode_mean_action", np.mean(episode_actions), episode)
+                    break
+        summary_writer.stop()

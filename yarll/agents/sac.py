@@ -20,6 +20,7 @@ from yarll.agents.env_runner import EnvRunner
 from yarll.memory.prealloc_memory import PreAllocMemory
 from yarll.misc.network_ops import Softplus, Split
 from yarll.misc.utils import hard_update, soft_update
+from yarll.misc import summary_writer
 
 # TODO: put this in separate file
 class DeterministicPolicy:
@@ -133,7 +134,11 @@ class SAC(Agent):
         self.n_updates = 0
         self.total_steps = 0
         self.total_episodes = 0
-        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path)) if self.config["summaries"] else tf.summary.create_noop_writer()
+        if self.config["summaries"]:
+            self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
+            summary_writer.set(self.summary_writer)
+        else:
+            self.summary_writer = tf.summary.create_noop_writer()
 
         self.env_runner = EnvRunner(self.env,
                                     self,
@@ -275,58 +280,59 @@ class SAC(Agent):
         alpha_losses = np.empty((self.config["n_train_steps"],), np.float32)
         action_logprob_means = np.empty((self.config["n_train_steps"],), np.float32)
         total_episodes = 0
-        with self.summary_writer.as_default():
-            for step in range(self.config["max_steps"]):
-                if self.config["test_frequency"] > 0 and (step % self.config["test_frequency"]) == 0 and self.config["n_test_episodes"] > 0:
-                    self.do_test_episodes(step)
-                experience = self.env_runner.get_steps(1)[0]
-                self.total_steps += 1
-                self.replay_buffer.add(experience.state, experience.action, experience.reward,
-                                       experience.next_state, experience.terminal)
-                if self.replay_buffer.n_entries > self.config["replay_start_size"]:
-                    for i in range(self.config["n_train_steps"]):
-                        sample = self.replay_buffer.get_batch(self.config["batch_size"])
-                        states0 = tf.convert_to_tensor(sample["states0"])
-                        softq_mean, softq_std, softq_targets, softq_loss = self.train_critics(
-                            states0,
-                            np.resize(sample["actions"], [self.config["batch_size"],
-                                                          self.n_actions]),  # for n_actions == 1
-                            sample["rewards"],
-                            sample["states1"],
-                            sample["terminals1"])
-                        if (step % self.config["actor_update_frequency"]) == 0:
-                            actor_loss, action_logprob_mean = self.train_actor(states0)
-                            alpha_loss = self.train_alpha(states0)
-                            actor_losses[i] = actor_loss
-                            alpha_losses[i] = alpha_loss
-                            action_logprob_means[i] = action_logprob_mean
-                        else:
-                            print("WARNING: ACTOR NOT UPDATED")
-                        softq_means[i] = softq_mean
-                        softq_stds[i] = softq_std
-                        softq_losses[i] = softq_loss
-                        # Update the target networks
-                        if (step % self.config["critic_target_update_frequency"]) == 0:
-                            for net, target_net in zip(self.softq_networks, self.target_softq_networks):
-                                soft_update(net.variables,
-                                            target_net.variables,
-                                            self.config["tau"])
-                    tf.summary.scalar("model/predicted_softq_mean", np.mean(softq_means), self.total_steps)
-                    tf.summary.scalar("model/predicted_softq_std", np.mean(softq_stds), self.total_steps)
-                    tf.summary.scalar("model/softq_targets", np.mean(softq_targets), self.total_steps)
-                    tf.summary.scalar("model/softq_loss", np.mean(softq_losses), self.total_steps)
+        summary_writer.start()
+        for step in range(self.config["max_steps"]):
+            if self.config["test_frequency"] > 0 and (step % self.config["test_frequency"]) == 0 and self.config["n_test_episodes"] > 0:
+                self.do_test_episodes(step)
+            experience = self.env_runner.get_steps(1)[0]
+            self.total_steps += 1
+            self.replay_buffer.add(experience.state, experience.action, experience.reward,
+                                    experience.next_state, experience.terminal)
+            if self.replay_buffer.n_entries > self.config["replay_start_size"]:
+                for i in range(self.config["n_train_steps"]):
+                    sample = self.replay_buffer.get_batch(self.config["batch_size"])
+                    states0 = tf.convert_to_tensor(sample["states0"])
+                    softq_mean, softq_std, softq_targets, softq_loss = self.train_critics(
+                        states0,
+                        np.resize(sample["actions"], [self.config["batch_size"],
+                                                        self.n_actions]),  # for n_actions == 1
+                        sample["rewards"],
+                        sample["states1"],
+                        sample["terminals1"])
                     if (step % self.config["actor_update_frequency"]) == 0:
-                        tf.summary.scalar("model/actor_loss", np.mean(actor_losses), self.total_steps)
-                        tf.summary.scalar("model/alpha_loss", np.mean(alpha_losses), self.total_steps)
-                        tf.summary.scalar("model/alpha", tf.exp(self._log_alpha), self.total_steps)
-                        tf.summary.scalar("model/action_logprob_mean", np.mean(action_logprob_means), self.total_steps)
-                    self.n_updates += 1
-                if experience.terminal:
-                    if self.config["checkpoints"] and (total_episodes % self.config["checkpoint_every_episodes"]) == 0:
-                        self.ckpt_manager.save(total_episodes)
-                    total_episodes += 1
-                    self.summary_writer.flush()
-
+                        actor_loss, action_logprob_mean = self.train_actor(states0)
+                        alpha_loss = self.train_alpha(states0)
+                        actor_losses[i] = actor_loss
+                        alpha_losses[i] = alpha_loss
+                        action_logprob_means[i] = action_logprob_mean
+                    else:
+                        print("WARNING: ACTOR NOT UPDATED")
+                    softq_means[i] = softq_mean
+                    softq_stds[i] = softq_std
+                    softq_losses[i] = softq_loss
+                    # Update the target networks
+                    if (step % self.config["critic_target_update_frequency"]) == 0:
+                        for net, target_net in zip(self.softq_networks, self.target_softq_networks):
+                            soft_update(net.variables,
+                                        target_net.variables,
+                                        self.config["tau"])
+                if self.config["summaries"]:
+                    summary_writer.add_scalar("model/predicted_softq_mean", np.mean(softq_means), self.total_steps)
+                    summary_writer.add_scalar("model/predicted_softq_std", np.mean(softq_stds), self.total_steps)
+                    summary_writer.add_scalar("model/softq_targets", np.mean(softq_targets), self.total_steps)
+                    summary_writer.add_scalar("model/softq_loss", np.mean(softq_losses), self.total_steps)
+                    if (step % self.config["actor_update_frequency"]) == 0:
+                        summary_writer.add_scalar("model/actor_loss", np.mean(actor_losses), self.total_steps)
+                        summary_writer.add_scalar("model/alpha_loss", np.mean(alpha_losses), self.total_steps)
+                        summary_writer.add_scalar("model/alpha", tf.exp(self._log_alpha), self.total_steps)
+                        summary_writer.add_scalar("model/action_logprob_mean", np.mean(action_logprob_means), self.total_steps)
+                self.n_updates += 1
+            if experience.terminal:
+                if self.config["checkpoints"] and (total_episodes % self.config["checkpoint_every_episodes"]) == 0:
+                    self.ckpt_manager.save(total_episodes)
+                total_episodes += 1
+                summary_writer.flush()
+        summary_writer.stop()
         if self.config["save_model"]:
             self.actor_network.save_weights(str(self.monitor_path / "actor_weights"))
             self.softq_networks[0].save_weights(str(self.monitor_path / "softq_weights"))

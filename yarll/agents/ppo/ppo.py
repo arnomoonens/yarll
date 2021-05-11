@@ -13,7 +13,7 @@ from yarll.agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriti
     ActorCriticNetworkContinuous, critic_loss
 from yarll.misc.network_ops import normal_dist_log_prob
 from yarll.agents.env_runner import EnvRunner
-
+from yarll.misc import summary_writer
 
 @tf.function
 def ppo_loss(old_logprob, new_logprob, epsilon, advantage):
@@ -84,6 +84,7 @@ class PPO(Agent):
         #        summaries.append(tf.summary.histogram(v.name, v))
 
         self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
+        summary_writer.set(self.summary_writer)
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
@@ -183,55 +184,56 @@ class PPO(Agent):
         n_updates = 0
         n_steps = 0
         iteration = 0
-        with self.summary_writer.as_default():
-            while n_steps < int(config["max_steps"]):
-                # Collect trajectories until we get timesteps_per_batch total timesteps
-                states, actions, advs, rs, values, _ = self.get_processed_trajectories()
-                traj_steps = len(states)
-                n_steps += traj_steps
-                self.ckpt.save_counter.assign_add(traj_steps - 1)
-                self.set_old_to_new()
+        summary_writer.start()
+        while n_steps < int(config["max_steps"]):
+            # Collect trajectories until we get timesteps_per_batch total timesteps
+            states, actions, advs, rs, values, _ = self.get_processed_trajectories()
+            traj_steps = len(states)
+            n_steps += traj_steps
+            self.ckpt.save_counter.assign_add(traj_steps - 1)
+            self.set_old_to_new()
 
-                indices = np.arange(len(states))
-                for _ in range(int(self.config["n_epochs"])):
-                    np.random.shuffle(indices)
-                    batch_size = int(self.config["batch_size"])
-                    for j in range(0, len(states), batch_size):
-                        batch_indices = indices[j:(j + batch_size)]
-                        batch_states = np.array(states)[batch_indices]
-                        batch_actions = np.array(actions)[batch_indices]
-                        batch_advs = np.array(advs)[batch_indices]
-                        normalized_advs = (batch_advs - batch_advs.mean()) / (batch_advs.std() + 1e-8)
-                        batch_values = np.array(values)[batch_indices]
-                        batch_rs = np.array(rs)[batch_indices]
-                        train_actor_loss, train_critic_loss, train_loss, \
-                            grad_global_norm, new_log_prob, old_log_prob, new_network_output = self.train(batch_states,
-                                                                                                          batch_actions,
-                                                                                                          normalized_advs,
-                                                                                                          batch_rs)
-                        if (n_updates % self.config["summary_every_updates"]) == 0:
-                            tf.summary.scalar("model/Loss", train_loss, step=n_steps)
-                            tf.summary.scalar("model/Actor_loss", train_actor_loss, step=n_steps)
-                            tf.summary.scalar("model/Critic_loss", train_critic_loss, step=n_steps)
-                            tf.summary.scalar("model/advantage/mean", np.mean(normalized_advs), step=n_steps)
-                            tf.summary.scalar("model/advantage/std", np.std(normalized_advs), step=n_steps)
-                            tf.summary.scalar("model/new_log_prob/mean", tf.reduce_mean(new_log_prob), n_steps)
-                            tf.summary.scalar("model/old_log_prob/mean", tf.reduce_mean(old_log_prob), n_steps)
-                            tf.summary.scalar("model/old_value_pred/mean", tf.reduce_mean(batch_values), n_steps)
-                            tf.summary.scalar("model/return/mean", np.mean(batch_rs), n_steps)
-                            tf.summary.scalar("model/return/std", np.std(batch_rs), n_steps)
-                            tf.summary.scalar("model/entropy",
-                                              tf.reduce_mean(self.new_network.entropy(new_network_output)),
-                                              n_steps)
-                            tf.summary.scalar("model/action/mean", np.mean(batch_actions), n_steps)
-                            tf.summary.scalar("model/action/std", np.std(batch_actions), n_steps)
-                            tf.summary.scalar("model/grad_global_norm", grad_global_norm, n_steps)
-                            self._specific_summaries(n_steps)
-                        n_updates += 1
-                if self.config["checkpoints"] and (iteration % self.checkpoint_every_iters) == 0:
-                    self.cktp_manager.save()
-                iteration += 1
+            indices = np.arange(len(states))
+            for _ in range(int(self.config["n_epochs"])):
+                np.random.shuffle(indices)
+                batch_size = int(self.config["batch_size"])
+                for j in range(0, len(states), batch_size):
+                    batch_indices = indices[j:(j + batch_size)]
+                    batch_states = np.array(states)[batch_indices]
+                    batch_actions = np.array(actions)[batch_indices]
+                    batch_advs = np.array(advs)[batch_indices]
+                    normalized_advs = (batch_advs - batch_advs.mean()) / (batch_advs.std() + 1e-8)
+                    batch_values = np.array(values)[batch_indices]
+                    batch_rs = np.array(rs)[batch_indices]
+                    train_actor_loss, train_critic_loss, train_loss, \
+                        grad_global_norm, new_log_prob, old_log_prob, new_network_output = self.train(batch_states,
+                                                                                                      batch_actions,
+                                                                                                      normalized_advs,
+                                                                                                      batch_rs)
+                    if (n_updates % self.config["summary_every_updates"]) == 0:
+                        summary_writer.add_scalar("model/Loss", train_loss, step=n_steps)
+                        summary_writer.add_scalar("model/Actor_loss", train_actor_loss, step=n_steps)
+                        summary_writer.add_scalar("model/Critic_loss", train_critic_loss, step=n_steps)
+                        summary_writer.add_scalar("model/advantage/mean", np.mean(normalized_advs), step=n_steps)
+                        summary_writer.add_scalar("model/advantage/std", np.std(normalized_advs), step=n_steps)
+                        summary_writer.add_scalar("model/new_log_prob/mean", tf.reduce_mean(new_log_prob), n_steps)
+                        summary_writer.add_scalar("model/old_log_prob/mean", tf.reduce_mean(old_log_prob), n_steps)
+                        summary_writer.add_scalar("model/old_value_pred/mean", tf.reduce_mean(batch_values), n_steps)
+                        summary_writer.add_scalar("model/return/mean", np.mean(batch_rs), n_steps)
+                        summary_writer.add_scalar("model/return/std", np.std(batch_rs), n_steps)
+                        summary_writer.add_scalar("model/entropy",
+                                            tf.reduce_mean(self.new_network.entropy(new_network_output)),
+                                            n_steps)
+                        summary_writer.add_scalar("model/action/mean", np.mean(batch_actions), n_steps)
+                        summary_writer.add_scalar("model/action/std", np.std(batch_actions), n_steps)
+                        summary_writer.add_scalar("model/grad_global_norm", grad_global_norm, n_steps)
+                        self._specific_summaries(n_steps)
+                    n_updates += 1
+            if self.config["checkpoints"] and (iteration % self.checkpoint_every_iters) == 0:
+                self.cktp_manager.save()
+            iteration += 1
 
+        summary_writer.stop()
         if self.config["save_model"]:
             tf.saved_model.save(self.new_network, str(self.monitor_path / "model.h5"))
 
@@ -296,9 +298,9 @@ class PPOContinuous(PPO):
         return mean_actor_loss, mean_critic_loss, loss, tf.linalg.global_norm(gradients), old_log_prob, new_log_prob, new_mean
 
     def _specific_summaries(self, n_updates: int) -> None:
-        tf.summary.scalar("model/std",
-                          tf.reduce_mean(tf.exp(self.new_network.action_mean.log_std)),
-                          n_updates)
+        summary_writer.add_scalar("model/std",
+                                  tf.reduce_mean(tf.exp(self.new_network.action_mean.log_std)),
+                                  n_updates)
 
     def choose_action(self, state, features) -> dict:
         action, _, value = self.new_network.action_value(state[None, :])

@@ -5,6 +5,7 @@ import tensorflow as tf
 from yarll.agents.agent import Agent
 from yarll.environment.environment import Environment
 from yarll.policies.e_greedy import EGreedy
+from yarll.misc import summary_writer
 
 class QLearning(Agent):
     def __init__(self, env: Environment, monitor_path: str, **usercfg) -> None:
@@ -24,31 +25,33 @@ class QLearning(Agent):
         self.policy = EGreedy(self.config["epsilon"])
 
         self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
+        summary_writer.set(self.summary_writer)
 
     def learn(self):
         env = self.env
         total_steps = 0
-        with self.summary_writer.as_default():
-            for episode in range(self.config["n_episodes"]):
-                done = False
-                state = env.reset()
-                episode_reward = 0
-                episode_length = 0
-                while not done:
-                    action, Q_value = self.policy(self.Q_values[state])
-                    new_state, reward, done, _ = env.step(action)
-                    episode_reward += reward
-                    episode_length += 1
-                    total_steps += 1
-                    best_next_action = np.argmax(self.Q_values[new_state])
-                    td_target = reward + self.config["gamma"] * self.Q_values[new_state, best_next_action]
-                    td_delta = td_target - Q_value
-                    self.Q_values[state, action] += self.config["alpha"] * td_delta
+        summary_writer.start()
+        for episode in range(self.config["n_episodes"]):
+            done = False
+            state = env.reset()
+            episode_reward = 0
+            episode_length = 0
+            while not done:
+                action, Q_value = self.policy(self.Q_values[state])
+                new_state, reward, done, _ = env.step(action)
+                episode_reward += reward
+                episode_length += 1
+                total_steps += 1
+                best_next_action = np.argmax(self.Q_values[new_state])
+                td_target = reward + self.config["gamma"] * self.Q_values[new_state, best_next_action]
+                td_delta = td_target - Q_value
+                self.Q_values[state, action] += self.config["alpha"] * td_delta
 
-                    if done:
-                        tf.summary.scalar("env/reward", episode_reward, total_steps)
-                        tf.summary.scalar("env/N_episodes", episode + 1, total_steps)
-                        tf.summary.scalar("env/episode_length", episode_length, total_steps)
-                        break
+                if done:
+                    summary_writer.add_scalar("env/reward", episode_reward, total_steps)
+                    summary_writer.add_scalar("env/N_episodes", episode + 1, total_steps)
+                    summary_writer.add_scalar("env/episode_length", episode_length, total_steps)
+                    break
 
-                    state = new_state
+                state = new_state
+        summary_writer.stop()

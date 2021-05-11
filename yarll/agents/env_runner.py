@@ -1,23 +1,24 @@
 # -*- coding: utf8 -*-
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
-import tensorflow as tf
 import numpy as np
 from yarll.memory.experiences_memory import ExperiencesMemory, Experience
 from yarll.misc.scalers import LowsHighsScaler, RunningMeanStdScaler
 from yarll.misc.utils import memory_usage
+from yarll.misc import summary_writer
 
-class EnvRunner(object):
+class EnvRunner:
     """Environment runner using a policy"""
+
     def __init__(self,
                  env,
                  policy,
                  config: Dict[str, Any],
                  scale_states: bool = False,
                  state_preprocessor: Optional[Callable] = None,
-                 summaries: bool = True, # Write tensorflow summaries
-                 memory_usage: bool = True, # Include memory usage in summaries
-                 episode_rewards_file: Optional[Union[Path, str]] = None, # write each episode reward to the given file
+                 summaries: bool = True, # Write summaries
+                 memory_usage: bool = True,  # Include memory usage in summaries
+                 episode_rewards_file: Optional[Union[Path, str]] = None,  # write each episode reward to the given file
                  ) -> None:
         super().__init__()
         self.env = env
@@ -98,11 +99,12 @@ class EnvRunner(object):
                 self.total_episodes += 1
                 # summaries won't be written if there is no writer.as_default around it somewhere (e.g. in algorithm itself)
                 if self.summaries:
-                    tf.summary.scalar("env/episode_length", self.episode_steps, step=self.total_steps)
-                    tf.summary.scalar("env/episode_reward", self.episode_reward, step=self.total_steps)
-                    tf.summary.scalar("env/total_episodes", self.total_episodes, step=self.total_steps)
+                    summary_writer.add_scalar("env/episode_length", self.episode_steps, self.total_steps)
+                    summary_writer.add_scalar("env/episode_reward", self.episode_reward, self.total_steps)
+                    summary_writer.add_scalar("env/total_episodes", self.total_episodes, self.total_steps)
                     if self.memory_usage:
-                        tf.summary.scalar("diagnostics/memory_usage_mb", memory_usage() / 1e6, step=self.total_steps)
+                        summary_writer.add_scalar("diagnostics/memory_usage_mb",
+                                                  memory_usage() / 1e6, self.total_steps)
                 if self.episode_rewards_file is not None:
                     with open(self.episode_rewards_file, "a") as f:
                         f.write(f"{self.episode_reward}\n")
@@ -143,7 +145,7 @@ class EnvRunner(object):
         timesteps_total = 0
         i = 0
         while(use_timesteps and timesteps_total < self.config["timesteps_per_batch"]) or\
-            (not(use_timesteps) and i < self.config["trajectories_per_batch"]):
+                (not(use_timesteps) and i < self.config["trajectories_per_batch"]):
             i += 1
             trajectory = self.get_trajectory(stop_at_trajectory_end, render)
             trajectories.append(trajectory)

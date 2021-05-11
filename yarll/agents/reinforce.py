@@ -20,7 +20,7 @@ from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards
 from yarll.misc.network_ops import NormalDistrLayer, flatten_to_rnn, normal_dist_log_prob
 from yarll.misc.reporter import Reporter
-
+from yarll.misc import summary_writer
 
 class REINFORCE(Agent):
     """
@@ -39,11 +39,10 @@ class REINFORCE(Agent):
         # Default configuration. Can be overwritten using keyword arguments.
         self.config.update(dict(
             batch_update="timesteps",
-            timesteps_per_batch=1000,
+            timesteps_per_batch=200,
             n_iter=100,
             gamma=0.99,
             learning_rate=0.05,
-            entropy_coef=1e-3,
             n_hidden_layers=2,
             n_hidden_units=20,
             gradient_clip_value=1.0,
@@ -55,6 +54,7 @@ class REINFORCE(Agent):
         self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"],
                                                       clipnorm=self.config["gradient_clip_value"])
         self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
+        summary_writer.set(self.summary_writer)
 
     def build_network(self) -> tf.keras.Model:
         raise NotImplementedError()
@@ -88,37 +88,38 @@ class REINFORCE(Agent):
         reporter = Reporter()
         config = self.config
         total_n_trajectories = 0
-        with self.summary_writer.as_default():
-            for iteration in range(config["n_iter"]):
-                # Collect trajectories until we get timesteps_per_batch total timesteps
-                trajectories = env_runner.get_trajectories()
-                total_n_trajectories += len(trajectories)
-                all_state = np.concatenate([trajectory.states for trajectory in trajectories])
-                # Compute discounted sums of rewards
-                rets = [discount_rewards(trajectory.rewards, config["gamma"]) for trajectory in trajectories]
-                max_len = max(len(ret) for ret in rets)
-                padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
-                # Compute time-dependent baseline
-                baseline = np.mean(padded_rets, axis=0)
-                # Compute advantage function
-                advs = [ret - baseline[:len(ret)] for ret in rets]
-                all_action = np.concatenate([trajectory.actions for trajectory in trajectories])
-                all_adv = np.concatenate(advs)
-                # Do policy gradient update step
-                episode_rewards = np.array([sum(trajectory.rewards)
-                                            for trajectory in trajectories])  # episode total rewards
-                episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
-                if self.initial_features is not None:
-                    features = np.concatenate([trajectory.features for trajectory in trajectories])
-                loss, log_probs = self.train(all_state,
-                                             all_action,
-                                             all_adv,
-                                             features=tf.squeeze(features) if self.initial_features is not None else None)
-                tf.summary.scalar("model/loss", loss, step=iteration)
-                tf.summary.scalar("model/mean_advantage", np.mean(all_adv), step=iteration)
-                tf.summary.scalar("model/mean_log_prob", tf.reduce_mean(log_probs), step=iteration)
+        summary_writer.start()
+        for iteration in range(config["n_iter"]):
+            # Collect trajectories until we get timesteps_per_batch total timesteps
+            trajectories = env_runner.get_trajectories()
+            total_n_trajectories += len(trajectories)
+            all_state = np.concatenate([trajectory.states for trajectory in trajectories])
+            # Compute discounted sums of rewards
+            rets = [discount_rewards(trajectory.rewards, config["gamma"]) for trajectory in trajectories]
+            max_len = max(len(ret) for ret in rets)
+            padded_rets = [np.concatenate([ret, np.zeros(max_len - len(ret))]) for ret in rets]
+            # Compute time-dependent baseline
+            baseline = np.mean(padded_rets, axis=0)
+            # Compute advantage function
+            advs = [ret - baseline[:len(ret)] for ret in rets]
+            all_action = np.concatenate([trajectory.actions for trajectory in trajectories])
+            all_adv = np.concatenate(advs)
+            # Do policy gradient update step
+            episode_rewards = np.array([sum(trajectory.rewards)
+                                        for trajectory in trajectories])  # episode total rewards
+            episode_lengths = np.array([len(trajectory.rewards) for trajectory in trajectories])  # episode lengths
+            if self.initial_features is not None:
+                features = np.concatenate([trajectory.features for trajectory in trajectories])
+            loss, log_probs = self.train(all_state,
+                                         all_action,
+                                         all_adv,
+                                         features=tf.squeeze(features) if self.initial_features is not None else None)
+            self.summary_writer.add_scalar("model/loss", loss.numpy(), iteration)
+            self.summary_writer.add_scalar("model/mean_advantage", np.mean(all_adv), iteration)
+            self.summary_writer.add_scalar("model/mean_log_prob", tf.reduce_mean(log_probs).numpy(), iteration)
 
-                reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
+            reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
+        summary_writer.stop()
         if self.config["save_model"]:
             tf.saved_model.save(self.network, str(self.monitor_path / "model"))
 

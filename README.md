@@ -2,6 +2,7 @@
 
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/c329c8cdd744463dbda6a726e20f2383)](https://www.codacy.com/app/arnomoonens/DeepRL?utm_source=github.com&utm_medium=referral&utm_content=arnomoonens/DeepRL&utm_campaign=badger)
 
+**Update 11/05/2021**: Added PyTorch implementation of SAC.
 **Update 13/04/2021**: Converted DDPG to Tensorflow 2.
 
 ## Status
@@ -12,7 +13,7 @@ Different algorithms have currently been implemented (in no particular order):
 - [Asynchronous Advantage Actor Critic (A3C)](./yarll/agents/actorcritic/a3c.py)
 - [Deep Deterministic Policy Gradient (DDPG)](./yarll/agents/ddpg.py)
 - [Proximal Policy Optimization (PPO)](./yarll/agents/ppo/ppo.py)
-- [Soft Actor-Critic (SAC)](./yarll/agents/sac.py)
+- Soft Actor-Critic (SAC) ([TF2](./yarll/agents/sac.py), [PyTorch](./yarll/agents/pytorch/sac.py))
 - [Trust Region Policy Optimization (TRPO)](./yarll/agents/trpo/trpo.py)
 - [REINFORCE](./yarll/agents/reinforce.py) (convolutional neural network part has not been tested yet)
 - [Cross-Entropy Method](./yarll/agents/cem.py)

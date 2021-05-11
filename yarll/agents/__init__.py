@@ -14,7 +14,7 @@ register_agent(name="A2C",
                entry_point="yarll.agents.actorcritic.a2c:A2CDiscreteCNNRNN",
                state_dimensions="multi",
                action_space="discrete",
-               RNN=True
+               rnn=True
               )
 register_agent(name="A2C",
                entry_point="yarll.agents.actorcritic.a2c:A2CContinuous",
@@ -35,7 +35,7 @@ register_agent(name="A3C",
                entry_point="yarll.agents.actorcritic.a3c:A3CDiscreteCNNRNN",
                state_dimensions="multi",
                action_space="discrete",
-               RNN=True
+               rnn=True
               )
 register_agent(name="A3C",
                entry_point="yarll.agents.actorcritic.a3c:A3CContinuous",
@@ -151,7 +151,7 @@ register_agent(name="REINFORCE",
                entry_point="yarll.agents.reinforce:REINFORCEDiscreteRNN",
                state_dimensions="continuous",
                action_space="discrete",
-               RNN=True
+               rnn=True
               )
 register_agent(name="REINFORCE",
                entry_point="yarll.agents.reinforce:REINFORCEBernoulli",
@@ -167,7 +167,7 @@ register_agent(name="REINFORCE",
                entry_point="yarll.agents.reinforce:REINFORCEDiscreteCNNRNN",
                state_dimensions="multi",
                action_space="discrete",
-               RNN=True
+               rnn=True
               )
 register_agent(name="REINFORCE",
                entry_point="yarll.agents.reinforce:REINFORCEContinuous",
@@ -178,7 +178,7 @@ register_agent(name="REINFORCE",
                entry_point="yarll.agents.reinforce:REINFORCEContinuous",
                state_dimensions="continuous",
                action_space="continuous",
-               RNN=True
+               rnn=True
                )
 register_agent(name="SarsaFA",
                entry_point="yarll.agents.sarsa.sarsa_fa:SarsaFA",

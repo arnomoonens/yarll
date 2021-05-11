@@ -190,6 +190,12 @@ register_agent(name="SAC",
                state_dimensions="continuous",
                action_space="continuous"
                )
+register_agent(name="SAC",
+               entry_point="yarll.agents.pytorch:SAC",
+               state_dimensions="continuous",
+               action_space="continuous",
+               backend="pytorch",
+               )
 register_agent(name="QLearning",
                entry_point="yarll.agents.q_learning:QLearning",
                state_dimensions="discrete",

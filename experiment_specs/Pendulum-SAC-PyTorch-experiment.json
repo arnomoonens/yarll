@@ -1,0 +1,25 @@
+{
+    "experiment_name": "Pendulum-SAC",
+    "environments": {
+        "type": "single",
+        "source": "Pendulum-v0"
+    },
+    "agent": {
+        "name": "SAC",
+        "backend": "pytorch",
+        "args": {
+            "monitor_path": "/tmp/Pendulum-v0-SAC",
+            "video": false,
+            "save_model": true,
+            "monitor": true,
+            "max_steps": 20000,
+            "normalize_inputs": true,
+            "actor_learning_rate": 3e-4,
+            "softq_learning_rate": 3e-4,
+            "alpha_learning_rate": 3e-4,
+            "n_hidden_units": 128,
+            "batch_size": 256,
+            "n_train_steps": 1
+        }
+    }
+}

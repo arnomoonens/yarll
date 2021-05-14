@@ -180,6 +180,12 @@ register_agent(name="REINFORCE",
                action_space="continuous",
                rnn=True
                )
+register_agent(name="REINFORCE",
+               entry_point="yarll.agents.pytorch:REINFORCEContinuous",
+               state_dimensions="continuous",
+               action_space="continuous",
+               backend="pytorch",
+               )
 register_agent(name="SarsaFA",
                entry_point="yarll.agents.sarsa.sarsa_fa:SarsaFA",
                state_dimensions="continuous",

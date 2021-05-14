@@ -14,6 +14,7 @@ class EnvRunner:
                  env,
                  policy,
                  config: Dict[str, Any],
+                 state_dtype = np.float32, # Datatype in which states are saved and given to policy
                  scale_states: bool = False,
                  state_preprocessor: Optional[Callable] = None,
                  summaries: bool = True, # Write summaries
@@ -23,6 +24,7 @@ class EnvRunner:
         super().__init__()
         self.env = env
         self.policy = policy
+        self.state_dtype = np.dtype(state_dtype)
         self.state: Optional[np.ndarray] = None
         self.features: Any = policy.initial_features
         self.config: dict = dict(
@@ -64,14 +66,15 @@ class EnvRunner:
     def reset_env(self) -> None:
         """Reset the current environment and get the initial state"""
         self.state = self.env.reset()
+        self.state = np.asarray(self.state, dtype=self.state_dtype)
         self.state = self.state if self.state_preprocessor is None else self.state_preprocessor(self.state)
 
     def step_env(self, action):
         """
         Execute an action in the current environment.
-        ! Not used in get_steps right now.
         """
         state, reward, done, info = self.env.step(self.policy.get_env_action(action))
+        self.state = np.asarray(self.state, dtype=self.state_dtype)
         state = state if self.state_preprocessor is None else self.state_preprocessor(state)
         return state, reward, done, info
 
@@ -81,14 +84,14 @@ class EnvRunner:
             self.policy.new_trajectory()
         memory = ExperiencesMemory()
         for _ in range(n_steps):
-            input_state = np.asarray(self.state, dtype=np.float32)
-            input_state = self.scale_state(input_state) if self.scale_states else input_state
+            input_state = self.scale_state(self.state) if self.scale_states else self.state
             results = self.choose_action(input_state)
             action = results["action"]
             value = results.get("value", None)
             new_features = results.get("features", None)
             env_action = self.policy.get_env_action(action) # e.g., unnormalized action
             new_state, rew, done, _ = self.env.step(env_action)
+            new_state = np.asarray(new_state, dtype=self.state_dtype)
             memory.add(self.state, action, rew, value, terminal=done, features=self.features, next_state=new_state)
             self.state = new_state
             self.features = new_features

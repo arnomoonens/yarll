@@ -123,15 +123,15 @@ class FittedQIteration(Agent):
             actions_oh = tf.one_hot(actions, depth=self.n_actions, dtype=tf.float32)
             states_actions_oh = tf.concat([states, actions_oh], axis=1)
             history = self.q_network.fit(states_actions_oh,
-                                            target_q,
-                                            epochs=self.config["n_epochs"],
-                                            verbose=0)
+                                         target_q,
+                                         epochs=self.config["n_epochs"],
+                                         verbose=0)
             summary_writer.add_scalar("model/loss/mean",
-                                np.average(history.history["loss"]),
-                                step=self.env_runner.total_steps)
+                                      np.average(history.history["loss"]),
+                                      step=self.env_runner.total_steps)
             summary_writer.add_scalar("model/epsilon",
-                                self.epsilon,
-                                step=self.env_runner.total_steps)
+                                      self.epsilon,
+                                      step=self.env_runner.total_steps)
             self.epsilon = self.epsilon * (1.0 - self.config["epsilon_decay"])
             if self.config["checkpoints"] and (i % self.config["checkpoint_every_iterations"]) == 0:
                 self.ckpt_manager.save(i)

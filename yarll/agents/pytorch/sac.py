@@ -187,7 +187,7 @@ class SAC(Agent):
                                                 lr=self.config["actor_learning_rate"])
         # ! TF2 code has 1 optimizer per softq network
         self.softqs_optimizer = torch.optim.Adam(self.softq_networks.parameters(),
-                                                lr=self.config["softq_learning_rate"])
+                                                 lr=self.config["softq_learning_rate"])
         self.alpha_optimizer = torch.optim.Adam([self.log_alpha],
                                                 lr=self.config["alpha_learning_rate"])
 
@@ -341,7 +341,7 @@ class SAC(Agent):
             experience = self.env_runner.get_steps(1)[0]
             self.total_steps += 1
             self.replay_buffer.add(experience.state, experience.action, experience.reward,
-                                    experience.next_state, experience.terminal)
+                                   experience.next_state, experience.terminal)
             if self.replay_buffer.n_entries > self.config["replay_start_size"]:
                 for i in range(self.config["n_train_steps"]):
                     sample = self.replay_buffer.get_batch(self.config["batch_size"])
@@ -365,9 +365,9 @@ class SAC(Agent):
                     softq_losses[i] = softq_loss
                     # Update the target networks
                     if (step % self.config["critic_target_update_frequency"]) == 0:
-                            soft_update(self.softq_networks,
-                                        self.target_softq_networks,
-                                        self.config["tau"])
+                        soft_update(self.softq_networks,
+                                    self.target_softq_networks,
+                                    self.config["tau"])
                 if self.config["summaries"]:
                     summary_writer.add_scalar("model/predicted_softq_mean", np.mean(softq_means), self.total_steps)
                     summary_writer.add_scalar("model/predicted_softq_std", np.mean(softq_stds), self.total_steps)
@@ -386,7 +386,8 @@ class SAC(Agent):
                                                episode_end_time - episode_start_time,
                                                self.total_steps)
                 if self.config["checkpoints"] and (total_episodes % self.config["checkpoint_every_episodes"]) == 0:
-                    torch.save(self.actor_network.state_dict(), self.checkpoint_directory / f"actor_ep{total_episodes}.pt")
+                    torch.save(self.actor_network.state_dict(),
+                               self.checkpoint_directory / f"actor_ep{total_episodes}.pt")
                 total_episodes += 1
                 episode_start_time = time()
 
@@ -444,8 +445,6 @@ class ActorNetwork(nn.Module):
         super().__init__()
 
         self.trunk = mlp(obs_dim, 2 * n_actions, n_hidden_units, n_hidden_layers)
-
-        self.outputs = dict()
 
     def forward(self, obs):
         mu, scale = self.trunk(obs).chunk(2, dim=-1)

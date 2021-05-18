@@ -12,7 +12,6 @@ import numpy as np
 from gym import wrappers
 import torch
 from torch import nn
-import torch.nn.functional as F
 from torch import distributions as pyd
 from torch.utils.tensorboard import SummaryWriter
 
@@ -114,7 +113,8 @@ class REINFORCE(Agent):
             summary_writer.add_scalar("model/loss", loss, iteration)
             summary_writer.add_scalar("model/mean_advantage", np.mean(all_adv), iteration)
             summary_writer.add_scalar("model/mean_log_prob", np.mean(log_probs), iteration)
-            summary_writer.add_scalar("model/mean_log_std", self.network.log_std.mean().cpu().detach().numpy(), iteration)
+            summary_writer.add_scalar("model/mean_log_std",
+                                      self.network.log_std.mean().cpu().detach().numpy(), iteration)
             summary_writer.add_scalar("model/mean_action", np.mean(all_action), iteration)
             summary_writer.add_scalar("diagnostics/iteration_duration_seconds", time() - start_time, iteration)
 

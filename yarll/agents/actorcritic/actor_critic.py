@@ -15,7 +15,6 @@ from yarll.misc.network_ops import CategoricalProbabilityDistribution, MultiCate
     NormalDistrLayer, normal_dist_log_prob, categorical_dist_entropy, bernoulli_dist_entropy
 
 class ActorCriticNetwork(Model):
-
     def entropy(self, *args):
         raise NotImplementedError()
 
@@ -208,6 +207,7 @@ class ActorCriticNetworkDiscreteCNNRNN(ActorCriticNetwork):
                                dtype=tf.float32)
         return tf.reduce_sum(map_result, axis=0)
 
+@tf.function
 def actor_discrete_loss(actions, advantages, logits):
     """
     Adapted from: http://inoryy.com/post/tensorflow2-deep-reinforcement-learning/
@@ -226,6 +226,7 @@ def actor_discrete_loss(actions, advantages, logits):
     # return policy_loss - self.params['entropy']*entropy_loss
     return policy_loss
 
+@tf.function
 def critic_loss(returns, value):
     return tf.square(value - returns)
 
@@ -262,6 +263,7 @@ class ActorCriticNetworkContinuous(ActorCriticNetwork):
     def deterministic_actions(self, inp):
         return self.action_mean(self.policy_hidden(inp))[1]
 
+@tf.function
 def actor_continuous_loss(actions_taken, mean, log_std, advantage):
     action_log_prob = normal_dist_log_prob(actions_taken, mean, log_std)
     loss = action_log_prob * advantage

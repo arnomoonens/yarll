@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 from yarll.agents.ppo.dppo import DPPO
 from yarll.agents.trpo.trpo import trpo_loss
 from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\

@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 #  Policy Gradient Implementation
 #  Adapted for Tensorflow
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html

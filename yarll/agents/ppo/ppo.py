@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 import csv
 from pathlib import Path
 import tensorflow as tf

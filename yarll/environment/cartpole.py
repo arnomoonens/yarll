@@ -30,7 +30,7 @@ class CartPole(DescriptionWrapper):
         self.length = length
         self.masspole = masspole
         self.masscart = masscart
-        super(CartPole, self).__init__(gym.make("OldCartPole-v0"), **kwargs)
+        super().__init__(gym.make("OldCartPole-v0"), **kwargs)
         self.change_parameters(length=length, masspole=masspole, masscart=masscart)
         self.metadata["parameters"].update(self.changeable_parameters_values())
 

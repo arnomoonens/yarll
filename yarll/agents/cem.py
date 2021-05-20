@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 #  Cross-Entropy Method
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab1.html
 

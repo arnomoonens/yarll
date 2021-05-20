@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
-
 import argparse
 import os
 import tensorflow as tf

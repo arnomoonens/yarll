@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 from gym import wrappers
 
 from yarll.policies.e_greedy import EGreedy

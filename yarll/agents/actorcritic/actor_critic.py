@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 """
 Functions and networks for actor-critic agents.
 """

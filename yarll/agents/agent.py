@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 class Agent:
     """Reinforcement learning agent"""
     def __init__(self, **usercfg):

@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 from itertools import count
 import numpy as np
 import tensorflow as tf

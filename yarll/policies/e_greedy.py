@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 import numpy as np
 from yarll.policies.policy import Policy
 

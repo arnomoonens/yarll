@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 import os
 import logging
 from typing import Optional, Tuple

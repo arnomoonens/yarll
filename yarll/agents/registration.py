@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 from yarll.misc.utils import load
 from yarll.misc.exceptions import ClassNotRegisteredError
 

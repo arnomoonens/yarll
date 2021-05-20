@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 class Policy:
     """Decides which action to take."""
 

@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 """
 Asynchronous Advantage Actor Critic (A3C)
 Most of the work is done in `a3c_worker.py`.

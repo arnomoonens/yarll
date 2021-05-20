@@ -1,6 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf8 -*-
-
 import os
 import queue
 import threading

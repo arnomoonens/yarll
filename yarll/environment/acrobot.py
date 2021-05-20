@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 import gym
 from yarll.environment.wrappers import DescriptionWrapper
 

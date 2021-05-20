@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 from collections import deque
 import random
 from typing import Dict, List, Optional, Union

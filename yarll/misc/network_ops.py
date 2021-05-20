@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 from functools import partial
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Lambda

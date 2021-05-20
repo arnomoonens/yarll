@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 # Inspired by https://github.com/openai/gym/blob/master/gym/envs/registration.py
 # When making an environment, we first look if we registered a version of it ourselves.
 # Else, we make just make one using the Environment class.

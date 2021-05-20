@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 import gym
 import numpy as np
 

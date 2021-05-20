@@ -1,5 +1,3 @@
-# -*- coding: utf8 -*-
-
 from yarll.actionselection.action_selection import ActionSelection
 import numpy as np
 

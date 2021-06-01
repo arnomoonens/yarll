@@ -1,7 +1,7 @@
 from gym import wrappers
 
 from yarll.policies.e_greedy import EGreedy
-from yarll.agents.sarsa import Sarsa
+from yarll.agents.basic.sarsa import Sarsa
 from yarll.traces.eligibility_traces import EligibilityTraces
 from yarll.functionapproximation.tile_coding import TileCoding
 

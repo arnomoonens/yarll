@@ -6,8 +6,8 @@ from mpi4py import MPI
 import numpy as np
 
 from yarll.agents.agent import Agent
-from yarll.agents.ppo.ppo import ppo_loss
-from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
+from yarll.agents.tf2.ppo.ppo import ppo_loss
+from yarll.agents.tf2.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
 from yarll.misc.utils import FastSaver
 

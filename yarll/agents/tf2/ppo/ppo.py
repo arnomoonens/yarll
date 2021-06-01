@@ -6,7 +6,7 @@ import numpy as np
 from gym import wrappers
 
 from yarll.agents.agent import Agent
-from yarll.agents.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
+from yarll.agents.tf2.actorcritic.actor_critic import ActorCriticNetwork, ActorCriticNetworkDiscrete,\
     ActorCriticNetworkMultiDiscrete, ActorCriticNetworkBernoulli, ActorCriticNetworkDiscreteCNN, \
     ActorCriticNetworkContinuous, critic_loss
 from yarll.misc.network_ops import normal_dist_log_prob

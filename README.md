@@ -10,24 +10,24 @@
 
 Different algorithms have currently been implemented (in no particular order):
 
-- [Advantage Actor Critic](./yarll/agents/actorcritic/a2c.py)
-- [Asynchronous Advantage Actor Critic (A3C)](./yarll/agents/actorcritic/a3c.py)
-- [Deep Deterministic Policy Gradient (DDPG)](./yarll/agents/ddpg.py)
-- [Proximal Policy Optimization (PPO)](./yarll/agents/ppo/ppo.py)
-- Soft Actor-Critic (SAC) ([TF2](./yarll/agents/sac.py), [PyTorch](./yarll/agents/pytorch/sac.py))
-- [Trust Region Policy Optimization (TRPO)](./yarll/agents/trpo/trpo.py)
-- REINFORCE ([TF2](./yarll/agents/reinforce.py), [PyTorch](./yarll/agents/pytorch/reinforce.py)) (convolutional neural network part has not been tested yet)
-- [Cross-Entropy Method](./yarll/agents/cem.py)
-- [Q-Learning](./yarll/agents/q_learning.py)
-- [Deep Q-Learning](./yarll/agents/dqn.py)
-- [Fitted Q Iteration](./yarll/agents/fitted_q.py)
-- [Sarsa with with function approximation and eligibility traces](./yarll/agents/sarsa/sarsa_fa.py)
-- [(Sequential) knowledge transfer](./yarll/agents/knowledgetransfer/knowledge_transfer.py)
-- [Asynchronous knowledge transfer](./yarll/agents/knowledgetransfer/async_knowledge_transfer.py)
+- [Advantage Actor Critic](./yarll/agents/tf2/actorcritic/a2c.py)
+- [Asynchronous Advantage Actor Critic (A3C)](./yarll/agents/tf1/actorcritic/a3c.py)
+- [Deep Deterministic Policy Gradient (DDPG)](./yarll/agents/tf2/ddpg.py)
+- [Proximal Policy Optimization (PPO)](./yarll/agents/tf2/ppo/ppo.py)
+- Soft Actor-Critic (SAC) ([TF2](./yarll/agents/tf2/sac.py), [PyTorch](./yarll/agents/pytorch/sac.py))
+- [Trust Region Policy Optimization (TRPO)](./yarll/agents/tf2/trpo/trpo.py)
+- REINFORCE ([TF2](./yarll/agents/tf2/reinforce.py), [PyTorch](./yarll/agents/pytorch/reinforce.py)) (convolutional neural network part has not been tested yet)
+- [Cross-Entropy Method](./yarll/agents/basic/cem.py)
+- [Q-Learning](./yarll/agents/basic/q_learning.py)
+- [Deep Q-Learning](./yarll/agents/tf2/dqn.py)
+- [Fitted Q Iteration](./yarll/agents/tf2/fitted_q.py)
+- [Sarsa with with function approximation and eligibility traces](./yarll/agents/basic/sarsa/sarsa_fa.py)
+- [(Sequential) knowledge transfer](./yarll/agents/tf1/knowledgetransfer/knowledge_transfer.py)
+- [Asynchronous knowledge transfer](./yarll/agents/tf1/knowledgetransfer/async_knowledge_transfer.py)
 
 ## Asynchronous Advantage Actor Critic (A3C)
 
-The code for this algorithm can be found [here](./yarll/agents/actorcritic/a3c.py).
+The code for this algorithm can be found [here](./yarll/agents/tf1/actorcritic/a3c.py).
 Example run after training using 16 threads for a total of 5 million timesteps on the _PongDeterministic-v4_ environment:
 
 ![Pong example run](./results/pong.gif)

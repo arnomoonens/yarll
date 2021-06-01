@@ -1,7 +1,7 @@
 # -*- coding: utf8 -*-
 import tensorflow as tf
 
-from yarll.agents.ppo.ppo import PPO, PPOContinuous, PPODiscrete, PPODiscreteCNN
+from yarll.agents.tf2.ppo.ppo import PPO, PPOContinuous, PPODiscrete, PPODiscreteCNN
 from yarll.misc.network_ops import kl_divergence
 
 def trpo_loss(old_log, new_log, beta, advantage):

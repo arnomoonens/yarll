@@ -10,7 +10,8 @@ import tensorflow as tf
 
 from yarll.environment.registration import make
 from yarll.misc.utils import load, json_to_dict
-from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, actor_critic_discrete_loss, ActorCriticNetworkContinuous, actor_critic_continuous_loss
+from yarll.agents.tf2.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, \
+    ActorCriticNetworkDiscreteCNNRNN, actor_critic_discrete_loss, ActorCriticNetworkContinuous, actor_critic_continuous_loss
 from yarll.agents.env_runner import EnvRunner
 
 

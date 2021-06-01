@@ -9,7 +9,7 @@ from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards, FastSaver
 from yarll.misc.reporter import Reporter
-from yarll.agents.knowledgetransfer import TaskPolicy
+from yarll.agents.tf1.knowledgetransfer import TaskPolicy
 
 class AKTThread(Thread):
     """Asynchronous knowledge transfer learner thread. Used to learn using one specific variation of a task."""

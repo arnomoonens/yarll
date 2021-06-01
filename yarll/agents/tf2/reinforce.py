@@ -3,16 +3,18 @@
 #  Source: http://rl-gym-doc.s3-website-us-west-2.amazonaws.com/mlss/lab2.html
 
 from pathlib import Path
+from time import time
 from typing import Dict
-import numpy as np
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Conv2D, Flatten, GRU
 from tensorflow.keras import Model, Sequential
 import tensorflow_addons as tfa
+from torch.utils.tensorboard import SummaryWriter
 from gym import wrappers
 
-from yarll.agents.actorcritic.actor_critic import actor_continuous_loss
+from yarll.agents.tf2.actorcritic.actor_critic import actor_continuous_loss
 from yarll.agents.agent import Agent
 from yarll.agents.env_runner import EnvRunner
 from yarll.misc.utils import discount_rewards
@@ -51,7 +53,7 @@ class REINFORCE(Agent):
         self.network = self.build_network()
         self.optimizer = tfa.optimizers.RectifiedAdam(learning_rate=self.config["learning_rate"],
                                                       clipnorm=self.config["gradient_clip_value"])
-        self.summary_writer = tf.summary.create_file_writer(str(self.monitor_path))
+        self.summary_writer = SummaryWriter(self.monitor_path)
         summary_writer.set(self.summary_writer)
 
     def build_network(self) -> tf.keras.Model:
@@ -88,6 +90,7 @@ class REINFORCE(Agent):
         total_n_trajectories = 0
         summary_writer.start()
         for iteration in range(config["n_iter"]):
+            start_time = time()
             # Collect trajectories until we get timesteps_per_batch total timesteps
             trajectories = env_runner.get_trajectories()
             total_n_trajectories += len(trajectories)
@@ -112,9 +115,12 @@ class REINFORCE(Agent):
                                          all_action,
                                          all_adv,
                                          features=tf.squeeze(features) if self.initial_features is not None else None)
-            self.summary_writer.add_scalar("model/loss", loss.numpy(), iteration)
-            self.summary_writer.add_scalar("model/mean_advantage", np.mean(all_adv), iteration)
-            self.summary_writer.add_scalar("model/mean_log_prob", tf.reduce_mean(log_probs).numpy(), iteration)
+            summary_writer.add_scalar("model/loss", loss.numpy(), iteration)
+            summary_writer.add_scalar("model/mean_advantage", np.mean(all_adv), iteration)
+            summary_writer.add_scalar("model/mean_log_prob", tf.reduce_mean(log_probs).numpy(), iteration)
+            summary_writer.add_scalar("model/min_log_prob", tf.reduce_min(log_probs).numpy(), iteration)
+            summary_writer.add_scalar("model/max_log_prob", tf.reduce_max(log_probs).numpy(), iteration)
+            summary_writer.add_scalar("diagnostics/iteration_duration_seconds", time() - start_time, iteration)
 
             reporter.print_iteration_stats(iteration, episode_rewards, episode_lengths, total_n_trajectories)
         summary_writer.stop()
@@ -333,6 +339,8 @@ class REINFORCEContinuous(REINFORCE):
         self.rnn = rnn
         self.initial_features = tf.zeros((1, self.config["n_hidden_units"])) if rnn else None
         super().__init__(env, monitor_path, log_std_init=log_std_init, video=video, **usercfg)
+        self.action_low = env.action_space.low
+        self.action_high = env.action_space.high
 
     def build_network(self):
         return self.build_network_rnn() if self.rnn else self.build_network_normal()
@@ -347,9 +355,13 @@ class REINFORCEContinuous(REINFORCE):
             inp = state
         res = self.network(inp)
         action = res[0][0]
-        action = np.clip(action, -1, 1)
-        action = (action + 1) / 2 * self.env.action_space.high
         return {"action": action, "features": res[2] if self.rnn else None}
+
+    def get_env_action(self, action):
+        """
+        Converts an action from self.choose_action to an action to be given to the environment.
+        """
+        return self.action_low + (action + 1.0) * 0.5 * (self.action_high - self.action_low)
 
     def build_network_normal(self):
         return ActorContinuous(self.config["n_hidden_layers"],

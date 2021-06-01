@@ -12,7 +12,7 @@ from gym import wrappers
 from yarll.environment.registration import make
 from yarll.misc.network_ops import create_sync_net_op
 from yarll.misc.utils import discount_rewards, FastSaver, load, json_to_dict, cluster_spec
-from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, \
+from yarll.agents.tf1.actorcritic.actor_critic import ActorCriticNetworkDiscrete, ActorCriticNetworkDiscreteCNN, \
 ActorCriticNetworkDiscreteCNNRNN, actor_critic_discrete_loss, ActorCriticNetworkContinuous, actor_critic_continuous_loss
 from yarll.memory.experiences_memory import ExperiencesMemory
 

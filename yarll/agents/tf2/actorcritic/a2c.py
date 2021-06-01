@@ -8,7 +8,7 @@ import numpy as np
 from gym import wrappers
 
 from yarll.agents.agent import Agent
-from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
+from yarll.agents.tf2.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkDiscreteCNNRNN, actor_discrete_loss,\
     critic_loss, ActorCriticNetworkContinuous, actor_continuous_loss
 from yarll.agents.env_runner import EnvRunner

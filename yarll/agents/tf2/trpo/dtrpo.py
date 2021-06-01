@@ -1,6 +1,6 @@
-from yarll.agents.ppo.dppo import DPPO
-from yarll.agents.trpo.trpo import trpo_loss
-from yarll.agents.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
+from yarll.agents.tf2.ppo.dppo import DPPO
+from yarll.agents.tf2.trpo.trpo import trpo_loss
+from yarll.agents.tf2.actorcritic.actor_critic import ActorCriticNetworkDiscrete,\
     ActorCriticNetworkDiscreteCNN, ActorCriticNetworkContinuous
 
 class DTRPO(DPPO):

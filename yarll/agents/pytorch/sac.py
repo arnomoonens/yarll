@@ -99,7 +99,6 @@ class DeterministicPolicy:
 def hard_update(source_network, target_network):
     target_network.load_state_dict(source_network.state_dict())
 
-
 def soft_update(source_network, target_network, tau):
     for source_param, target_param in zip(source_network.parameters(), target_network.parameters()):
         target_param.data.copy_(tau * source_param.data +
@@ -195,10 +194,8 @@ class SAC(Agent):
         self.total_steps = 0
         self.total_episodes = 0
         if self.config["summaries"]:
-            self.summary_writer = SummaryWriter(str(self.monitor_path))
-            summary_writer.set(self.summary_writer)
-        else:
-            self.summary_writer = None
+            new_summary_writer = SummaryWriter(str(self.monitor_path))
+            summary_writer.set(new_summary_writer)
 
         self.env_runner = EnvRunner(self.env,
                                     self,
@@ -380,9 +377,9 @@ class SAC(Agent):
                 self.n_updates += 1
             if experience.terminal:
                 episode_end_time = time()
-                self.summary_writer.add_scalar("diagnostics/episode_duration_seconds",
-                                               episode_end_time - episode_start_time,
-                                               self.total_steps)
+                summary_writer.add_scalar("diagnostics/episode_duration_seconds",
+                                          episode_end_time - episode_start_time,
+                                          self.total_steps)
                 if self.config["checkpoints"] and (total_episodes % self.config["checkpoint_every_episodes"]) == 0:
                     torch.save(self.actor_network.state_dict(),
                                self.checkpoint_directory / f"actor_ep{total_episodes}.pt")

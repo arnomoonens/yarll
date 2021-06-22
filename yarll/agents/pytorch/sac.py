@@ -222,7 +222,7 @@ class SAC(Agent):
                                              deterministic_policy,
                                              usercfg,
                                              scale_states=self.config["normalize_inputs"],
-                                             summary_writer=None,
+                                             summaries=False,
                                              episode_rewards_file=(
                                                  self.monitor_path / "test_rewards.txt")
                                              )

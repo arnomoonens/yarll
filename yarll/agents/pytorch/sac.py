@@ -194,13 +194,13 @@ class SAC(Agent):
         self.total_steps = 0
         self.total_episodes = 0
         if self.config["summaries"]:
-            new_summary_writer = SummaryWriter(str(self.monitor_path))
-            summary_writer.set(new_summary_writer)
+            self.summary_writer = SummaryWriter(str(self.monitor_path))
+            summary_writer.set(self.summary_writer)
 
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    scale_states=self.config["normalize_inputs"],
+                                    transition_preprocessor=self.config.get("transition_preprocessor", None),
                                     summaries=self.config["summaries"],
                                     episode_rewards_file=(
                                         self.monitor_path / "train_rewards.txt" if self.config["write_train_rewards"] else None)
@@ -221,8 +221,8 @@ class SAC(Agent):
             self.test_env_runner = EnvRunner(test_env,
                                              deterministic_policy,
                                              usercfg,
-                                             scale_states=self.config["normalize_inputs"],
                                              summary_writer=None,
+                                             transition_preprocessor=self.config.get("transition_preprocessor", None),
                                              episode_rewards_file=(
                                                  self.monitor_path / "test_rewards.txt")
                                              )

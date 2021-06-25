@@ -228,7 +228,7 @@ class SAC(Agent):
             self.test_env_runner = EnvRunner(test_env,
                                              deterministic_policy,
                                              usercfg,
-                                             summary_writer=None,
+                                             summaries=False,
                                              transition_preprocessor=self.config.get("transition_preprocessor", None),
                                              episode_rewards_file=(
                                                  self.monitor_path / "test_rewards.txt")

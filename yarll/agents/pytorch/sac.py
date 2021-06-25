@@ -104,6 +104,13 @@ def soft_update(source_network, target_network, tau):
         target_param.data.copy_(tau * source_param.data +
                                 (1 - tau) * target_param.data)
 
+def weight_init(m):
+    """Custom weight init for Conv2D and Linear layers."""
+    if isinstance(m, nn.Linear):
+        nn.init.orthogonal_(m.weight.data)
+        if hasattr(m.bias, 'data'):
+            m.bias.data.fill_(0.0)
+
 def to_numpy(x):
     return x.cpu().detach().numpy()
 
@@ -118,25 +125,25 @@ class SAC(Agent):
             max_steps=100000,
             actor_learning_rate=3e-4,
             softq_learning_rate=3e-4,
-            alpha_learning_rate=3e-4,
+            alpha_learning_rate=1e-4,
             reward_scale=1.0,
             n_hidden_layers=2,
-            n_hidden_units=1024,
+            n_hidden_units=256,
             gamma=0.99,
-            batch_size=1024,
+            batch_size=256,
             tau=0.005,
             init_log_alpha=0.1,
             actor_update_frequency=1,
-            critic_target_update_frequency=1,
+            critic_target_update_frequency=2,
             target_entropy=None,
             logprob_epsilon=1e-6,  # For numerical stability when computing log
             n_train_steps=1,  # Number of parameter update steps per iteration
             replay_buffer_size=1e6,
-            replay_start_size=1000,  # Required number of replay buffer entries to start training
+            replay_start_size=256,  # Required number of replay buffer entries to start training
             gradient_clip_value=1.0,
             hidden_layer_activation="relu",
             device="cpu",
-            normalize_inputs=False,
+            normalize_inputs=False, # TODO: handle this
             summaries=True,
             checkpoints=True,
             checkpoint_every_episodes=10,
@@ -440,6 +447,7 @@ class ActorNetwork(nn.Module):
         super().__init__()
 
         self.trunk = mlp(obs_dim, 2 * n_actions, n_hidden_units, n_hidden_layers)
+        self.apply(weight_init)
 
     def forward(self, obs):
         mu, scale = self.trunk(obs).chunk(2, dim=-1)
@@ -456,8 +464,7 @@ class DoubleQCriticNetwork(nn.Module):
 
         self.Q1 = mlp(obs_dim + action_dim, 1, n_hidden_units, n_hidden_layers)
         self.Q2 = mlp(obs_dim + action_dim, 1, n_hidden_units, n_hidden_layers)
-
-        self.outputs = dict()
+        self.apply(weight_init)
 
     def forward(self, obs, action):
         assert obs.size(0) == action.size(0)

@@ -75,7 +75,10 @@ class A2C(Agent):
 
     def learn(self):
         """Run learning algorithm"""
-        env_runner = EnvRunner(self.env, self, self.config)
+        env_runner = EnvRunner(self.env, self, self.config,
+                               summaries_every_episodes=self.config.get("env_summaries_every_episodes", None),
+                               transition_preprocessor=self.config.get("transition_preprocessor", None),
+                               )
         config = self.config
         summary_writer.start()
         for iteration in range(int(config["n_iter"])):

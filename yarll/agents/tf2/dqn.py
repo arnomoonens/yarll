@@ -47,7 +47,7 @@ class DQN(Agent):
             replay_buffer_size=1e6,
             replay_start_size=32,  # Required number of replay buffer entries to start training
             hidden_layer_activation="relu",
-            normalize_inputs=False,
+            normalize_inputs=False,  # TODO: handle this
             summaries=True,
             checkpoints=True,
             save_model=True,
@@ -74,8 +74,9 @@ class DQN(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    scale_states=self.config["normalize_inputs"],
                                     summaries=self.config["summaries"],
+                                    summaries_every_episodes=self.config.get("env_summaries_every_episodes", None),
+                                    transition_preprocessor=self.config.get("transition_preprocessor", None),
                                     episode_rewards_file=(
                                         self.monitor_path / "train_rewards.txt" if self.config["write_train_rewards"] else None)
                                     )

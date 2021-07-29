@@ -145,6 +145,7 @@ class SAC(Agent):
             device="cpu",
             normalize_inputs=False, # TODO: handle this
             summaries=True,
+            summaries_every_steps=None, # If None, add them every time
             checkpoints=True,
             checkpoint_every_episodes=10,
             checkpoints_max_to_keep=None,
@@ -201,6 +202,7 @@ class SAC(Agent):
         self.total_steps = 0
         self.total_episodes = 0
         if self.config["summaries"]:
+            self.summaries_every_steps = self.config["summaries_every_steps"] or 1
             self.summary_writer = SummaryWriter(str(self.monitor_path))
             summary_writer.set(self.summary_writer)
 
@@ -209,6 +211,7 @@ class SAC(Agent):
                                     usercfg,
                                     transition_preprocessor=self.config.get("transition_preprocessor", None),
                                     summaries=self.config["summaries"],
+                                    summaries_every_episodes=self.config.get("env_summaries_every_episodes", None),
                                     episode_rewards_file=(
                                         self.monitor_path / "train_rewards.txt" if self.config["write_train_rewards"] else None)
                                     )
@@ -370,7 +373,7 @@ class SAC(Agent):
                         soft_update(self.softq_networks,
                                     self.target_softq_networks,
                                     self.config["tau"])
-                if self.config["summaries"]:
+                if self.config["summaries"] and (self.total_steps % self.summaries_every_steps) == 0:
                     summary_writer.add_scalar("model/predicted_softq_mean", np.mean(softq_means), self.total_steps)
                     summary_writer.add_scalar("model/predicted_softq_std", np.mean(softq_stds), self.total_steps)
                     summary_writer.add_scalar("model/softq_targets", softq_targets.mean(), self.total_steps)

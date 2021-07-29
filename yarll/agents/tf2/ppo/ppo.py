@@ -45,7 +45,7 @@ class PPO(Agent):
             max_steps=500000,
             batch_size=64,  # Timesteps per training batch
             n_local_steps=256,
-            normalize_states=False,
+            normalize_states=False,  # TODO: handle this
             gradient_clip_value=None,
             vf_coef=0.5,
             entropy_coef=0.01,
@@ -86,7 +86,9 @@ class PPO(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     usercfg,
-                                    scale_states=self.config["normalize_states"])
+                                    summaries_every_episodes=self.config.get("env_summaries_every_episodes", None),
+                                    transition_preprocessor=self.config.get("transition_preprocessor", None),
+                                    )
 
         optim_kwargs = {k: self.config[l]
                         for k, l in [("clipnorm", "gradient_clip_value")] if self.config[l] is not None}
@@ -102,7 +104,6 @@ class PPO(Agent):
 
     def _specific_summaries(self, n_updates: int) -> None:
         """Summaries that are specific to the variant of the algorithm."""
-        return
 
     @tf.function
     def _actor_loss(self, old_logprob, new_logprob, advantage):

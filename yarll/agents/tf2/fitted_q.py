@@ -35,7 +35,7 @@ class FittedQIteration(Agent):
             batch_update="trajectories",
             trajectories_per_batch=1,
             n_epochs=5,
-            normalize_states=False,
+            normalize_states=False,  # TODO: handle this
             checkpoints=True,
             checkpoint_every_iterations=10,
             checkpoints_max_to_keep=None,
@@ -67,7 +67,9 @@ class FittedQIteration(Agent):
         self.env_runner = EnvRunner(self.env,
                                     self,
                                     self.config,
-                                    scale_states=self.config["normalize_states"])
+                                    summaries_every_episodes=self.config.get("env_summaries_every_episodes", None),
+                                    transition_preprocessor=self.config.get("transition_preprocessor", None),
+                                    )
 
     def make_q_network(self):
         model = tf.keras.Sequential()

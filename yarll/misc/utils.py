@@ -77,7 +77,13 @@ def save_config(directory: Union[str, Path],
                 envs: Sequence[Union[str, Dict[str, Any]]],
                 repo_path: Union[str, Path] = Path(__file__).parent / "../../") -> None:
     """Save the configuration of an agent to a file."""
-    filtered_config = {k: v for k, v in config.items() if not k.startswith("env")}
+    filtered_config = {}
+    for k, v in config.items():
+        if k.startswith("env"):
+            continue
+        if callable(v):
+            v = v.__str__()
+        filtered_config[k] = v
     filtered_config["envs"] = envs
     # Save git information if possible
     git_dir = Path(repo_path) / ".git"

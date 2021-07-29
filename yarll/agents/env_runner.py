@@ -2,8 +2,7 @@
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
-from yarll.memory.experiences_memory import ExperiencesMemory, Experience
-from yarll.misc.scalers import LowsHighsScaler, RunningMeanStdScaler
+from yarll.memory.experiences_memory import ExperiencesMemory
 from yarll.misc.utils import memory_usage
 from yarll.misc import summary_writer
 
@@ -15,10 +14,10 @@ class EnvRunner:
                  policy,
                  config: Dict[str, Any],
                  state_dtype = np.float32, # Datatype in which states are saved and given to policy
-                 scale_states: bool = False,
-                 state_preprocessor: Optional[Callable] = None,
+                 transition_preprocessor: Optional[Callable] = None,
                  summaries: bool = True, # Write summaries
-                 memory_usage: bool = True,  # Include memory usage in summaries
+                 summaries_every_episodes: Optional[int] = None, # If None, write one every episode
+                 memory_usage_summary: bool = True,  # Include memory usage in summaries
                  episode_rewards_file: Optional[Union[Path, str]] = None,  # write each episode reward to the given file
                  ) -> None:
         super().__init__()
@@ -37,37 +36,25 @@ class EnvRunner:
         self.episode_reward: float = 0.0
         self.episodes_rewards: List[float] = []
         self.config.update(config)
-        self.state_preprocessor = state_preprocessor
+        self.transition_preprocessor = transition_preprocessor if transition_preprocessor is not None else \
+            lambda state, action, reward, new_state, done, info: (state, action, reward, new_state, done)
         self.summaries = summaries
-        self.memory_usage = memory_usage
+        self.summaries_every_episodes = summaries_every_episodes or 1 # If None, write one every episode, i.e. ep % 1 == 0
+        self.memory_usage_summary = memory_usage_summary
         self.episode_rewards_file = episode_rewards_file
         self.total_steps = 0
         self.total_episodes = 0
 
-        # Normalize states before giving it as input to the network.
-        # Mean and std are only updated at the end of `get_steps`.
-        self.scale_states = scale_states
-        if scale_states:
-            # check obs space
-            if all(np.isfinite(np.append(env.observation_space.low, env.observation_space.high))):
-                self.state_scaler = LowsHighsScaler(env.observation_space.low, env.observation_space.high)
-            else:
-                print("Warning: No observation space bounds, scaling with RunningMeanStdScaler.")
-                self.state_scaler = RunningMeanStdScaler(self.env.observation_space.shape)
         self.reset_env()
 
     def choose_action(self, state: np.ndarray):
         """Choose an action based on the current state in the environment."""
         return self.policy.choose_action(state, self.features)
 
-    def scale_state(self, state: np.ndarray) -> np.ndarray:
-        return self.state_scaler.scale(state)
-
     def reset_env(self) -> None:
         """Reset the current environment and get the initial state"""
         self.state = self.env.reset()
         self.state = np.asarray(self.state, dtype=self.state_dtype)
-        self.state = self.state if self.state_preprocessor is None else self.state_preprocessor(self.state)
 
     def step_env(self, action):
         """
@@ -75,24 +62,33 @@ class EnvRunner:
         """
         state, reward, done, info = self.env.step(self.policy.get_env_action(action))
         self.state = np.asarray(self.state, dtype=self.state_dtype)
-        state = state if self.state_preprocessor is None else self.state_preprocessor(state)
         return state, reward, done, info
 
-    def get_steps(self, n_steps: int, reset: bool = False, stop_at_trajectory_end: bool = True, render: bool = False) -> ExperiencesMemory:
+    def get_steps(self,
+                  n_steps: int,
+                  reset: bool = False,
+                  stop_at_trajectory_end: bool = True,
+                  render: bool = False) -> ExperiencesMemory:
         if reset:
             self.reset_env()
             self.policy.new_trajectory()
         memory = ExperiencesMemory()
         for _ in range(n_steps):
-            input_state = self.scale_state(self.state) if self.scale_states else self.state
-            results = self.choose_action(input_state)
+            results = self.choose_action(self.state)
             action = results["action"]
             value = results.get("value", None)
             new_features = results.get("features", None)
             env_action = self.policy.get_env_action(action) # e.g., unnormalized action
-            new_state, rew, done, _ = self.env.step(env_action)
+            new_state, rew, done, info = self.env.step(env_action)
             new_state = np.asarray(new_state, dtype=self.state_dtype)
-            memory.add(self.state, action, rew, value, terminal=done, features=self.features, next_state=new_state)
+            proc_state, proc_action, proc_rew, proc_new_state, proc_done = self.transition_preprocessor(self.state,
+                                                                                                        action,
+                                                                                                        rew,
+                                                                                                        new_state,
+                                                                                                        done,
+                                                                                                        info)
+            memory.add(proc_state, proc_action, proc_rew, value, terminal=proc_done, features=self.features,
+                       next_state=proc_new_state)
             self.state = new_state
             self.features = new_features
             self.episode_reward += rew
@@ -101,11 +97,11 @@ class EnvRunner:
             if done or self.episode_steps >= self.config["episode_max_length"]:
                 self.total_episodes += 1
                 # summaries won't be written if there is no writer.as_default around it somewhere (e.g. in algorithm itself)
-                if self.summaries:
+                if self.summaries and (self.total_episodes % self.summaries_every_episodes) == 0:
                     summary_writer.add_scalar("env/episode_length", self.episode_steps, self.total_steps)
                     summary_writer.add_scalar("env/episode_reward", self.episode_reward, self.total_steps)
                     summary_writer.add_scalar("env/total_episodes", self.total_episodes, self.total_steps)
-                    if self.memory_usage:
+                    if self.memory_usage_summary:
                         summary_writer.add_scalar("diagnostics/memory_usage_mb",
                                                   memory_usage() / 1e6, self.total_steps)
                 if self.episode_rewards_file is not None:
@@ -123,17 +119,6 @@ class EnvRunner:
                     break
             if render:
                 self.env.render()
-
-        if self.scale_states:
-            self.state_scaler.fit([exp.state for exp in memory.experiences])
-            for i, exp in enumerate(memory.experiences):
-                memory.experiences[i] = Experience(self.scale_state(exp.state),
-                                                   exp.action,
-                                                   exp.reward,
-                                                   self.scale_state(exp.next_state),
-                                                   exp.value,
-                                                   exp.features,
-                                                   exp.terminal)
         return memory
 
     def get_trajectory(self, stop_at_trajectory_end: bool = True, render: bool = False) -> ExperiencesMemory:

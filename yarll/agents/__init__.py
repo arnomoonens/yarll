@@ -181,7 +181,7 @@ register_agent(name="REINFORCE",
                rnn=True
                )
 register_agent(name="REINFORCE",
-               entry_point="yarll.agents.pytorch:REINFORCEContinuous",
+               entry_point="yarll.agents.pytorch.reinforce:REINFORCEContinuous",
                state_dimensions="continuous",
                action_space="continuous",
                backend="pytorch",
@@ -197,7 +197,7 @@ register_agent(name="SAC",
                action_space="continuous"
                )
 register_agent(name="SAC",
-               entry_point="yarll.agents.pytorch:SAC",
+               entry_point="yarll.agents.pytorch.sac:SAC",
                state_dimensions="continuous",
                action_space="continuous",
                backend="pytorch",

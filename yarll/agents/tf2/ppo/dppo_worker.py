@@ -47,7 +47,9 @@ class DPPOWorker(object):
                     trainable=False)
 
             self.env_runner = EnvRunner(
-                self.env, self, {})
+                self.env, self, {},
+                transition_preprocessor=self.config.get("transition_preprocessor", None),
+            )
 
     def build_networks(self):
         raise NotImplementedError

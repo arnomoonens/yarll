@@ -286,7 +286,7 @@ class SAC(Agent):
         self.softqs_optimizer.step()
 
         softq = torch.cat((softq1_values, softq2_values))
-        softq_mean, softq_std = torch.std_mean(softq)
+        softq_std, softq_mean = torch.std_mean(softq)
         return to_numpy(softq_mean), to_numpy(softq_std), to_numpy(softq_targets), to_numpy(softqs_loss)
 
     def train_actor(self, state0_batch):

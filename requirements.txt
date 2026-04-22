@@ -1,7 +1,7 @@
 numpy
 gym>=0.8.0
 tensorflow>=2.2.0
-tensorflow-probability>=0.10.0
+tensorflow-probability>=0.25.0
 tensorflow-addons
 matplotlib
 scipy

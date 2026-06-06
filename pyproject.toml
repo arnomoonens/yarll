@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yarll"
+version = "0.0.10"
+description = "Yet Another Reinforcement Learning Library"
+readme = "README.md"
+requires-python = ">=3.6"
+license = { text = "MIT" }
+authors = [
+    { name = "Arno Moonens", email = "arno.moonens@outlook.com" },
+]
+keywords = [
+    "a3c",
+    "ddpg",
+    "deep learning",
+    "machine learning",
+    "neural networks",
+    "ppo",
+    "reinforcement learning",
+    "sac",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "numpy",
+    "gym>=0.8.0",
+    "tensorflow>=2.2.0",
+    "tensorflow-probability>=0.10.0",
+    "tensorflow-addons",
+    "matplotlib",
+    "scipy",
+    "opencv-contrib-python",
+]
+
+[project.urls]
+Homepage = "https://github.com/arnomoonens/YARLL"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["yarll*"]

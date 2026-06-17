@@ -1,5 +1,5 @@
 numpy
-gym>=0.8.0
+gym>=0.26.2
 tensorflow>=2.2.0
 tensorflow-probability>=0.10.0
 tensorflow-addons
